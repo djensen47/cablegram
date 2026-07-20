@@ -8,6 +8,7 @@ import { newsletterModule } from '../../newsletters/index.js';
 import { subscriptionModule } from '../../subscriptions/index.js';
 import { deliverabilityModule } from '../../deliverability/index.js';
 import { templateModule } from '../../templates/index.js';
+import { campaignModule } from '../../campaigns/index.js';
 import { TYPES } from './types.js';
 
 /**
@@ -45,6 +46,9 @@ export function buildContainer(env: NodeJS.ProcessEnv = process.env): Container 
   container.load(subscriptionModule);
   container.load(deliverabilityModule);
   container.load(templateModule);
+  // The integrator (ADR-011): loaded last, it resolves cross-context ports over
+  // the facades of every module above.
+  container.load(campaignModule);
 
   return container;
 }

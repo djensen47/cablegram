@@ -7,6 +7,7 @@ import { createNewsletterRoutes } from './newsletters/index.js';
 import { createSubscriptionRoutes } from './subscriptions/index.js';
 import { createDeliverabilityRoutes } from './deliverability/index.js';
 import { createTemplateRoutes } from './templates/index.js';
+import { createCampaignRoutes, createPostmarkWebhookRoutes } from './campaigns/index.js';
 
 /**
  * Assembles the single Hono app from the composition root. The same app runs
@@ -43,7 +44,12 @@ export function createApp(container: Container): OpenAPIHono<AppEnv> {
   v1.route('/newsletters', createSubscriptionRoutes(container));
   v1.route('/suppressions', createDeliverabilityRoutes(container));
   v1.route('/templates', createTemplateRoutes(container));
+  v1.route('/campaigns', createCampaignRoutes(container));
   app.route('/v1', v1);
+
+  // The Postmark webhook receiver mounts at the TOP LEVEL (not behind the /v1
+  // API key): it carries its own HTTP Basic-Auth verification (ADR-008).
+  app.route('/', createPostmarkWebhookRoutes(container));
 
   // The generated OpenAPI spec, served openly so the contract is discoverable.
   app.doc31('/openapi.json', {
