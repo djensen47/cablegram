@@ -31,3 +31,16 @@ model Newsletter {
 
   @@map("newsletters")
 }
+
+/// A global, address-keyed suppression-list entry (ADR-011): a deny-list of
+/// addresses cablegram must never send to, regardless of newsletter. Portable
+/// subset (ADR-007): the normalized address itself is the id (mapped to
+/// `_id`, giving it a unique index for free — no separate `ObjectId`); no
+/// embedded documents; the timestamp is supplied by the app (injected clock).
+model Suppression {
+  address   String   @id @map("_id")
+  reason    String
+  createdAt DateTime
+
+  @@map("suppressions")
+}

@@ -4,6 +4,7 @@ import { TYPES } from './shared/di/index.js';
 import type { AppConfig } from './shared/config/index.js';
 import { apiKeyAuth, onError, requestId, type AppEnv } from './shared/http/index.js';
 import { createNewsletterRoutes } from './newsletters/index.js';
+import { createDeliverabilityRoutes } from './deliverability/index.js';
 
 /**
  * Assembles the single Hono app from the composition root. The same app runs
@@ -35,6 +36,7 @@ export function createApp(container: Container): OpenAPIHono<AppEnv> {
   const v1 = new OpenAPIHono<AppEnv>();
   v1.use('*', apiKeyAuth(config.apiKeys));
   v1.route('/newsletters', createNewsletterRoutes(container));
+  v1.route('/suppressions', createDeliverabilityRoutes(container));
   app.route('/v1', v1);
 
   // The generated OpenAPI spec, served openly so the contract is discoverable.
