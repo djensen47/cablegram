@@ -1,0 +1,15 @@
+// cablegram persistence (ADR-007). Prisma on MongoDB, kept to a portable
+// subset: string ids app-generated as `_id` (no ObjectId), relations by id
+// reference (no embedded documents), so another store stays a swap.
+//
+// Models are added per domain component (ADR-011): newsletters, subscriptions,
+// deliverability, templates, campaigns.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
