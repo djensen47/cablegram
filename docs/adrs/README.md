@@ -35,3 +35,10 @@ boundary enforcement); ADR-006 through 011 pin cablegram's stack and domain choi
 the five bounded contexts — the one call the earlier ADRs leave open — and is now ratified.
 
 New decisions use `_TEMPLATE.md`.
+
+## Also see
+
+- [`../deployment.md`](../deployment.md) — how ADR-009 is actually shipped (Docker image build,
+  Prisma engine choice, the DO Functions caveats, CI).
+- [`../testing.md`](../testing.md) — the two test suites (fast in-memory default, real-Mongo
+  integration) and why `mongodb-memory-server` was picked over testcontainers.

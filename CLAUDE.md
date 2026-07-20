@@ -65,6 +65,8 @@ Inject **interfaces only**. Naming: bare `Thing` interface (no `I`), `<Qualifier
 Thin handlers: validate input at the edge (zod) → call a use case from the container → map to a
 response DTO. **Never** serialize domain entities or Prisma types; use explicit DTOs. Use cases never
 see the Hono `Context`. One Hono app, two entrypoints (DO function adapter · `@hono/node-server`).
+Mutating POST routes under `/v1` honor an opt-in `Idempotency-Key` header (replay-safe retries; a
+reused key with a different body is a 409). Every request gets structured, one-line stdout logging.
 
 ## Persistence
 
@@ -76,10 +78,17 @@ repository is the swap seam.
 ## Sending & events ([ADR-008](docs/adrs/ADR-008-email-delivery-postmark.md))
 
 - **Send:** `campaigns` resolves recipients (`subscriptions`), **filters against `deliverability`**
-  (two gates — subscribed *and* not suppressed), renders in-app (`templates`), then **one** Postmark
-  Bulk call via `email.send()`. Postmark owns the fan-out — **no queue, no worker, no cursor.**
+  (two gates — subscribed *and* not suppressed), renders in-app (`templates`), then **one** async
+  Postmark Bulk call (`POST /email/bulk`) via `email.send()`. The response is a submission ack (a
+  request id), not per-recipient results — `SendRecord` persists it as `bulkRequestId`/`submittedAt`.
+  Postmark owns the fan-out — **no queue, no worker, no cursor.**
+- **Schedule:** setting `scheduledAt` on a campaign marks it `scheduled`; there's still no in-process
+  timer — an external cron drives the protected `POST /v1/campaigns/dispatch-due` endpoint, which runs
+  the ordinary send pipeline on each due campaign.
 - **Events:** Postmark webhook → `email.parseProviderEvent()` normalizes → `campaigns` records the
-  outcome; hard bounce/complaint → add address to the `deliverability` suppression list.
+  outcome; hard bounce/complaint → add address to the `deliverability` suppression list. The webhook
+  is **HTTP Basic-Auth** protected (Postmark has no HMAC/signing) — `POSTMARK_WEBHOOK_SECRET` is the
+  Basic-Auth password, checked at the top-level `/webhooks/postmark` route, not the `/v1` API key.
 - Suppression is enforced in the `campaigns` send use case, **not** in the `email` adapter (it's a
   leaf). cablegram owns its **own** authoritative suppression list.
 
@@ -98,5 +107,9 @@ scope.
   ordinary domain data, not a tenant scope — no tenant/account id on entities.
 - **No `events` component and no `delivery` component** — events are facts applied to aggregates;
   sending is the shared `email` adapter.
-- **Postmark wire format** (request/response, webhook schema) is pinned against live docs when
-  implementing the adapter — don't assert it from memory.
+- **Postmark wire format** (request/response, webhook schema) is implemented in
+  `src/shared/email/postmark-delivery-gateway.ts` and `src/campaigns/presentation/webhook-routes.ts` —
+  treat that code (or live docs) as the source of truth, not memory, before restating a Postmark fact
+  in docs or code. Two facts worth not re-getting-wrong: the Bulk API (`POST /email/bulk`) is
+  asynchronous with no per-call recipient cap (only a 50 MB payload ceiling), and webhook auth is
+  HTTP Basic, not HMAC.
