@@ -3,8 +3,13 @@
 // imports no domain component.
 
 // DI wiring + tokens (loaded by the composition root; rebindable in tests).
-export { emailModule } from './module.js';
+// Tokens are exported *before* the module: `module.js` reaches through the
+// Postmark gateway into `shared/di` → the composition root → every component,
+// which forms an import cycle back to this facade. Exporting `EMAIL_TYPES`
+// first guarantees a consumer that `@inject`s it (e.g. subscriptions) still
+// sees a defined token if it is evaluated mid-cycle.
 export { EMAIL_TYPES } from './types.js';
+export { emailModule } from './module.js';
 
 // The send gateway: interface (inject this) + its two bindings.
 export type {

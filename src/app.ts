@@ -4,6 +4,7 @@ import { TYPES } from './shared/di/index.js';
 import type { AppConfig } from './shared/config/index.js';
 import { apiKeyAuth, onError, requestId, type AppEnv } from './shared/http/index.js';
 import { createNewsletterRoutes } from './newsletters/index.js';
+import { createSubscriptionRoutes } from './subscriptions/index.js';
 import { createDeliverabilityRoutes } from './deliverability/index.js';
 import { createTemplateRoutes } from './templates/index.js';
 
@@ -37,6 +38,9 @@ export function createApp(container: Container): OpenAPIHono<AppEnv> {
   const v1 = new OpenAPIHono<AppEnv>();
   v1.use('*', apiKeyAuth(config.apiKeys));
   v1.route('/newsletters', createNewsletterRoutes(container));
+  // Subscriptions are nested under a newsletter (/newsletters/{id}/subscriptions),
+  // so they mount on the same base; the two routers' paths do not collide.
+  v1.route('/newsletters', createSubscriptionRoutes(container));
   v1.route('/suppressions', createDeliverabilityRoutes(container));
   v1.route('/templates', createTemplateRoutes(container));
   app.route('/v1', v1);
