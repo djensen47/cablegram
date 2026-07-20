@@ -3,6 +3,7 @@ import { Container } from 'inversify';
 import { PrismaClient } from '@prisma/client';
 import { loadConfig, type AppConfig } from '../config/index.js';
 import { DefaultClock, type Clock } from '../clock/index.js';
+import { InMemoryIdempotencyStore, type IdempotencyStore } from '../http/index.js';
 import { emailModule } from '../email/index.js';
 import { newsletterModule } from '../../newsletters/index.js';
 import { subscriptionModule } from '../../subscriptions/index.js';
@@ -27,6 +28,7 @@ export function buildContainer(env: NodeJS.ProcessEnv = process.env): Container 
 
   container.bind<AppConfig>(TYPES.Config).toConstantValue(config);
   container.bind<Clock>(TYPES.Clock).to(DefaultClock);
+  container.bind<IdempotencyStore>(TYPES.IdempotencyStore).to(InMemoryIdempotencyStore);
 
   // The Mongo pool, created lazily so a container built only to rebind
   // repositories in tests never connects (ADR-007).

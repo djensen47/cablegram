@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Container } from 'inversify';
-import { buildContainer } from '../../shared/di/index.js';
+import { TYPES, buildContainer } from '../../shared/di/index.js';
+import type { Clock } from '../../shared/clock/index.js';
 import { createApp } from '../../app.js';
 import {
   EMAIL_TYPES,
@@ -25,6 +26,18 @@ const env = {
 } as NodeJS.ProcessEnv;
 
 const auth = { 'x-api-key': 'k1', 'content-type': 'application/json' };
+
+/** A `Clock` test double the dispatch-due test advances explicitly, avoiding a
+ * real sleep to cross a `scheduledAt` threshold. */
+class MutableClock implements Clock {
+  constructor(private current: Date) {}
+  now(): Date {
+    return this.current;
+  }
+  advanceTo(date: Date): void {
+    this.current = date;
+  }
+}
 
 function build() {
   const container: Container = buildContainer(env);
@@ -190,6 +203,59 @@ describe('campaigns routes', () => {
     expect(del.status).toBe(204);
     const get = await app.request(`/v1/campaigns/${created.id}`, { headers: auth });
     expect(get.status).toBe(404);
+  });
+
+  it('creates a scheduled campaign and dispatch-due sends it once due', async () => {
+    const t0 = new Date('2026-07-20T12:00:00Z');
+    const clock = new MutableClock(t0);
+    container.rebind<Clock>(TYPES.Clock).toConstantValue(clock);
+
+    await container
+      .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+      .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+
+    const scheduledAt = new Date(t0.getTime() + 1000).toISOString();
+    const created = (await (
+      await createCampaign({ newsletterId, name: 'Scheduled', templateId, scheduledAt })
+    ).json()) as { id: string; status: string; scheduledAt: string | null };
+    expect(created.status).toBe('scheduled');
+    expect(created.scheduledAt).toBe(scheduledAt);
+
+    // Not due yet: a sweep right now must not touch it.
+    const early = await app.request('/v1/campaigns/dispatch-due', { method: 'POST', headers: auth });
+    expect(early.status).toBe(200);
+    expect((await early.json()) as { data: unknown[] }).toEqual({ data: [], meta: { dispatched: 0 } });
+
+    clock.advanceTo(new Date(t0.getTime() + 2000));
+
+    const due = await app.request('/v1/campaigns/dispatch-due', { method: 'POST', headers: auth });
+    expect(due.status).toBe(200);
+    const dueBody = (await due.json()) as { data: { campaignId: string; status: string }[]; meta: { dispatched: number } };
+    expect(dueBody.data).toEqual([{ campaignId: created.id, status: 'sent' }]);
+    expect(dueBody.meta.dispatched).toBe(1);
+
+    const after = await app.request(`/v1/campaigns/${created.id}`, { headers: auth });
+    expect(((await after.json()) as { status: string }).status).toBe('sent');
+  });
+
+  it('honours Idempotency-Key on create: a replayed key does not create a second campaign', async () => {
+    const headers = { ...auth, 'idempotency-key': 'create-march-once' };
+    const body = JSON.stringify({ newsletterId, name: 'March', templateId });
+
+    const first = await app.request('/v1/campaigns', { method: 'POST', headers, body });
+    const second = await app.request('/v1/campaigns', { method: 'POST', headers, body });
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(await first.json()).toEqual(await second.json());
+
+    const list = await app.request(`/v1/campaigns?newsletterId=${newsletterId}`, { headers: auth });
+    expect(((await list.json()) as { data: unknown[] }).data).toHaveLength(1);
+  });
+
+  it('requires an API key for dispatch-due', async () => {
+    const res = await app.request('/v1/campaigns/dispatch-due', { method: 'POST' });
+    expect(res.status).toBe(401);
   });
 
   it('serves the campaigns and webhook paths in the generated OpenAPI document', async () => {

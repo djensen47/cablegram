@@ -52,6 +52,15 @@ export class PrismaCampaignRepository implements CampaignRepository {
     const { count } = await this.prisma.campaign.deleteMany({ where: { id } });
     return count > 0;
   }
+
+  async listDue(before: Date, limit: number): Promise<Campaign[]> {
+    const rows = await this.prisma.campaign.findMany({
+      where: { status: 'scheduled', scheduledAt: { lte: before } },
+      orderBy: [{ scheduledAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    return rows.map(toDomain);
+  }
 }
 
 // The write shape: identical to `CampaignRow` except `stats` is the input JSON
@@ -71,6 +80,7 @@ function toRow(campaign: Campaign): CampaignWriteData {
     bodyText: campaign.bodyText,
     segmentTags: [...campaign.segmentTags],
     status: campaign.status,
+    scheduledAt: campaign.scheduledAt,
     sendId: campaign.sendId,
     stats: campaign.stats as unknown as Prisma.InputJsonValue,
     createdAt: campaign.createdAt,
@@ -93,6 +103,7 @@ function toDomain(row: CampaignRow): Campaign {
     bodyText: row.bodyText,
     segmentTags: row.segmentTags,
     status: row.status as CampaignStatus,
+    scheduledAt: row.scheduledAt,
     sendId: row.sendId,
     stats: row.stats as unknown as CampaignStats,
     createdAt: row.createdAt,

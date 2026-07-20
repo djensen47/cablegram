@@ -106,8 +106,12 @@ model Template {
 /// `stats` an opaque JSON snapshot (a scalar bag, not a relation) — both
 /// portable to array/JSON columns elsewhere. Content is resolved from a
 /// `templateId` reference OR the inline `subject`/`bodyHtml`/`bodyText` fields.
-/// `status` drives the `draft → sending → sent | failed` send machine; `sendId`
-/// references this campaign's one `SendRecord`. Timestamps are app-supplied.
+/// `status` drives the `draft → scheduled → sending → sent | failed` send
+/// machine; `sendId` references this campaign's one `SendRecord`. Timestamps
+/// are app-supplied. `scheduledAt` is the hardening-chunk scheduling seam
+/// (ADR-009's open item): a `scheduled` campaign becomes due once it passes,
+/// picked up by `POST /v1/campaigns/dispatch-due` (an external cron target,
+/// not an in-process timer) via the `(status, scheduledAt)` index below.
 model Campaign {
   id           String    @id @map("_id")
   newsletterId String
@@ -118,6 +122,7 @@ model Campaign {
   bodyText     String?
   segmentTags  String[]
   status       String
+  scheduledAt  DateTime?
   sendId       String?
   stats        Json
   createdAt    DateTime
@@ -125,6 +130,7 @@ model Campaign {
   sentAt       DateTime?
 
   @@index([newsletterId])
+  @@index([status, scheduledAt])
   @@map("campaigns")
 }
 
