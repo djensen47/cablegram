@@ -44,3 +44,21 @@ model Suppression {
 
   @@map("suppressions")
 }
+
+/// A reusable message template: subject plus an HTML body and an optional
+/// text body (ADR-011). Portable subset (ADR-007): the id is an app-generated
+/// string mapped to `_id` (no `ObjectId`); no embedded documents; timestamps
+/// are supplied by the app (injected clock), not database defaults. Body
+/// fields hold merge-field template source (untrusted, rendered by the bound
+/// `TemplateRenderer`), not raw send-ready content.
+model Template {
+  id        String   @id @map("_id")
+  name      String
+  subject   String
+  bodyHtml  String
+  bodyText  String?
+  createdAt DateTime
+  updatedAt DateTime
+
+  @@map("templates")
+}
