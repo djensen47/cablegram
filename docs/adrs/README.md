@@ -1,0 +1,37 @@
+# cablegram — Architecture Decision Records
+
+cablegram is a **headless newsletter manager/sender**: a MailChimp-shaped capability with **no UI —
+APIs only**. These ADRs are its first settled set of architecture decisions.
+
+## The stack these ADRs encode
+
+- **TypeScript**, **Hono** HTTP server, **Inversify** DI, **Prisma** ORM.
+- **DB-agnostic in the code, MongoDB in production** — gateways stay DB-neutral (ADR-007).
+- **Postmark** as the default email backend, behind a pluggable `DeliveryGateway` (ADR-008).
+- Deploys to **DigitalOcean Functions / App Platform**, with an **eventual Docker image** (ADR-009).
+- **Single-tenant** (ADR-010).
+
+## Index
+
+| ADR | Title | Status |
+|---|---|---|
+| [001](ADR-001-clean-architecture.md) | Clean Architecture | Accepted |
+| [002](ADR-002-package-by-component.md) | Package-by-Component | Accepted |
+| [003](ADR-003-dependency-injection.md) | Dependency Injection (Inversify) | Accepted |
+| [004](ADR-004-headless-api-only.md) | Headless / API-only | Accepted |
+| [005](ADR-005-boundary-enforcement.md) | Boundary Enforcement | Accepted |
+| [006](ADR-006-http-delivery-hono.md) | HTTP Delivery with Hono | Accepted |
+| [007](ADR-007-persistence-prisma-mongodb.md) | Persistence — Prisma + MongoDB, DB-portable | Accepted |
+| [008](ADR-008-email-delivery-postmark.md) | Email Delivery — Postmark Bulk behind a gateway | Accepted |
+| [009](ADR-009-deployment-digitalocean-functions.md) | Deployment — DigitalOcean Functions → Docker | Accepted |
+| [010](ADR-010-single-tenant.md) | Single-Tenant model | Accepted |
+| [011](ADR-011-bounded-contexts.md) | Bounded Contexts & Component Topology | Accepted |
+
+## How to read these
+
+Each ADR records **a decision and its why**, so you can re-evaluate rather than cargo-cult. ADR-001
+through 005 fix the foundational architecture (layers, component structure, DI, headless posture,
+boundary enforcement); ADR-006 through 011 pin cablegram's stack and domain choices. ADR-011 names
+the five bounded contexts — the one call the earlier ADRs leave open — and is now ratified.
+
+New decisions use `_TEMPLATE.md`.
