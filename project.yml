@@ -1,0 +1,38 @@
+# DigitalOcean Functions project config — BEST-EFFORT SECOND TARGET (ADR-009).
+#
+# Docker (see `Dockerfile`) is the shipped, guaranteed deployment path. This
+# file is a good-faith mapping of "one Hono app, two entrypoints" onto DO
+# Functions' packaging model, written from DigitalOcean's public docs — it has
+# NOT been deployed/verified with `doctl serverless deploy`. Two open risks
+# before relying on it (see docs/deployment.md for detail):
+#
+#   1. The 48 MB deployed-action size limit vs. this app's full dependency
+#      graph (Prisma's generated client + query-engine binary, Inversify,
+#      Hono, zod, handlebars, ...) — likely tight or over budget as-is.
+#   2. DO's per-action build (`npm install` run inside THIS action's own
+#      directory) doesn't map cleanly onto a package-by-component monorepo
+#      with one shared `dist/` — the action below assumes the whole repo can
+#      serve as the action's build context, which is unconfirmed.
+#
+# `src/function.ts` (the actual handler) targets DO's "raw" web-action
+# contract (`__ow_method`/`__ow_headers`/`__ow_path`/`__ow_query`/`__ow_body`),
+# which matches `web: raw` below.
+
+packages:
+  - name: cablegram
+    functions:
+      - name: api
+        runtime: 'nodejs:24'
+        # Built by `npm run build` (tsc); the compiled entrypoint exports `main`.
+        main: 'dist/function.js'
+        web: raw
+        limits:
+          # DO Functions are ephemeral/short-lived by design (ADR-009) — this
+          # is generous headroom for a single request, not a background job.
+          timeout: 30000
+          memory: 512
+        environment:
+          # Secrets (DATABASE_URL, API_KEYS, POSTMARK_*) are set via
+          # `doctl serverless deploy` env config / the DO control panel, never
+          # committed here (ADR-009: config from env vars, no files on disk).
+          NODE_ENV: production
