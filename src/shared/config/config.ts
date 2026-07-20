@@ -9,7 +9,17 @@ export interface AppConfig {
   readonly databaseUrl: string;
   readonly apiKeys: readonly string[];
   readonly postmark: {
+    /** Server-level API token, sent as `X-Postmark-Server-Token` on sends (ADR-008). */
     readonly serverToken: string;
+    /**
+     * Shared secret guarding the inbound webhook endpoint. Postmark provides
+     * **no** HMAC/signature verification (pinned against the live webhook docs);
+     * its only native mechanisms are HTTP Basic Auth on the webhook URL and IP
+     * allowlisting. So this is not a signature-verification key — it is the
+     * Basic-Auth credential the webhook receiver (in `campaigns`) checks. The
+     * `email` module never sees it: `parseProviderEvent` only normalizes an
+     * already-authenticated body.
+     */
     readonly webhookSecret: string;
   };
 }

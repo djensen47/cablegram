@@ -3,6 +3,7 @@ import { Container } from 'inversify';
 import { PrismaClient } from '@prisma/client';
 import { loadConfig, type AppConfig } from '../config/index.js';
 import { DefaultClock, type Clock } from '../clock/index.js';
+import { emailModule } from '../email/index.js';
 import { newsletterModule } from '../../newsletters/index.js';
 import { TYPES } from './types.js';
 
@@ -29,6 +30,11 @@ export function buildContainer(env: NodeJS.ProcessEnv = process.env): Container 
     .bind<PrismaClient>(TYPES.PrismaClient)
     .toDynamicValue(() => new PrismaClient({ datasourceUrl: config.databaseUrl }))
     .inSingletonScope();
+
+  // Shared technical modules with their own DI wiring. `email` binds the
+  // Postmark-backed delivery gateway (ADR-008); tests rebind it to an in-memory
+  // double. Still a leaf — it imports no domain component.
+  container.load(emailModule);
 
   // Domain component modules (ADR-011). Each names its own concrete repositories
   // and use cases; tests rebind the repository token to an in-memory double.
