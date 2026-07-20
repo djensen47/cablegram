@@ -5,6 +5,7 @@ import { loadConfig, type AppConfig } from '../config/index.js';
 import { DefaultClock, type Clock } from '../clock/index.js';
 import { emailModule } from '../email/index.js';
 import { newsletterModule } from '../../newsletters/index.js';
+import { deliverabilityModule } from '../../deliverability/index.js';
 import { TYPES } from './types.js';
 
 /**
@@ -39,6 +40,7 @@ export function buildContainer(env: NodeJS.ProcessEnv = process.env): Container 
   // Domain component modules (ADR-011). Each names its own concrete repositories
   // and use cases; tests rebind the repository token to an in-memory double.
   container.load(newsletterModule);
+  container.load(deliverabilityModule);
 
   return container;
 }
