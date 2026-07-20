@@ -126,8 +126,10 @@ model Campaign {
 /// nested-document queries), portable to JSON/array columns elsewhere.
 /// Timestamps are app-supplied (injected clock).
 model SendRecord {
-  id            String   @id @map("_id")
+  id            String    @id @map("_id")
   campaignId    String
+  bulkRequestId String?
+  submittedAt   DateTime?
   outcomes      Json
   appliedEvents String[]
   createdAt     DateTime

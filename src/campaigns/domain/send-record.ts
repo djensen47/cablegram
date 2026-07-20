@@ -48,14 +48,6 @@ export interface RecipientOutcome {
   clicks: number;
 }
 
-/** The provider's per-recipient result at send time (mapped from `email`). */
-export interface SendResultInput {
-  address: string;
-  messageId: string | null;
-  accepted: boolean;
-  errorCode: number;
-}
-
 /** A normalized delivery event applied to the record (mapped from `email`). */
 export interface DeliveryEventInput {
   /** One of `email`'s `DeliveryEventType`s; unknown types are ignored. */
@@ -81,6 +73,10 @@ export interface ApplyEventResult {
 export interface SendRecordProps {
   id: SendRecordId;
   campaignId: string;
+  /** Postmark's bulk request id (async submission); null before submit. */
+  bulkRequestId: string | null;
+  /** When the provider accepted the broadcast; null before submit. */
+  submittedAt: Date | null;
   outcomes: RecipientOutcome[];
   /** Dedupe keys of applied webhook events (`<messageId|address>:<type>`). */
   appliedEvents: string[];
@@ -125,6 +121,8 @@ export class SendRecord {
     return new SendRecord({
       id: input.id,
       campaignId: input.campaignId,
+      bulkRequestId: null,
+      submittedAt: null,
       outcomes,
       appliedEvents: [],
       createdAt: input.now,
@@ -138,16 +136,17 @@ export class SendRecord {
   }
 
   /**
-   * Stamp the provider's per-recipient results onto the opened outcomes
-   * (message id + accepted/rejected), matching by address.
+   * Record a successful provider submission (ADR-008): stamp the async bulk
+   * request id + submission time and raise every still-`pending` recipient to
+   * `accepted` — the broadcast was handed to the provider. Webhooks later raise
+   * those to delivered/bounced/complained. An async bulk submit returns no
+   * per-recipient message ids, so outcomes match webhooks by address.
    */
-  applySendResults(results: readonly SendResultInput[], now: Date): void {
-    for (const result of results) {
-      const outcome = this.props.outcomes.find((o) => o.address === result.address);
-      if (outcome === undefined) continue;
-      outcome.messageId = result.messageId;
-      outcome.status = result.accepted ? 'accepted' : 'rejected';
-      outcome.errorCode = result.errorCode;
+  markSubmitted(bulkRequestId: string, submittedAt: Date, now: Date): void {
+    this.props.bulkRequestId = bulkRequestId;
+    this.props.submittedAt = submittedAt;
+    for (const outcome of this.props.outcomes) {
+      if (outcome.status === 'pending') outcome.status = 'accepted';
     }
     this.props.updatedAt = now;
   }
@@ -225,6 +224,12 @@ export class SendRecord {
   }
   get campaignId(): string {
     return this.props.campaignId;
+  }
+  get bulkRequestId(): string | null {
+    return this.props.bulkRequestId;
+  }
+  get submittedAt(): Date | null {
+    return this.props.submittedAt;
   }
   get outcomes(): readonly RecipientOutcome[] {
     return this.props.outcomes;

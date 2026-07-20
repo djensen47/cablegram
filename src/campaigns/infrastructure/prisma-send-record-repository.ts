@@ -43,6 +43,8 @@ function toRow(record: SendRecord): SendRecordWriteData {
   return {
     id: record.id,
     campaignId: record.campaignId,
+    bulkRequestId: record.bulkRequestId,
+    submittedAt: record.submittedAt,
     outcomes: record.outcomes as unknown as Prisma.InputJsonValue,
     appliedEvents: [...record.appliedEvents],
     createdAt: record.createdAt,
@@ -54,6 +56,8 @@ function toDomain(row: SendRecordRow): SendRecord {
   return SendRecord.reconstitute({
     id: row.id,
     campaignId: row.campaignId,
+    bulkRequestId: row.bulkRequestId,
+    submittedAt: row.submittedAt,
     outcomes: row.outcomes as unknown as RecipientOutcome[],
     appliedEvents: row.appliedEvents,
     createdAt: row.createdAt,

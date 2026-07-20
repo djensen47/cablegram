@@ -5,7 +5,7 @@ import type { Clock } from '../../shared/clock/index.js';
 import { EMAIL_TYPES, type DeliveryGateway } from '../../shared/email/index.js';
 import { CAMPAIGN_TYPES } from '../types.js';
 import type { Campaign, CampaignId } from '../domain/campaign.js';
-import { SendRecord, type SendResultInput } from '../domain/send-record.js';
+import { SendRecord } from '../domain/send-record.js';
 import { CampaignNotFoundError, CampaignNewsletterNotFoundError } from '../domain/errors.js';
 import type { CampaignRepository } from './campaign-repository.js';
 import type { SendRecordRepository } from './send-record-repository.js';
@@ -97,7 +97,7 @@ export class SendCampaign {
 
     try {
       if (addresses.length > 0) {
-        const results = await this.delivery.send({
+        const ack = await this.delivery.send({
           from: {
             fromName: sender.fromName,
             fromEmail: sender.fromEmail,
@@ -113,7 +113,10 @@ export class SendCampaign {
           // Echoed back on webhooks so events correlate to this campaign.
           tag: campaign.id,
         });
-        record.applySendResults(results.map(toSendResult), this.clock.now());
+        // Async bulk submit: record the request id + submission time; the
+        // gated recipients become `accepted`. Per-recipient outcomes arrive
+        // later via webhooks (ADR-008).
+        record.markSubmitted(ack.bulkRequestId, new Date(ack.submittedAt), this.clock.now());
         await this.sendRecords.update(record);
       }
 
@@ -126,18 +129,4 @@ export class SendCampaign {
       throw err;
     }
   }
-}
-
-function toSendResult(result: {
-  email: string;
-  messageId: string | null;
-  accepted: boolean;
-  errorCode: number;
-}): SendResultInput {
-  return {
-    address: result.email,
-    messageId: result.messageId,
-    accepted: result.accepted,
-    errorCode: result.errorCode,
-  };
 }
