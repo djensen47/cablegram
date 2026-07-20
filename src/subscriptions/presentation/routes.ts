@@ -1,9 +1,10 @@
-import { OpenAPIHono, createRoute, type z } from '@hono/zod-openapi';
-import type { Hook } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import type { Container } from 'inversify';
 import {
   BadRequestError,
   NotFoundError,
+  errorResponse,
+  throwOnInvalid,
   toPage,
   type AppEnv,
 } from '../../shared/http/index.js';
@@ -18,7 +19,6 @@ import type { ConfirmSubscription } from '../application/confirm-subscription.js
 import type { Unsubscribe } from '../application/unsubscribe.js';
 import type { ListSubscriptions } from '../application/list-subscriptions.js';
 import {
-  ErrorSchema,
   ListSubscriptionsQuerySchema,
   NewsletterIdParamSchema,
   SubscribeSchema,
@@ -30,23 +30,8 @@ import {
 
 const security = [{ ApiKeyAuth: [] }];
 
-const notFoundResponse = {
-  content: { 'application/json': { schema: ErrorSchema } },
-  description: 'Newsletter or subscription not found',
-} as const;
-
-const badRequestResponse = {
-  content: { 'application/json': { schema: ErrorSchema } },
-  description: 'Invalid request',
-} as const;
-
-// Route out validation failures through the shared error envelope: throwing the
-// ZodError lets `onError` (shared/http) render `{ error: { code, ... } }` (ADR-004).
-const throwOnInvalid: Hook<unknown, AppEnv, string, unknown> = (result) => {
-  if (!result.success) {
-    throw result.error as z.ZodError;
-  }
-};
+const notFoundResponse = errorResponse('Newsletter or subscription not found');
+const badRequestResponse = errorResponse('Invalid request');
 
 // Domain errors carry no HTTP status (ADR-001); translate them here, at the edge.
 function rethrowDomainError(err: unknown): never {

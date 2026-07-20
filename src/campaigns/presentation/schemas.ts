@@ -1,5 +1,5 @@
 import { z } from '@hono/zod-openapi';
-import { paginationQuerySchema } from '../../shared/http/index.js';
+import { listResponseSchema, paginationQuerySchema } from '../../shared/http/index.js';
 import { CAMPAIGN_STATUSES, type Campaign } from '../domain/campaign.js';
 import type { SendRecord } from '../domain/send-record.js';
 import { OUTCOME_STATUSES } from '../domain/send-record.js';
@@ -88,12 +88,7 @@ export const UpdateCampaignSchema = z
   })
   .openapi('UpdateCampaign');
 
-export const CampaignListSchema = z
-  .object({
-    data: z.array(CampaignSchema),
-    meta: z.object({ nextCursor: z.string().nullable() }),
-  })
-  .openapi('CampaignList');
+export const CampaignListSchema = listResponseSchema(CampaignSchema, 'CampaignList');
 
 /** Query filters for the list route: pagination + newsletter/status filters. */
 export const ListCampaignsQuerySchema = paginationQuerySchema.extend({
@@ -165,17 +160,6 @@ export const WebhookAckSchema = z.object({ status: z.string() }).openapi('Webhoo
 export const PostmarkWebhookSchema = z
   .record(z.unknown())
   .openapi('PostmarkWebhookEvent', { example: { RecordType: 'Delivery' } });
-
-export const ErrorSchema = z
-  .object({
-    error: z.object({
-      code: z.string(),
-      message: z.string(),
-      details: z.unknown().optional(),
-      requestId: z.string().optional(),
-    }),
-  })
-  .openapi('Error');
 
 export type CampaignResponse = z.infer<typeof CampaignSchema>;
 export type SendRecordResponse = z.infer<typeof SendRecordSchema>;

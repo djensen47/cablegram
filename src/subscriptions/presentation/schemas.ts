@@ -1,5 +1,5 @@
 import { z } from '@hono/zod-openapi';
-import { paginationQuerySchema } from '../../shared/http/index.js';
+import { listResponseSchema, paginationQuerySchema } from '../../shared/http/index.js';
 import { SUBSCRIPTION_STATUSES, type Subscription } from '../domain/subscription.js';
 
 /**
@@ -41,12 +41,7 @@ export const SubscribeSchema = z
   })
   .openapi('Subscribe');
 
-export const SubscriptionListSchema = z
-  .object({
-    data: z.array(SubscriptionSchema),
-    meta: z.object({ nextCursor: z.string().nullable() }),
-  })
-  .openapi('SubscriptionList');
+export const SubscriptionListSchema = listResponseSchema(SubscriptionSchema, 'SubscriptionList');
 
 /** Query filters for the list route: pagination + query-time status/tag segment. */
 export const ListSubscriptionsQuerySchema = paginationQuerySchema.extend({
@@ -80,17 +75,6 @@ export const SubscriptionParamsSchema = z.object({
       example: '4a7f2c1e-6b1a-4c9d-9f21-2b0e5d8a1c33',
     }),
 });
-
-export const ErrorSchema = z
-  .object({
-    error: z.object({
-      code: z.string(),
-      message: z.string(),
-      details: z.unknown().optional(),
-      requestId: z.string().optional(),
-    }),
-  })
-  .openapi('Error');
 
 export type SubscriptionResponse = z.infer<typeof SubscriptionSchema>;
 

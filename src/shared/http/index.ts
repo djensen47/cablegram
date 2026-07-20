@@ -24,3 +24,9 @@ export {
   type PaginationQuery,
   type Page,
 } from './pagination.js';
+export {
+  ErrorSchema,
+  throwOnInvalid,
+  errorResponse,
+  listResponseSchema,
+} from './openapi.js';
