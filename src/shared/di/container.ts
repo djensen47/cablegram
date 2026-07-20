@@ -6,6 +6,7 @@ import { DefaultClock, type Clock } from '../clock/index.js';
 import { emailModule } from '../email/index.js';
 import { newsletterModule } from '../../newsletters/index.js';
 import { deliverabilityModule } from '../../deliverability/index.js';
+import { templateModule } from '../../templates/index.js';
 import { TYPES } from './types.js';
 
 /**
@@ -41,6 +42,7 @@ export function buildContainer(env: NodeJS.ProcessEnv = process.env): Container 
   // and use cases; tests rebind the repository token to an in-memory double.
   container.load(newsletterModule);
   container.load(deliverabilityModule);
+  container.load(templateModule);
 
   return container;
 }
