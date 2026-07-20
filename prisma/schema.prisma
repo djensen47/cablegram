@@ -13,3 +13,21 @@ datasource db {
   provider = "mongodb"
   url      = env("DATABASE_URL")
 }
+
+/// A newsletter publication: identity + sender identity + sending-domain/DKIM
+/// fields (ADR-011). Portable subset (ADR-007): the id is an app-generated
+/// string mapped to `_id` (no `ObjectId`); no embedded documents; timestamps
+/// are supplied by the app (injected clock), not database defaults.
+model Newsletter {
+  id             String   @id @map("_id")
+  name           String
+  fromName       String
+  fromEmail      String
+  replyTo        String?
+  sendingDomain  String?
+  dkimIdentifier String?
+  createdAt      DateTime
+  updatedAt      DateTime
+
+  @@map("newsletters")
+}
