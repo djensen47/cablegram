@@ -12,4 +12,8 @@ export const TYPES = {
    * in-memory doubles never open a connection.
    */
   PrismaClient: Symbol.for('PrismaClient'),
+  /** Storage for the `Idempotency-Key` middleware (`shared/http`); in-memory by
+   * default, bound at container scope so it persists across requests within
+   * one warm process (see `InMemoryIdempotencyStore`'s docstring, ADR-009). */
+  IdempotencyStore: Symbol.for('IdempotencyStore'),
 } as const;

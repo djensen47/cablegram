@@ -14,6 +14,7 @@ import { DeleteCampaign } from '../application/delete-campaign.js';
 import { SendCampaign } from '../application/send-campaign.js';
 import { GetSendRecord } from '../application/get-send-record.js';
 import { RecordDeliveryEvents } from '../application/record-delivery-events.js';
+import { DispatchDueCampaigns } from '../application/dispatch-due-campaigns.js';
 import { PrismaCampaignRepository } from './prisma-campaign-repository.js';
 import { PrismaSendRecordRepository } from './prisma-send-record-repository.js';
 import { FacadeNewsletterGateway } from './facade-newsletter-gateway.js';
@@ -48,4 +49,5 @@ export const campaignModule = new ContainerModule((bind) => {
   bind<SendCampaign>(CAMPAIGN_TYPES.SendCampaign).to(SendCampaign);
   bind<GetSendRecord>(CAMPAIGN_TYPES.GetSendRecord).to(GetSendRecord);
   bind<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents).to(RecordDeliveryEvents);
+  bind<DispatchDueCampaigns>(CAMPAIGN_TYPES.DispatchDueCampaigns).to(DispatchDueCampaigns);
 });

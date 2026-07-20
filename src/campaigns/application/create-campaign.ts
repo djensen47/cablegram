@@ -41,6 +41,7 @@ export class CreateCampaign {
       bodyHtml: input.bodyHtml,
       bodyText: input.bodyText,
       segmentTags: input.segmentTags,
+      scheduledAt: input.scheduledAt,
       now: this.clock.now(),
     });
 

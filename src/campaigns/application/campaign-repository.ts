@@ -25,4 +25,14 @@ export interface CampaignRepository {
   list(options: ListCampaignsOptions): Promise<Campaign[]>;
   /** Returns `true` if a row was deleted, `false` if none existed. */
   delete(id: CampaignId): Promise<boolean>;
+  /**
+   * The scheduling seam (ADR-009's open item): `scheduled` campaigns whose
+   * `scheduledAt` has passed `before`, ordered by `scheduledAt` ascending
+   * (oldest-due first) then `id` (a stable tie-break), capped at `limit`. No
+   * cursor — `dispatch-due` re-runs this fresh each tick; a campaign drops out
+   * of the due set the moment it transitions past `scheduled`, so there is
+   * nothing to page through within one call (ADR-009: no in-process timer,
+   * an external cron calls this repeatedly instead).
+   */
+  listDue(before: Date, limit: number): Promise<Campaign[]>;
 }

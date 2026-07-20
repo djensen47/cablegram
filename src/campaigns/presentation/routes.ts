@@ -23,11 +23,14 @@ import type { UpdateCampaign } from '../application/update-campaign.js';
 import type { DeleteCampaign } from '../application/delete-campaign.js';
 import type { SendCampaign } from '../application/send-campaign.js';
 import type { GetSendRecord } from '../application/get-send-record.js';
+import type { DispatchDueCampaigns } from '../application/dispatch-due-campaigns.js';
 import {
   CampaignIdParamSchema,
   CampaignListSchema,
   CampaignSchema,
   CreateCampaignSchema,
+  DispatchDueQuerySchema,
+  DispatchDueResponseSchema,
   ErrorSchema,
   ListCampaignsQuerySchema,
   SendRecordSchema,
@@ -52,6 +55,23 @@ const conflictResponse = {
   content: { 'application/json': { schema: ErrorSchema } },
   description: 'The campaign is not in a state that permits this operation',
 } as const;
+
+const unauthorizedResponse = {
+  content: { 'application/json': { schema: ErrorSchema } },
+  description: 'Missing or invalid API key',
+} as const;
+
+// Every route on this router sits behind `apiKeyAuth` (mounted at `/v1` in
+// app.ts) — document the 401 it can produce on all of them (OpenAPI polish:
+// the security requirement above only *declares* the scheme, it doesn't
+// document the failure response).
+const authedResponses = { 401: unauthorizedResponse } as const;
+
+/** Converts a wire ISO-datetime string to a `Date`, preserving null/undefined
+ * (edge-only mapping — use cases and the domain never see a raw string). */
+function toNullableDate(value: string | null | undefined): Date | null | undefined {
+  return value == null ? value : new Date(value);
+}
 
 // Route out validation failures through the shared error envelope: throwing the
 // ZodError lets `onError` (shared/http) render `{ error: { code, ... } }` (ADR-004).
@@ -91,6 +111,7 @@ const listRoute = createRoute({
       content: { 'application/json': { schema: CampaignListSchema } },
       description: 'A page of campaigns',
     },
+    ...authedResponses,
   },
 });
 
@@ -106,10 +127,11 @@ const createCampaignRoute = createRoute({
   responses: {
     201: {
       content: { 'application/json': { schema: CampaignSchema } },
-      description: 'The created campaign (status draft)',
+      description: 'The created campaign (status draft, or scheduled when scheduledAt is set)',
     },
     400: badRequestResponse,
     404: notFoundResponse,
+    ...authedResponses,
   },
 });
 
@@ -126,6 +148,7 @@ const getRoute = createRoute({
       description: 'The campaign',
     },
     404: notFoundResponse,
+    ...authedResponses,
   },
 });
 
@@ -147,6 +170,7 @@ const updateRoute = createRoute({
     400: badRequestResponse,
     404: notFoundResponse,
     409: conflictResponse,
+    ...authedResponses,
   },
 });
 
@@ -160,6 +184,7 @@ const deleteRoute = createRoute({
   responses: {
     204: { description: 'The campaign was deleted' },
     404: notFoundResponse,
+    ...authedResponses,
   },
 });
 
@@ -180,6 +205,7 @@ const sendRoute = createRoute({
     400: badRequestResponse,
     404: notFoundResponse,
     409: conflictResponse,
+    ...authedResponses,
   },
 });
 
@@ -196,6 +222,29 @@ const getSendRoute = createRoute({
       description: 'The send record',
     },
     404: notFoundResponse,
+    ...authedResponses,
+  },
+});
+
+const dispatchDueRoute = createRoute({
+  method: 'post',
+  path: '/dispatch-due',
+  tags: ['campaigns'],
+  summary: 'Send all due scheduled campaigns',
+  description:
+    'The external-cron target for scheduled sends (ADR-009\'s open scheduling item — there is no ' +
+    'in-process timer). Sends every `scheduled` campaign whose `scheduledAt` has passed, up to ' +
+    '`limit` (a bounded batch per call, respecting the function time-limit posture); call again to ' +
+    'work through a larger due set. A campaign that fails before it starts sending (e.g. its ' +
+    'newsletter/template went missing) is marked `failed` rather than retried forever.',
+  security,
+  request: { query: DispatchDueQuerySchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: DispatchDueResponseSchema } },
+      description: 'The outcome of every campaign this call attempted to send',
+    },
+    ...authedResponses,
   },
 });
 
@@ -223,7 +272,7 @@ export function createCampaignRoutes(container: Container): OpenAPIHono<AppEnv> 
     try {
       const campaign = await container
         .get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign)
-        .execute(body);
+        .execute({ ...body, scheduledAt: toNullableDate(body.scheduledAt) });
       return c.json(toCampaignResponse(campaign), 201);
     } catch (err) {
       rethrowDomainError(err);
@@ -246,7 +295,7 @@ export function createCampaignRoutes(container: Container): OpenAPIHono<AppEnv> 
     try {
       const campaign = await container
         .get<UpdateCampaign>(CAMPAIGN_TYPES.UpdateCampaign)
-        .execute(id, body);
+        .execute(id, { ...body, scheduledAt: toNullableDate(body.scheduledAt) });
       return c.json(toCampaignResponse(campaign), 200);
     } catch (err) {
       rethrowDomainError(err);
@@ -281,6 +330,14 @@ export function createCampaignRoutes(container: Container): OpenAPIHono<AppEnv> 
     } catch (err) {
       rethrowDomainError(err);
     }
+  });
+
+  app.openapi(dispatchDueRoute, async (c) => {
+    const { limit } = c.req.valid('query');
+    const results = await container
+      .get<DispatchDueCampaigns>(CAMPAIGN_TYPES.DispatchDueCampaigns)
+      .execute({ limit });
+    return c.json({ data: results, meta: { dispatched: results.length } }, 200);
   });
 
   return app;
