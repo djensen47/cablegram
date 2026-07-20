@@ -23,25 +23,26 @@ const message: BulkMessage = {
   tag: 'campaign-42',
 };
 
-/** A single captured request's parsed JSON batch body plus its headers. */
+/** A captured `/email/bulk` request: its URL, parsed JSON body, and headers. */
 interface CapturedCall {
-  body: Record<string, unknown>[];
+  url: string;
+  body: Record<string, unknown>;
   headers: Record<string, string>;
 }
 
-function stubFetch(): { calls: CapturedCall[] } {
+/** Stub `fetch` to record calls and return an accepted bulk acknowledgment. */
+function stubBulk(id = 'bulk-req-1'): { calls: CapturedCall[] } {
   const calls: CapturedCall[] = [];
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
-    const body = JSON.parse(String(init?.body)) as Record<string, unknown>[];
-    calls.push({ body, headers: init?.headers as Record<string, string> });
-    // Postmark returns HTTP 200 with one result per message in the batch.
-    const results = body.map((m, i) => ({
-      ErrorCode: 0,
-      Message: 'OK',
-      MessageID: `mid-${i}`,
-      To: m.To,
-    }));
-    return new Response(JSON.stringify(results), { status: 200 });
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    calls.push({
+      url: String(url),
+      body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      headers: init?.headers as Record<string, string>,
+    });
+    return new Response(
+      JSON.stringify({ ID: id, Status: 'Accepted', SubmittedAt: '2026-07-20T00:00:00.000Z' }),
+      { status: 200 },
+    );
   });
   return { calls };
 }
@@ -49,19 +50,19 @@ function stubFetch(): { calls: CapturedCall[] } {
 describe('PostmarkDeliveryGateway.send', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('maps a recipient set to one Postmark batch message per recipient', async () => {
-    const { calls } = stubFetch();
+  it('submits one /email/bulk request: content once + a Messages array of recipients', async () => {
+    const { calls } = stubBulk();
     const gateway = new PostmarkDeliveryGateway({ postmark: { serverToken: 'server-token', webhookSecret: 's' } } as never);
 
-    const results = await gateway.send(message);
+    const ack = await gateway.send(message);
 
     expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toContain('/email/bulk');
     expect(calls[0]!.headers['X-Postmark-Server-Token']).toBe('server-token');
-    const batch = calls[0]!.body;
-    expect(batch).toHaveLength(2);
-    expect(batch[0]).toMatchObject({
+
+    const req = calls[0]!.body;
+    expect(req).toMatchObject({
       From: 'Dispatch Editors <editors@dispatch.example>',
-      To: 'a@example.com',
       ReplyTo: 'replies@dispatch.example',
       Subject: 'Issue #1',
       HtmlBody: '<h1>Hello</h1>',
@@ -69,16 +70,18 @@ describe('PostmarkDeliveryGateway.send', () => {
       MessageStream: 'broadcast',
       Tag: 'campaign-42',
     });
-    expect(batch[1]!.To).toBe('b@example.com');
+    expect(req.Messages).toEqual([{ To: 'a@example.com' }, { To: 'b@example.com' }]);
 
-    expect(results).toEqual([
-      { email: 'a@example.com', messageId: 'mid-0', accepted: true, errorCode: 0, message: 'OK' },
-      { email: 'b@example.com', messageId: 'mid-1', accepted: true, errorCode: 0, message: 'OK' },
-    ]);
+    expect(ack).toEqual({
+      bulkRequestId: 'bulk-req-1',
+      status: 'accepted',
+      submittedAt: '2026-07-20T00:00:00.000Z',
+      recipientCount: 2,
+    });
   });
 
   it('omits ReplyTo/TextBody/Tag when not provided and honors an explicit stream', async () => {
-    const { calls } = stubFetch();
+    const { calls } = stubBulk();
     const gateway = new PostmarkDeliveryGateway({ postmark: { serverToken: 't', webhookSecret: 's' } } as never);
 
     await gateway.send({
@@ -88,69 +91,63 @@ describe('PostmarkDeliveryGateway.send', () => {
       messageStream: 'outbound',
     });
 
-    const msg = calls[0]!.body[0]!;
-    expect(msg).not.toHaveProperty('ReplyTo');
-    expect(msg).not.toHaveProperty('TextBody');
-    expect(msg).not.toHaveProperty('Tag');
-    expect(msg.MessageStream).toBe('outbound');
+    const req = calls[0]!.body;
+    expect(req).not.toHaveProperty('ReplyTo');
+    expect(req).not.toHaveProperty('TextBody');
+    expect(req).not.toHaveProperty('Tag');
+    expect(req.MessageStream).toBe('outbound');
+    expect(req.Messages).toEqual([{ To: 'c@example.com' }]);
   });
 
-  it('splits a set larger than the 500-per-call cap across multiple batch calls', async () => {
-    const { calls } = stubFetch();
+  it('sends any number of recipients in ONE bulk call (no 500-cap splitting)', async () => {
+    const { calls } = stubBulk();
     const gateway = new PostmarkDeliveryGateway({ postmark: { serverToken: 't', webhookSecret: 's' } } as never);
 
-    const recipients = Array.from({ length: 501 }, (_, i) => ({ email: `r${i}@example.com` }));
-    const results = await gateway.send({ ...message, recipients, tag: undefined });
+    const recipients = Array.from({ length: 5000 }, (_, i) => ({ email: `r${i}@example.com` }));
+    const ack = await gateway.send({ ...message, recipients, tag: undefined });
 
-    expect(calls).toHaveLength(2);
-    expect(calls[0]!.body).toHaveLength(500);
-    expect(calls[1]!.body).toHaveLength(1);
-    expect(results).toHaveLength(501);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.body.Messages as unknown[]).toHaveLength(5000);
+    expect(ack.recipientCount).toBe(5000);
   });
 
-  it('returns immediately without calling the provider for an empty recipient set', async () => {
-    const { calls } = stubFetch();
+  it('does not call the provider for an empty recipient set', async () => {
+    const { calls } = stubBulk();
     const gateway = new PostmarkDeliveryGateway({ postmark: { serverToken: 't', webhookSecret: 's' } } as never);
 
-    const results = await gateway.send({ ...message, recipients: [] });
+    const ack = await gateway.send({ ...message, recipients: [] });
 
-    expect(results).toEqual([]);
     expect(calls).toHaveLength(0);
+    expect(ack.recipientCount).toBe(0);
+    expect(ack.bulkRequestId).toBe('');
   });
 
   it('throws EmailDeliveryError on a non-2xx provider response', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('bad token', { status: 401 }));
     const gateway = new PostmarkDeliveryGateway({ postmark: { serverToken: 't', webhookSecret: 's' } } as never);
 
-    await expect(gateway.send(message)).rejects.toThrow(/Postmark batch send failed \(HTTP 401\)/);
+    await expect(gateway.send(message)).rejects.toThrow(/Postmark bulk send failed \(HTTP 401\)/);
   });
 
-  it('marks a per-message rejection as not accepted', async () => {
+  it('throws when the provider returns 200 but does not accept the submission', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(
-        JSON.stringify([
-          { ErrorCode: 0, Message: 'OK', MessageID: 'ok-1', To: 'a@example.com' },
-          { ErrorCode: 300, Message: 'Invalid email address', To: 'b@example.com' },
-        ]),
-        { status: 200 },
-      ),
+      new Response(JSON.stringify({ Status: 'Failed', Message: 'nope' }), { status: 200 }),
     );
     const gateway = new PostmarkDeliveryGateway({ postmark: { serverToken: 't', webhookSecret: 's' } } as never);
 
-    const results = await gateway.send(message);
-    expect(results[0]).toMatchObject({ accepted: true, messageId: 'ok-1' });
-    expect(results[1]).toMatchObject({ accepted: false, messageId: null, errorCode: 300 });
+    await expect(gateway.send(message)).rejects.toThrow(/not accepted/);
   });
 });
 
 describe('InMemoryDeliveryGateway', () => {
-  it('records sends and reports every recipient accepted', async () => {
+  it('records sends and returns an accepted acknowledgment', async () => {
     const gateway = new InMemoryDeliveryGateway();
-    const results = await gateway.send(message);
+    const ack = await gateway.send(message);
 
     expect(gateway.sent).toEqual([message]);
-    expect(results).toHaveLength(2);
-    expect(results.every((r) => r.accepted)).toBe(true);
+    expect(ack.status).toBe('accepted');
+    expect(ack.recipientCount).toBe(2);
+    expect(ack.bulkRequestId).toBe('in-memory-1');
   });
 });
 

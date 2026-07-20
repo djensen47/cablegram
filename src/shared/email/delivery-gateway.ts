@@ -3,8 +3,8 @@
  * email provider (Postmark, ADR-008). A shared technical leaf: it knows nothing
  * of newsletters, campaigns or subscriptions; callers hand it an already-
  * resolved recipient set and an already-rendered message and it does one thing
- * — hand the batch to the provider. Suppression and rendering happen upstream
- * (in `campaigns`), never here.
+ * — submit the broadcast to the provider. Suppression and rendering happen
+ * upstream (in `campaigns`), never here.
  */
 
 /** A single resolved recipient. Rendering/personalization happens upstream. */
@@ -29,8 +29,9 @@ export interface RenderedMessage {
 
 /**
  * One logical broadcast: the same rendered message to a whole recipient set.
- * The gateway fans this out to the provider; any per-call size limit and the
- * splitting it forces are an internal detail of the implementation (ADR-008).
+ * The gateway submits it to Postmark's Bulk API in a single call — the content
+ * is defined once and the recipients ride along in the request (ADR-008). There
+ * is no per-call recipient cap (only a 50 MB payload ceiling).
  */
 export interface BulkMessage {
   readonly from: SenderIdentity;
@@ -45,23 +46,30 @@ export interface BulkMessage {
   readonly tag?: string;
 }
 
-/** The per-recipient outcome of a send, normalized off the provider response. */
-export interface DeliveryResult {
-  readonly email: string;
-  /** Provider message id when accepted; `null` when the message was rejected. */
-  readonly messageId: string | null;
-  /** `true` when the provider accepted the message for delivery. */
-  readonly accepted: boolean;
-  /** Provider error code (`0` = success) and its human-readable message. */
-  readonly errorCode: number;
-  readonly message: string;
+/**
+ * The provider's acknowledgment of a bulk submission. Postmark's Bulk API
+ * (`POST /email/bulk`) is **asynchronous**: it accepts the whole broadcast in
+ * one call and returns a request id. Per-recipient outcomes (delivered, bounced,
+ * opened, clicked) arrive later as webhook events (ADR-008) — never in this
+ * response. A submission the provider does not accept throws instead of
+ * returning.
+ */
+export interface SendAcknowledgment {
+  /** Postmark's bulk request id, for correlation/reconciliation. */
+  readonly bulkRequestId: string;
+  /** Normalized submission status; a non-accepted submission throws. */
+  readonly status: 'accepted';
+  /** Provider timestamp for when the broadcast was accepted (ISO 8601). */
+  readonly submittedAt: string;
+  /** How many recipients were submitted in the broadcast. */
+  readonly recipientCount: number;
 }
 
 /**
- * Send a rendered message to a recipient set. Injected as an interface only
+ * Submit a rendered broadcast to a recipient set. Injected as an interface only
  * (ADR-003); `PostmarkDeliveryGateway` is the production binding and
  * `InMemoryDeliveryGateway` the DI-rebind test double.
  */
 export interface DeliveryGateway {
-  send(message: BulkMessage): Promise<DeliveryResult[]>;
+  send(message: BulkMessage): Promise<SendAcknowledgment>;
 }

@@ -13,7 +13,7 @@ export type {
   RenderedMessage,
   SenderIdentity,
   EmailRecipient,
-  DeliveryResult,
+  SendAcknowledgment,
 } from './delivery-gateway.js';
 export { PostmarkDeliveryGateway } from './postmark-delivery-gateway.js';
 export { InMemoryDeliveryGateway } from './in-memory-delivery-gateway.js';
