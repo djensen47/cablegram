@@ -50,17 +50,17 @@ describe('PrismaSendRecordRepository (contract)', () => {
     expect(await repo.findById('does-not-exist')).toBeNull();
   });
 
-  it('updates in place after applying send results and delivery events', async () => {
+  it('updates in place after submitting and applying delivery events', async () => {
     const record = make();
     await repo.create(record);
 
-    record.applySendResults(
-      [
-        { address: 'a@dispatch.example', messageId: 'm-1', accepted: true, errorCode: 0 },
-        { address: 'b@dispatch.example', messageId: 'm-2', accepted: true, errorCode: 0 },
-      ],
+    // Async bulk submit: stamp the request id + raise recipients to `accepted`.
+    record.markSubmitted(
+      'bulk-req-1',
+      new Date('2026-01-01T00:00:30Z'),
       new Date('2026-01-01T00:01:00Z'),
     );
+    // A delivery webhook matches by address (bulk returns no per-recipient ids).
     record.applyEvent(
       { type: 'delivered', address: 'a@dispatch.example', messageId: 'm-1' },
       new Date('2026-01-01T00:02:00Z'),
@@ -68,6 +68,8 @@ describe('PrismaSendRecordRepository (contract)', () => {
     await repo.update(record);
 
     const found = await repo.findById(record.id);
+    expect(found?.bulkRequestId).toBe('bulk-req-1');
+    expect(found?.submittedAt).toEqual(new Date('2026-01-01T00:00:30Z'));
     const byAddress = Object.fromEntries(found?.outcomes.map((o) => [o.address, o.status]) ?? []);
     expect(byAddress['a@dispatch.example']).toBe('delivered');
     expect(byAddress['b@dispatch.example']).toBe('accepted');
