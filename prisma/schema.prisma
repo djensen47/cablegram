@@ -88,3 +88,53 @@ model Template {
 
   @@map("templates")
 }
+
+/// A campaign: a broadcast a newsletter sends to a query-time segment of its
+/// subscribers (ADR-011). Portable subset (ADR-007): the id is an app-generated
+/// string mapped to `_id` (no `ObjectId`); `newsletterId`/`templateId` are plain
+/// id references (no embedded documents); `segmentTags` is a scalar list and
+/// `stats` an opaque JSON snapshot (a scalar bag, not a relation) — both
+/// portable to array/JSON columns elsewhere. Content is resolved from a
+/// `templateId` reference OR the inline `subject`/`bodyHtml`/`bodyText` fields.
+/// `status` drives the `draft → sending → sent | failed` send machine; `sendId`
+/// references this campaign's one `SendRecord`. Timestamps are app-supplied.
+model Campaign {
+  id           String    @id @map("_id")
+  newsletterId String
+  name         String
+  templateId   String?
+  subject      String?
+  bodyHtml     String?
+  bodyText     String?
+  segmentTags  String[]
+  status       String
+  sendId       String?
+  stats        Json
+  createdAt    DateTime
+  updatedAt    DateTime
+  sentAt       DateTime?
+
+  @@index([newsletterId])
+  @@map("campaigns")
+}
+
+/// The per-recipient ledger for a campaign's one send (ADR-008). Portable
+/// subset (ADR-007): the id is the campaign's app-generated `sendId` mapped to
+/// `_id` (no `ObjectId`); `campaignId` is a plain id reference. `outcomes` is an
+/// opaque JSON array of per-recipient outcomes and `appliedEvents` a scalar list
+/// of webhook dedupe keys — both read/written whole (no store-specific
+/// nested-document queries), portable to JSON/array columns elsewhere.
+/// Timestamps are app-supplied (injected clock).
+model SendRecord {
+  id            String    @id @map("_id")
+  campaignId    String
+  bulkRequestId String?
+  submittedAt   DateTime?
+  outcomes      Json
+  appliedEvents String[]
+  createdAt     DateTime
+  updatedAt     DateTime
+
+  @@index([campaignId])
+  @@map("send_records")
+}
