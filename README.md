@@ -52,6 +52,26 @@ prisma/schema.prisma
 Each component and shared module is fronted by an `index.ts` facade; imports go through facades only,
 enforced by `eslint-plugin-boundaries` (the lint config *is* the encoded architecture).
 
+## Deployment
+
+Docker is the shipped, guaranteed target; DigitalOcean Functions is a best-effort second target. See
+[`docs/deployment.md`](docs/deployment.md) for build details, the Prisma engine/binaryTargets choice,
+the MongoDB `db push` schema-sync note, and what's still unverified on the Functions path.
+
+```bash
+docker build -t cablegram .
+docker run --rm -p 3000:3000 \
+  -e DATABASE_URL="mongodb://host.docker.internal:27017/cablegram?replicaSet=rs0" \
+  -e API_KEYS="dev-key-change-me" \
+  -e POSTMARK_SERVER_TOKEN="pm-server-token" \
+  -e POSTMARK_WEBHOOK_SECRET="change-me" \
+  cablegram
+# (not `--env-file .env` — Docker's env-file loader doesn't strip the quotes
+# in .env.example's values, unlike Node's process.loadEnvFile used by `npm run dev`)
+```
+
+CI (`.github/workflows/ci.yml`) runs `typecheck`/`lint`/`test` on every PR.
+
 ## Notes
 
 - `npm audit` reports advisories in **dev-only** tooling (the eslint-plugin-boundaries handlebars

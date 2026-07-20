@@ -5,8 +5,18 @@
 // Models are added per domain component (ADR-011): newsletters, subscriptions,
 // deliverability, templates, campaigns.
 
+// Deployment (ADR-009): the Docker runtime image is Debian-based
+// (`node:24-slim`, Bookworm/OpenSSL 3.0.x). `binaryTargets` pins the query
+// engine built in the Docker build stage to that platform explicitly, on top
+// of `native` (so `npm run prisma:generate` still works unmodified in local
+// dev on any OS). We did not adopt `engineType = "client"` (the Rust-free,
+// driver-adapter query engine) here: as of Prisma 6.19 it targets relational
+// connectors via driver adapters (pg, mysql2, libsql, ...) — the public docs
+// do not document a MongoDB driver adapter, so it is not a verified swap for
+// this connector. Revisit if/when Prisma documents MongoDB support for it.
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
