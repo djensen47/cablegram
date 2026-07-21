@@ -12,9 +12,14 @@ workers. The recipient fan-out must be owned by something built for it.
 
 We use an **ESP (Email Service Provider)** for the actual delivery — the party that owns SMTP, IP
 reputation, throttling, retries, and bounce/complaint feedback. The default is **Postmark**, chosen
-for deliverability and a simple API. Postmark's **Bulk Email API** is a single call that takes the
-content once plus a per-recipient list and **fans the send out on Postmark's side**; the documented
-constraint is the **50 MB payload size** (there is no per-call recipient-count cap on that endpoint).
+for deliverability and a simple API. Postmark's **Bulk Email API** (`POST /email/bulk`) is a single
+call that takes the content once plus a per-recipient list and **fans the send out on Postmark's
+side**, **asynchronously** — the call returns a submission acknowledgment (a request id), not
+per-recipient results; those arrive later via webhooks. The only payload constraint is a **50 MB**
+ceiling — there is no per-call recipient-count cap on this endpoint (that cap belongs to the separate,
+transactional `/email/batch` endpoint, which cablegram does not use). Pinned to what
+`PostmarkDeliveryGateway` implements (`src/shared/email/postmark-delivery-gateway.ts`), not asserted
+from memory.
 
 Two things kept separate on purpose:
 
@@ -23,8 +28,11 @@ Two things kept separate on purpose:
 - **the ESP = the delivery pipe** — cablegram hands it "send this content to these recipients"; the
   ESP delivers and reports outcomes back via webhooks.
 
-> Note: exact Postmark request/response and webhook schemas are pinned against the live Postmark docs
-> when the gateway is implemented — this ADR fixes the *architecture*, not Postmark's wire format.
+> Note: the exact Postmark request/response and webhook schemas were pinned against the live Postmark
+> docs when the gateway was implemented (`src/shared/email/postmark-delivery-gateway.ts`,
+> `src/campaigns/presentation/webhook-routes.ts`) — this ADR fixes the *architecture*, not Postmark's
+> wire format. Treat the code, not this document, as the source of truth for wire-level detail; verify
+> against it (or live docs) before restating a Postmark fact here.
 
 ## Decision
 
@@ -42,12 +50,16 @@ Two things kept separate on purpose:
 - A campaign-send use case: resolves recipients (via `subscriptions`), **filters them against the
   `deliverability` suppression list** (two gates — subscribed *and* not suppressed), renders content
   (via `templates`), and calls `DeliveryGateway.send(...)` **once** with the surviving recipient set.
-- The gateway issues **one Bulk API call**; Postmark performs the fan-out. cablegram does **not** run
-  a queue, a worker, or a resumable batch cursor — the ephemeral-function problem is Postmark's to
-  solve, not ours.
-- The only cablegram-side concern is the **50 MB payload ceiling**: if a recipient set would exceed
-  it, the gateway splits into more than one bulk call. This is an **implementation detail of the
-  gateway**, invisible to the use case.
+- The gateway issues **one** `POST /email/bulk` call; Postmark performs the fan-out
+  **asynchronously** — the response is a submission acknowledgment (`{ ID, Status, SubmittedAt }`),
+  not per-recipient results. cablegram does **not** run a queue, a worker, or a resumable batch cursor
+  — the ephemeral-function problem is Postmark's to solve, not ours. The campaign's `SendRecord`
+  persists the returned request id and submission time (`bulkRequestId`, `submittedAt`) so later
+  webhook events can be correlated back to the send.
+- The only cablegram-side concern is the **50 MB payload ceiling**; the current gateway makes a
+  **single** `POST /email/bulk` call per send and does **not** split a large recipient set across
+  multiple calls. If a broadcast's payload nears the ceiling, that's a gap to close in the gateway,
+  not the use case — recorded here rather than asserted as already handled.
 
 ### Per-recipient outcomes via webhooks
 
@@ -57,6 +69,12 @@ Two things kept separate on purpose:
   send record, and a hard bounce / complaint **adds the address to the `deliverability` suppression
   list** (ADR-011). There is no `events` component — the facts live on the aggregates they describe.
   The bulk send call itself is not where per-recipient status lives.
+- The webhook receiver is **HTTP Basic-Auth protected, not HMAC/signature-verified** — Postmark's
+  webhook mechanism has no signing, only Basic Auth on the callback URL (and IP allowlisting).
+  `POSTMARK_WEBHOOK_SECRET` (`shared/config`) is the Basic-Auth password the receiver checks with a
+  constant-time comparison, not a signing key; the username is ignored. This is why the route is
+  mounted at the **top level** with its own middleware instead of behind the `/v1` API key
+  (`src/campaigns/presentation/webhook-routes.ts`).
 
 ## Consequences
 

@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted — 2026-07-19. The Docker target is a stated future goal; the scheduling mechanism is `Open`
-(see Consequences).
+Accepted — 2026-07-19. The Docker target is a stated future goal; scheduling (see Consequences) was
+resolved during the build as an external-cron-driven endpoint, not left open.
 
 ## Context
 
@@ -52,10 +52,16 @@ scope (ADR-003).
 - Designing to the ephemeral runtime forbids conveniences (in-process cron, background queues,
   local caches). This is what pushes sending to Postmark (ADR-008) and keeps the app simple.
 - Cold-start cost is real; the small Hono footprint (ADR-006) and module-scope container mitigate it.
-- **Open — scheduling.** Scheduled campaigns need a time trigger, which an ephemeral function can't
-  provide itself. Candidate mechanisms: DO Functions **scheduled triggers**, an external cron hitting
-  a protected endpoint, or App Platform jobs. Deferred to its own decision when scheduling is built;
-  none of the above changes the send architecture in ADR-008.
+- **Resolved — scheduling.** Scheduled campaigns need a time trigger, which an ephemeral function
+  can't provide itself. Of the candidate mechanisms named above, the build picked **an external cron
+  hitting a protected endpoint**: setting `Campaign.scheduledAt` moves a campaign to `scheduled`; a
+  `POST /v1/campaigns/dispatch-due` route (behind the ordinary `/v1` API key — no separate mechanism)
+  runs the `DispatchDueCampaigns` use case, which fetches a bounded batch of due campaigns via
+  `CampaignRepository.listDue(now, limit)` and runs the ordinary `SendCampaign` pipeline on each, one
+  at a time, so a single call can't exceed a function's time budget. A campaign that fails before
+  `SendCampaign` ever marks it `sending` is force-failed by the sweep itself so it isn't retried
+  forever. There is still no in-process timer — the cron caller is external and out of this repo's
+  scope — and nothing about ADR-008's send architecture changes.
 
 ## Related
 
