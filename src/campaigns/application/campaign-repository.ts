@@ -1,6 +1,6 @@
 import type { Campaign, CampaignId, CampaignStatus } from '../domain/campaign.js';
 
-/** Options for a forward-only, cursor-paginated list (ADR-007 portable subset). */
+/** Options for a forward-only, cursor-paginated list (ADR-012 portable subset). */
 export interface ListCampaignsOptions {
   /** Optional query-time filters. */
   newsletterId?: string;
@@ -13,8 +13,8 @@ export interface ListCampaignsOptions {
 
 /**
  * Persistence gateway for campaigns. Lives in `application/` next to its
- * consumers (ADR-001) — Prisma is one implementation behind it (ADR-007), the
- * in-memory double another. Deals in domain aggregates, never Prisma rows or
+ * consumers (ADR-001) — the MongoDB native driver is one implementation behind it (ADR-012), the
+ * in-memory double another. Deals in domain aggregates, never driver documents or
  * DTOs.
  */
 export interface CampaignRepository {

@@ -1,7 +1,7 @@
 # Testing
 
 Two suites, two `vitest` configs, on purpose — the "no real-DB tests yet" trade-off documented in
-[`docs/BUILD-PLAN.md`](BUILD-PLAN.md) has been resolved for the Prisma repositories, but not by making
+[`docs/BUILD-PLAN.md`](BUILD-PLAN.md) has been resolved for the Mongo repositories, but not by making
 the default suite slower or DB-dependent.
 
 ## `npm test` — the default suite (fast, no DB)
@@ -12,7 +12,7 @@ the default suite slower or DB-dependent.
 
 ## `npm run test:integration` — repository contract tests (real Mongo, slower)
 
-`vitest.integration.config.ts`, `src/**/*.integration.test.ts`. Runs each `Prisma<X>Repository` against
+`vitest.integration.config.ts`, `src/**/*.integration.test.ts`. Runs each `Mongo<X>Repository` against
 a **real `mongod`**, asserting the same behavioral contract its sibling `InMemory<X>Repository` is
 checked against in the default suite — so both are trusted stand-ins for the repository interface, not
 just the in-memory one. Deliberately kept out of `npm test` (and out of CI's PR gate, for now) so the
@@ -29,30 +29,33 @@ Both were the realistic options (`docs/BUILD-PLAN.md`'s chunk 8 named this as an
   every environment that runs it, including CI runners and contributors' machines. This repo's own
   deployment story (ADR-009) is already "Docker as a build/runtime artifact," not "Docker as a dev-time
   dependency," so not requiring it here keeps that story consistent.
-- **Replica-set mode**, not a bare standalone: `MongoMemoryReplSet` with `count: 1`. Prisma's MongoDB
-  connector requires a replica set (ADR-007 says so explicitly for the target deployment — Atlas
-  provisions one); a bare standalone `mongod` would test a topology the app can never actually run
-  against, silently passing constraints (multi-document writes, certain query forms) that fail in
-  production.
+- **Standalone mode**, not a replica set: `MongoMemoryServer` (a bare `mongod`). With the native
+  driver and cablegram's single-document, no-transaction writes (ADR-012), a replica set buys nothing
+  — and running the contract tests against a plain standalone is exactly what **proves** the app needs
+  no replica-set topology in production. (The earlier Prisma-era wiring used `MongoMemoryReplSet`
+  because Prisma's Mongo connector required one; that requirement went away with the swap. If a future
+  use case ever needs a multi-document transaction, this is the first place it would fail — and the
+  signal to reintroduce a replica set.)
 - **CI-friendly and fast enough.** One `mongod` process, no network pull of a container image, no
   daemon-in-daemon concerns on hosted runners.
 
 ### How it's wired
 
 - `src/shared/testing/` — a genuine `shared/*` leaf module (ADR-005 #4: it imports no domain component),
-  never imported by production code. `mongo-memory.ts` starts the replica set and runs
-  `prisma db push` against it (MongoDB has no migration files, ADR-007's documented sync path).
+  never imported by production code. `mongo-memory.ts` starts the standalone `mongod`.
 - `src/shared/testing/global-setup.ts` — a Vitest [`globalSetup`](https://vitest.dev/config/#globalsetup)
-  hook, wired only into `vitest.integration.config.ts`. Starts **one** replica set for the whole
-  integration run (booting one costs a few seconds; sharing it across every contract test file avoids
-  paying that per file) and hands the connection string to every test file via Vitest's `provide`/
-  `inject` — not an environment variable, so it stays type-checked at both ends
+  hook, wired only into `vitest.integration.config.ts`. Starts **one** standalone `mongod` for the
+  whole integration run (booting one costs a few seconds; sharing it across every contract test file
+  avoids paying that per file), creates the indexes on it once via `ensureIndexes` (`shared/persistence`
+  — the same bootstrap production runs, ADR-012, now that Prisma's `db push` is gone), and hands the
+  connection string to every test file via Vitest's `provide`/`inject` — not an environment variable,
+  so it stays type-checked at both ends
   (`declare module 'vitest' { interface ProvidedContext { mongoUri: string } }`).
-- Each `*.integration.test.ts` file builds its **own** `PrismaClient` from `inject('mongoUri')`,
-  constructs the repository under test directly (`new PrismaXRepository(prisma)` — no DI container
-  needed, the class doesn't require one to be instantiated), and truncates its collection in
-  `afterEach` so tests stay independent despite sharing one database.
-- `fileParallelism: false` in `vitest.integration.config.ts`: every file shares the one replica set, so
+- Each `*.integration.test.ts` file builds its **own** `MongoClient` from `inject('mongoUri')`,
+  constructs the repository under test directly with the connected `Db` (`new MongoXRepository(db)` —
+  no DI container needed, the class doesn't require one to be instantiated), and truncates its
+  collection in `afterEach` so tests stay independent despite sharing one database.
+- `fileParallelism: false` in `vitest.integration.config.ts`: every file shares the one `mongod`, so
   files run serially — a concurrent file's `afterEach` truncation can't race another file's assertions.
 
 ### Running it

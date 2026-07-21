@@ -65,7 +65,7 @@ for cohesion; the dependency rule is unchanged.
 - Implementations are swappable behind interfaces: in-memory repos for tests, Prisma for prod;
   Postmark today, SMTP/SES later (ADR-008).
 - More indirection than a plain layered app — justified by testability and the DB-portability goal
-  (ADR-007); can feel heavy for trivial CRUD.
+  (ADR-012); can feel heavy for trivial CRUD.
 - The rings are **conceptual**, not a mandated folder tree — ADR-002 maps them onto directories.
 
 ## Related
@@ -73,5 +73,5 @@ for cohesion; the dependency rule is unchanged.
 - ADR-002 — Package-by-component (how layers map onto directories)
 - ADR-003 — Dependency Injection (how implementations bind to interfaces)
 - ADR-006 — HTTP delivery (the `presentation/` framework)
-- ADR-007 — Persistence (the `infrastructure/` repositories)
+- ADR-012 — Persistence (the `infrastructure/` repositories)
 - Robert C. Martin, "The Clean Architecture" (2012), "Screaming Architecture" (2011)

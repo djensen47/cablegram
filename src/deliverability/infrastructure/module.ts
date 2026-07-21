@@ -6,17 +6,17 @@ import { RemoveSuppression } from '../application/remove-suppression.js';
 import { ListSuppressions } from '../application/list-suppressions.js';
 import { CheckSuppression } from '../application/check-suppression.js';
 import { FilterSuppressed } from '../application/filter-suppressed.js';
-import { PrismaSuppressionRepository } from './prisma-suppression-repository.js';
+import { MongoSuppressionRepository } from './mongo-suppression-repository.js';
 
 /**
  * The deliverability component's DI wiring (ADR-003). Loaded by the
- * composition root; the canonical repository is Prisma-backed here, and tests
+ * composition root; the canonical repository is Mongo-backed here, and tests
  * rebind `SuppressionRepository` to `InMemorySuppressionRepository`.
  * Interfaces only are injected — never a concrete class.
  */
 export const deliverabilityModule = new ContainerModule((bind) => {
   bind<SuppressionRepository>(DELIVERABILITY_TYPES.SuppressionRepository).to(
-    PrismaSuppressionRepository,
+    MongoSuppressionRepository,
   );
 
   bind<AddSuppression>(DELIVERABILITY_TYPES.AddSuppression).to(AddSuppression);

@@ -1,29 +1,32 @@
 // Repository contract test (docs/testing.md) — see the newsletters contract
 // test's header comment for the full rationale; same posture here. Also
 // covers `listDue` — the hardening-chunk scheduling seam (ADR-009).
-import { PrismaClient } from '@prisma/client';
+import { MongoClient, type Db } from 'mongodb';
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest';
 import { newId } from '../../shared/ids/index.js';
 import { Campaign } from '../domain/campaign.js';
-import { PrismaCampaignRepository } from './prisma-campaign-repository.js';
+import { MongoCampaignRepository } from './mongo-campaign-repository.js';
 
-describe('PrismaCampaignRepository (contract)', () => {
-  let prisma: PrismaClient;
-  let repo: PrismaCampaignRepository;
+describe('MongoCampaignRepository (contract)', () => {
+  let client: MongoClient;
+  let db: Db;
+  let repo: MongoCampaignRepository;
   const newsletterId = 'nl-1';
   const t0 = new Date('2026-01-01T00:00:00Z');
 
-  beforeAll(() => {
-    prisma = new PrismaClient({ datasourceUrl: inject('mongoUri') });
-    repo = new PrismaCampaignRepository(prisma);
+  beforeAll(async () => {
+    client = new MongoClient(inject('mongoUri'));
+    await client.connect();
+    db = client.db();
+    repo = new MongoCampaignRepository(db);
   });
 
   afterEach(async () => {
-    await prisma.campaign.deleteMany({});
+    await db.collection('campaigns').deleteMany({});
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await client.close();
   });
 
   function make(overrides: Partial<{ nlId: string; status: 'draft' | 'scheduled'; scheduledAt: Date | null }> = {}) {

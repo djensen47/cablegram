@@ -7,12 +7,12 @@ import { ConfirmSubscription } from '../application/confirm-subscription.js';
 import { Unsubscribe } from '../application/unsubscribe.js';
 import { ListSubscriptions } from '../application/list-subscriptions.js';
 import { ResolveRecipients } from '../application/resolve-recipients.js';
-import { PrismaSubscriptionRepository } from './prisma-subscription-repository.js';
+import { MongoSubscriptionRepository } from './mongo-subscription-repository.js';
 import { FacadeNewsletterDirectory } from './facade-newsletter-directory.js';
 
 /**
  * The subscriptions component's DI wiring (ADR-003). Loaded by the composition
- * root; the canonical repository is Prisma-backed here, the `NewsletterDirectory`
+ * root; the canonical repository is Mongo-backed here, the `NewsletterDirectory`
  * port is fulfilled by the `newsletters`-facade adapter, and tests rebind
  * `SubscriptionRepository` to `InMemorySubscriptionRepository` (and `email`'s
  * `DeliveryGateway` to its in-memory double). Interfaces only are injected —
@@ -20,7 +20,7 @@ import { FacadeNewsletterDirectory } from './facade-newsletter-directory.js';
  */
 export const subscriptionModule = new ContainerModule((bind) => {
   bind<SubscriptionRepository>(SUBSCRIPTION_TYPES.SubscriptionRepository).to(
-    PrismaSubscriptionRepository,
+    MongoSubscriptionRepository,
   );
   bind<NewsletterDirectory>(SUBSCRIPTION_TYPES.NewsletterDirectory).to(FacadeNewsletterDirectory);
 

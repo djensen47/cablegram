@@ -6,9 +6,10 @@
 # NOT been deployed/verified with `doctl serverless deploy`. Two open risks
 # before relying on it (see docs/deployment.md for detail):
 #
-#   1. The 48 MB deployed-action size limit vs. this app's full dependency
-#      graph (Prisma's generated client + query-engine binary, Inversify,
-#      Hono, zod, handlebars, ...) — likely tight or over budget as-is.
+#   1. The 48 MB deployed-action size limit vs. this app's dependency graph
+#      (the MongoDB native driver, Inversify, Hono, zod, handlebars, ...).
+#      Lighter now that Prisma's generated client + native query-engine binary
+#      are gone (ADR-012), but still unconfirmed against the limit.
 #   2. DO's per-action build (`npm install` run inside THIS action's own
 #      directory) doesn't map cleanly onto a package-by-component monorepo
 #      with one shared `dist/` — the action below assumes the whole repo can

@@ -19,7 +19,7 @@ import type { SuppressionGateway } from './suppression-gateway.js';
  *  - refreshes the campaign's aggregate stats from the (authoritative) record.
  *
  * Writes are sequential and each independently idempotent — no cross-document
- * transaction is required (ADR-007). Unknown campaigns/records and untagged
+ * transaction is required (ADR-012). Unknown campaigns/records and untagged
  * events are tolerated (skipped), never fatal, so the receiver always 200s.
  */
 @injectable()

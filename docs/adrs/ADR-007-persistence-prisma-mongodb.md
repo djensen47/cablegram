@@ -1,8 +1,22 @@
 # ADR-007: Persistence — Prisma + MongoDB, DB-Portable
 
+> ⛔ **SUPERSEDED — HISTORICAL ONLY.** cablegram uses the **native MongoDB driver**, not Prisma — see
+> [ADR-012](ADR-012-persistence-mongodb-native-driver.md). Do **not** reintroduce Prisma or act on the
+> Prisma-specific mechanics below. (The *portable-subset* rationale still holds; ADR-012 preserves it
+> and is the current state.)
+
 ## Status
 
-Accepted — 2026-07-19.
+**Superseded by [ADR-012](ADR-012-persistence-mongodb-native-driver.md)** — 2026-07-20. Originally
+accepted 2026-07-19.
+
+> Prisma was swapped for the official MongoDB native driver behind the **same** repository interfaces
+> (that was always the point of putting it behind a seam). The portability discipline below still
+> holds verbatim — string `_id`s, id-reference relations, no embedded documents, no transactions — so
+> this ADR remains the reference for *why* the portable subset exists. Only the implementation
+> (Prisma → `mongodb` driver) and two of its consequences changed: index sync is now an in-app
+> `ensureIndexes` bootstrap rather than `prisma db push`, and **no replica set is required** (ADR-012
+> confirmed the standalone topology empirically). Read ADR-012 for the current state.
 
 ## Context
 

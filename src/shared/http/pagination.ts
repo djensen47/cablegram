@@ -3,7 +3,7 @@ import { z } from 'zod';
 /**
  * Cursor pagination for list endpoints. The cursor is an opaque, id-based
  * marker (the `_id` of the last row of the previous page); it keeps pagination
- * portable across stores (ADR-007) — a `WHERE id > cursor ORDER BY id` sweep,
+ * portable across stores (ADR-012) — a `WHERE id > cursor ORDER BY id` sweep,
  * no offset/skip, no store-specific aggregation.
  *
  * The wire envelope is `{ data, meta: { nextCursor } }`; `nextCursor` is `null`

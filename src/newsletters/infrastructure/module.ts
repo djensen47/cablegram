@@ -6,16 +6,16 @@ import { GetNewsletter } from '../application/get-newsletter.js';
 import { ListNewsletters } from '../application/list-newsletters.js';
 import { UpdateNewsletter } from '../application/update-newsletter.js';
 import { DeleteNewsletter } from '../application/delete-newsletter.js';
-import { PrismaNewsletterRepository } from './prisma-newsletter-repository.js';
+import { MongoNewsletterRepository } from './mongo-newsletter-repository.js';
 
 /**
  * The newsletters component's DI wiring (ADR-003). Loaded by the composition
- * root; the canonical repository is Prisma-backed here, and tests rebind
+ * root; the canonical repository is Mongo-backed here, and tests rebind
  * `NewsletterRepository` to `InMemoryNewsletterRepository`. Interfaces only are
  * injected — never a concrete class.
  */
 export const newsletterModule = new ContainerModule((bind) => {
-  bind<NewsletterRepository>(NEWSLETTER_TYPES.NewsletterRepository).to(PrismaNewsletterRepository);
+  bind<NewsletterRepository>(NEWSLETTER_TYPES.NewsletterRepository).to(MongoNewsletterRepository);
 
   bind<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter).to(CreateNewsletter);
   bind<GetNewsletter>(NEWSLETTER_TYPES.GetNewsletter).to(GetNewsletter);

@@ -1,6 +1,6 @@
 import type { Template, TemplateId } from '../domain/template.js';
 
-/** Options for a forward-only, cursor-paginated list (ADR-007 portable subset). */
+/** Options for a forward-only, cursor-paginated list (ADR-012 portable subset). */
 export interface ListTemplatesOptions {
   /** Max rows to return. Callers pass `pageSize + 1` to detect a next page. */
   limit: number;
@@ -10,9 +10,9 @@ export interface ListTemplatesOptions {
 
 /**
  * Persistence gateway for templates. Lives in `application/` next to its
- * consumers (ADR-001) — Prisma is one implementation behind it (ADR-007), the
+ * consumers (ADR-001) — the MongoDB native driver is one implementation behind it (ADR-012), the
  * in-memory double another. Repositories deal in domain aggregates, never
- * Prisma rows or DTOs.
+ * driver documents or DTOs.
  */
 export interface TemplateRepository {
   create(template: Template): Promise<void>;

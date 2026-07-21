@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { Container } from 'inversify';
-import { PrismaClient } from '@prisma/client';
+import { MongoClient, type Db } from 'mongodb';
 import { loadConfig, type AppConfig } from '../config/index.js';
 import { DefaultClock, type Clock } from '../clock/index.js';
 import { InMemoryIdempotencyStore, type IdempotencyStore } from '../http/index.js';
@@ -30,11 +30,19 @@ export function buildContainer(env: NodeJS.ProcessEnv = process.env): Container 
   container.bind<Clock>(TYPES.Clock).to(DefaultClock);
   container.bind<IdempotencyStore>(TYPES.IdempotencyStore).to(InMemoryIdempotencyStore);
 
-  // The Mongo pool, created lazily so a container built only to rebind
-  // repositories in tests never connects (ADR-007).
+  // The Mongo pool (native driver, ADR-012), created lazily so a container
+  // built only to rebind repositories in tests never constructs a client or
+  // connects. `new MongoClient(...)` does not open a socket — the pool connects
+  // on the first operation (or an explicit `connect()` at startup, ADR-009).
+  // One client, one derived `Db` handle (the db name comes from DATABASE_URL),
+  // shared by every component's Mongo repository.
   container
-    .bind<PrismaClient>(TYPES.PrismaClient)
-    .toDynamicValue(() => new PrismaClient({ datasourceUrl: config.databaseUrl }))
+    .bind<MongoClient>(TYPES.MongoClient)
+    .toDynamicValue(() => new MongoClient(config.databaseUrl))
+    .inSingletonScope();
+  container
+    .bind<Db>(TYPES.MongoDb)
+    .toDynamicValue((ctx) => ctx.container.get<MongoClient>(TYPES.MongoClient).db())
     .inSingletonScope();
 
   // Shared technical modules with their own DI wiring. `email` binds the

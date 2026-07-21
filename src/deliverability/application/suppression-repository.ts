@@ -1,6 +1,6 @@
 import type { SuppressionEntry } from '../domain/suppression.js';
 
-/** Options for a forward-only, cursor-paginated list (ADR-007 portable subset). */
+/** Options for a forward-only, cursor-paginated list (ADR-012 portable subset). */
 export interface ListSuppressionsOptions {
   /** Max rows to return. Callers pass `pageSize + 1` to detect a next page. */
   limit: number;
@@ -10,9 +10,9 @@ export interface ListSuppressionsOptions {
 
 /**
  * Persistence gateway for the suppression list. Lives in `application/` next
- * to its consumers (ADR-001) — Prisma is one implementation behind it
- * (ADR-007), the in-memory double another. Deals in domain aggregates, never
- * Prisma rows or DTOs.
+ * to its consumers (ADR-001) — the MongoDB native driver is one implementation
+ * behind it (ADR-012), the in-memory double another. Deals in domain
+ * aggregates, never driver documents or DTOs.
  *
  * `address` everywhere here is a **normalized** address (`shared/email-address`)
  * — callers normalize before calling in, so `findByAddress`/`filterSuppressed`

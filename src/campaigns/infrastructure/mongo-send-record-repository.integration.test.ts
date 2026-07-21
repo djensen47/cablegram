@@ -1,26 +1,29 @@
 // Repository contract test (docs/testing.md) — see the newsletters contract
 // test's header comment for the full rationale; same posture here.
-import { PrismaClient } from '@prisma/client';
+import { MongoClient, type Db } from 'mongodb';
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest';
 import { newId } from '../../shared/ids/index.js';
 import { SendRecord } from '../domain/send-record.js';
-import { PrismaSendRecordRepository } from './prisma-send-record-repository.js';
+import { MongoSendRecordRepository } from './mongo-send-record-repository.js';
 
-describe('PrismaSendRecordRepository (contract)', () => {
-  let prisma: PrismaClient;
-  let repo: PrismaSendRecordRepository;
+describe('MongoSendRecordRepository (contract)', () => {
+  let client: MongoClient;
+  let db: Db;
+  let repo: MongoSendRecordRepository;
 
-  beforeAll(() => {
-    prisma = new PrismaClient({ datasourceUrl: inject('mongoUri') });
-    repo = new PrismaSendRecordRepository(prisma);
+  beforeAll(async () => {
+    client = new MongoClient(inject('mongoUri'));
+    await client.connect();
+    db = client.db();
+    repo = new MongoSendRecordRepository(db);
   });
 
   afterEach(async () => {
-    await prisma.sendRecord.deleteMany({});
+    await db.collection('send_records').deleteMany({});
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await client.close();
   });
 
   function make() {

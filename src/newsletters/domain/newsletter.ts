@@ -3,7 +3,7 @@ import { InvalidEmailAddressError, InvalidNewsletterError } from './errors.js';
 
 /**
  * A newsletter's identity. A light alias over the app-owned string `Id`
- * (ADR-007) — a plain `_id`, never a Mongo `ObjectId` — for compile-time intent
+ * (ADR-012) — a plain `_id`, never a Mongo `ObjectId` — for compile-time intent
  * at call sites. Not a nominal brand; still assignable to/from `string`.
  */
 export type NewsletterId = Id;

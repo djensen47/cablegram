@@ -9,7 +9,7 @@ import type {
 
 /**
  * A real in-memory `SubscriptionRepository` (not a mock) — the DI-rebind test
- * seam (ADR-003). It mirrors the Prisma repository's contract exactly: id
+ * seam (ADR-003). It mirrors the Mongo repository's contract exactly: id
  * ordering, exclusive cursor, `limit` cap, `(newsletterId, email)` compound
  * uniqueness on `create`, status/tag query filters and the subscribed-only
  * recipient projection — so use-case and route tests exercise the same behavior

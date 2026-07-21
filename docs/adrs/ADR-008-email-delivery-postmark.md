@@ -85,7 +85,7 @@ Two things kept separate on purpose:
   boundary keeps that dependency swappable, but a swap to a non-bulk provider (e.g. raw SMTP) would
   re-introduce fan-out concerns the Bulk API currently absorbs — recorded so that cost is visible.
 - Rendering happens **in cablegram** (`templates`), and pre-rendered content is sent; we do not host
-  templates in the provider, keeping the gateway thin and provider-agnostic (consistent with ADR-007
+  templates in the provider, keeping the gateway thin and provider-agnostic (consistent with ADR-012
   portability and the ADR-004 "contract is the product" stance).
 
 ## Related

@@ -42,7 +42,7 @@ scope (ADR-003).
 - Build the Inversify container at **module scope** so warm function instances reuse it (ADR-003).
 - Configuration comes from **environment variables** (Postmark token, Mongo connection string), not
   files on disk. Secrets are injected by the platform.
-- The database (MongoDB, ADR-007) is the only durable state; connections are pooled at module scope
+- The database (MongoDB, ADR-012) is the only durable state; connections are pooled at module scope
   and must tolerate cold starts.
 
 ## Consequences
@@ -68,4 +68,4 @@ scope (ADR-003).
 - ADR-003 — Dependency Injection (module-scope container)
 - ADR-006 — HTTP delivery (the shared Hono app + per-target adapters)
 - ADR-008 — Email delivery (why fan-out is delegated, not run in-process)
-- ADR-007 — Persistence (Mongo as the only durable state)
+- ADR-012 — Persistence (Mongo as the only durable state)

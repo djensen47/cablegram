@@ -8,7 +8,7 @@ import {
 
 /**
  * A subscription's identity. A light alias over the app-owned string `Id`
- * (ADR-007) — a plain `_id`, never a Mongo `ObjectId` — for intent at call
+ * (ADR-012) — a plain `_id`, never a Mongo `ObjectId` — for intent at call
  * sites. Still assignable to/from `string`.
  */
 export type SubscriptionId = Id;
@@ -43,7 +43,7 @@ export type MergeFields = Record<string, unknown>;
 /** Fully-resolved subscription state; the shape a repository reconstitutes from. */
 export interface SubscriptionProps {
   id: SubscriptionId;
-  /** The newsletter this membership belongs to (an id reference, ADR-007). */
+  /** The newsletter this membership belongs to (an id reference, ADR-012). */
   newsletterId: string;
   /** The subscriber address, normalized via the shared `email-address` module. */
   email: string;

@@ -7,7 +7,7 @@ import type {
 
 /**
  * A real in-memory `TemplateRepository` (not a mock) — the DI-rebind test
- * seam (ADR-003). It mirrors the Prisma repository's contract exactly: id
+ * seam (ADR-003). It mirrors the Mongo repository's contract exactly: id
  * ordering, exclusive cursor, `limit` cap, so use-case and route tests exercise
  * the same behavior the Mongo-backed repository must honor.
  */

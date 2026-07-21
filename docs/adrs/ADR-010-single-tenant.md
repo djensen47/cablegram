@@ -12,7 +12,7 @@ repository query and API route to be tenant-scoped from day one. Retrofitting it
 building it when unneeded is waste.
 
 cablegram is **single-tenant**: one organization per deployment. That decision is recorded here
-because its consequences ripple through the data model (ADR-007) and the API surface (ADR-004).
+because its consequences ripple through the data model (ADR-012) and the API surface (ADR-004).
 
 ## Decision
 
@@ -31,7 +31,7 @@ because its consequences ripple through the data model (ADR-007) and the API sur
   class of bugs.
 - Simpler authorization — one trust boundary per deployment.
 - **Multi-tenancy would be a real migration, not a config flip**: it would add an account concept to
-  every model, tenant scoping to every repository (ADR-007), and tenant context to every route
+  every model, tenant scoping to every repository (ADR-012), and tenant context to every route
   (ADR-006). Recorded so that cost is known up front and not assumed cheap.
 - Operating many organizations multiplies deployments/infra rather than sharing them — acceptable at
   the intended scale; revisit this ADR if fleet size makes per-org deployments impractical.
@@ -39,5 +39,5 @@ because its consequences ripple through the data model (ADR-007) and the API sur
 ## Related
 
 - ADR-004 — Headless / API-only (API-key auth, single trust boundary)
-- ADR-007 — Persistence (no tenant scoping in repositories)
+- ADR-012 — Persistence (no tenant scoping in repositories)
 - ADR-011 — Bounded contexts (entities carry no tenant id)
