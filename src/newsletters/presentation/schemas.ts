@@ -1,4 +1,5 @@
 import { z } from '@hono/zod-openapi';
+import { listResponseSchema } from '../../shared/http/index.js';
 import type { Newsletter } from '../domain/newsletter.js';
 
 /**
@@ -46,12 +47,7 @@ export const UpdateNewsletterSchema = z
   })
   .openapi('UpdateNewsletter');
 
-export const NewsletterListSchema = z
-  .object({
-    data: z.array(NewsletterSchema),
-    meta: z.object({ nextCursor: z.string().nullable() }),
-  })
-  .openapi('NewsletterList');
+export const NewsletterListSchema = listResponseSchema(NewsletterSchema, 'NewsletterList');
 
 export const NewsletterIdParamSchema = z.object({
   id: z
@@ -62,17 +58,6 @@ export const NewsletterIdParamSchema = z.object({
       example: '4a7f2c1e-6b1a-4c9d-9f21-2b0e5d8a1c33',
     }),
 });
-
-export const ErrorSchema = z
-  .object({
-    error: z.object({
-      code: z.string(),
-      message: z.string(),
-      details: z.unknown().optional(),
-      requestId: z.string().optional(),
-    }),
-  })
-  .openapi('Error');
 
 export type NewsletterResponse = z.infer<typeof NewsletterSchema>;
 

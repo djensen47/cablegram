@@ -1,4 +1,5 @@
 import { z } from '@hono/zod-openapi';
+import { listResponseSchema } from '../../shared/http/index.js';
 import type { Template } from '../domain/template.js';
 
 /**
@@ -45,12 +46,7 @@ export const UpdateTemplateSchema = z
   })
   .openapi('UpdateTemplate');
 
-export const TemplateListSchema = z
-  .object({
-    data: z.array(TemplateSchema),
-    meta: z.object({ nextCursor: z.string().nullable() }),
-  })
-  .openapi('TemplateList');
+export const TemplateListSchema = listResponseSchema(TemplateSchema, 'TemplateList');
 
 export const TemplateIdParamSchema = z.object({
   id: z
@@ -61,17 +57,6 @@ export const TemplateIdParamSchema = z.object({
       example: '7e4b8b0e-2f2a-4d7a-9d3e-1b5c6a2f9e10',
     }),
 });
-
-export const ErrorSchema = z
-  .object({
-    error: z.object({
-      code: z.string(),
-      message: z.string(),
-      details: z.unknown().optional(),
-      requestId: z.string().optional(),
-    }),
-  })
-  .openapi('Error');
 
 export type TemplateResponse = z.infer<typeof TemplateSchema>;
 

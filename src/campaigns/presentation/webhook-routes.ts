@@ -1,20 +1,18 @@
 import { timingSafeEqual } from 'node:crypto';
-import { OpenAPIHono, createRoute, type z } from '@hono/zod-openapi';
-import type { Hook } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import { createMiddleware } from 'hono/factory';
 import type { Container } from 'inversify';
 import { TYPES } from '../../shared/di/index.js';
 import type { AppConfig } from '../../shared/config/index.js';
-import { UnauthorizedError, type AppEnv } from '../../shared/http/index.js';
+import {
+  UnauthorizedError,
+  errorResponse,
+  throwOnInvalid,
+  type AppEnv,
+} from '../../shared/http/index.js';
 import { CAMPAIGN_TYPES } from '../types.js';
 import type { RecordDeliveryEvents } from '../application/record-delivery-events.js';
-import { ErrorSchema, PostmarkWebhookSchema, WebhookAckSchema } from './schemas.js';
-
-const throwOnInvalid: Hook<unknown, AppEnv, string, unknown> = (result) => {
-  if (!result.success) {
-    throw result.error as z.ZodError;
-  }
-};
+import { PostmarkWebhookSchema, WebhookAckSchema } from './schemas.js';
 
 function safeEquals(a: string, b: string): boolean {
   const ab = Buffer.from(a);
@@ -62,10 +60,7 @@ const webhookRoute = createRoute({
       content: { 'application/json': { schema: WebhookAckSchema } },
       description: 'The event was accepted (and applied if it matched a campaign)',
     },
-    401: {
-      content: { 'application/json': { schema: ErrorSchema } },
-      description: 'Missing or invalid webhook credential',
-    },
+    401: errorResponse('Missing or invalid webhook credential'),
   },
 });
 

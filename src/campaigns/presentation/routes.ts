@@ -1,10 +1,11 @@
-import { OpenAPIHono, createRoute, type z } from '@hono/zod-openapi';
-import type { Hook } from '@hono/zod-openapi';
+import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import type { Container } from 'inversify';
 import {
   BadRequestError,
   ConflictError,
   NotFoundError,
+  errorResponse,
+  throwOnInvalid,
   toPage,
   type AppEnv,
 } from '../../shared/http/index.js';
@@ -31,7 +32,6 @@ import {
   CreateCampaignSchema,
   DispatchDueQuerySchema,
   DispatchDueResponseSchema,
-  ErrorSchema,
   ListCampaignsQuerySchema,
   SendRecordSchema,
   UpdateCampaignSchema,
@@ -41,25 +41,12 @@ import {
 
 const security = [{ ApiKeyAuth: [] }];
 
-const notFoundResponse = {
-  content: { 'application/json': { schema: ErrorSchema } },
-  description: 'Campaign or newsletter not found',
-} as const;
-
-const badRequestResponse = {
-  content: { 'application/json': { schema: ErrorSchema } },
-  description: 'Invalid request',
-} as const;
-
-const conflictResponse = {
-  content: { 'application/json': { schema: ErrorSchema } },
-  description: 'The campaign is not in a state that permits this operation',
-} as const;
-
-const unauthorizedResponse = {
-  content: { 'application/json': { schema: ErrorSchema } },
-  description: 'Missing or invalid API key',
-} as const;
+const notFoundResponse = errorResponse('Campaign or newsletter not found');
+const badRequestResponse = errorResponse('Invalid request');
+const conflictResponse = errorResponse(
+  'The campaign is not in a state that permits this operation',
+);
+const unauthorizedResponse = errorResponse('Missing or invalid API key');
 
 // Every route on this router sits behind `apiKeyAuth` (mounted at `/v1` in
 // app.ts) — document the 401 it can produce on all of them (OpenAPI polish:
@@ -72,14 +59,6 @@ const authedResponses = { 401: unauthorizedResponse } as const;
 function toNullableDate(value: string | null | undefined): Date | null | undefined {
   return value == null ? value : new Date(value);
 }
-
-// Route out validation failures through the shared error envelope: throwing the
-// ZodError lets `onError` (shared/http) render `{ error: { code, ... } }` (ADR-004).
-const throwOnInvalid: Hook<unknown, AppEnv, string, unknown> = (result) => {
-  if (!result.success) {
-    throw result.error as z.ZodError;
-  }
-};
 
 // Domain errors carry no HTTP status (ADR-001); translate them here, at the edge.
 function rethrowDomainError(err: unknown): never {

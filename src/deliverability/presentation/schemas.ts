@@ -1,4 +1,5 @@
 import { z } from '@hono/zod-openapi';
+import { listResponseSchema } from '../../shared/http/index.js';
 import { SUPPRESSION_REASONS, type SuppressionEntry } from '../domain/suppression.js';
 
 /**
@@ -24,12 +25,7 @@ export const AddSuppressionSchema = z
   })
   .openapi('AddSuppression');
 
-export const SuppressionListSchema = z
-  .object({
-    data: z.array(SuppressionSchema),
-    meta: z.object({ nextCursor: z.string().nullable() }),
-  })
-  .openapi('SuppressionList');
+export const SuppressionListSchema = listResponseSchema(SuppressionSchema, 'SuppressionList');
 
 export const SuppressionAddressParamSchema = z.object({
   address: z
@@ -40,17 +36,6 @@ export const SuppressionAddressParamSchema = z.object({
       example: 'bounced@dispatch.example',
     }),
 });
-
-export const ErrorSchema = z
-  .object({
-    error: z.object({
-      code: z.string(),
-      message: z.string(),
-      details: z.unknown().optional(),
-      requestId: z.string().optional(),
-    }),
-  })
-  .openapi('Error');
 
 export type SuppressionResponse = z.infer<typeof SuppressionSchema>;
 
