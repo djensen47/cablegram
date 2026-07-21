@@ -4,7 +4,7 @@ import { zeroStats } from './campaign.js';
 
 /**
  * A send record's identity. This is the campaign's `sendId` — a plain app-owned
- * string `_id` (ADR-007), never a Mongo `ObjectId`.
+ * string `_id` (ADR-012), never a Mongo `ObjectId`.
  */
 export type SendRecordId = Id;
 

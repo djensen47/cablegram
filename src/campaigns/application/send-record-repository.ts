@@ -5,7 +5,7 @@ import type { SendRecord, SendRecordId } from '../domain/send-record.js';
  * consumers (ADR-001) — the MongoDB native driver is one implementation behind it (ADR-012), the
  * in-memory double another. One record per campaign send, keyed by the
  * campaign's `sendId`; per-recipient outcomes are read and written as a whole
- * (ADR-007 portable subset — no store-specific nested-document queries).
+ * (ADR-012 portable subset — no store-specific nested-document queries).
  */
 export interface SendRecordRepository {
   create(record: SendRecord): Promise<void>;

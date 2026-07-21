@@ -70,7 +70,7 @@ Small, focused, each its own facade, each a **leaf** that imports no domain comp
   DeliveryEvent[]`. Consumed by `campaigns` (broadcasts) and `subscriptions` (transactional opt-in /
   unsubscribe confirmations).
 - **`auth`** — single-tenant API-key authentication (ADR-004, ADR-010).
-- **`config`** (env, ADR-009) · **`ids`** (id value objects, ADR-007) · **`clock`** · **`http`**
+- **`config`** (env, ADR-009) · **`ids`** (id value objects, ADR-012) · **`clock`** · **`http`**
   (Hono middleware, ADR-006) · **`di`** (composition root, ADR-003).
 
 ### Cross-component workflows

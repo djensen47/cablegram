@@ -1,5 +1,10 @@
 # ADR-007: Persistence — Prisma + MongoDB, DB-Portable
 
+> ⛔ **SUPERSEDED — HISTORICAL ONLY.** cablegram uses the **native MongoDB driver**, not Prisma — see
+> [ADR-012](ADR-012-persistence-mongodb-native-driver.md). Do **not** reintroduce Prisma or act on the
+> Prisma-specific mechanics below. (The *portable-subset* rationale still holds; ADR-012 preserves it
+> and is the current state.)
+
 ## Status
 
 **Superseded by [ADR-012](ADR-012-persistence-mongodb-native-driver.md)** — 2026-07-20. Originally

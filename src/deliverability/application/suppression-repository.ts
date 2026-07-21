@@ -1,6 +1,6 @@
 import type { SuppressionEntry } from '../domain/suppression.js';
 
-/** Options for a forward-only, cursor-paginated list (ADR-007 portable subset). */
+/** Options for a forward-only, cursor-paginated list (ADR-012 portable subset). */
 export interface ListSuppressionsOptions {
   /** Max rows to return. Callers pass `pageSize + 1` to detect a next page. */
   limit: number;

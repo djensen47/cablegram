@@ -3,7 +3,7 @@ import { InvalidCampaignError, CampaignStateError } from './errors.js';
 
 /**
  * A campaign's identity. A light alias over the app-owned string `Id`
- * (ADR-007) — a plain `_id`, never a Mongo `ObjectId` — for intent at call
+ * (ADR-012) — a plain `_id`, never a Mongo `ObjectId` — for intent at call
  * sites. Still assignable to/from `string`.
  */
 export type CampaignId = Id;
@@ -66,7 +66,7 @@ export interface CampaignSegment {
 /** Fully-resolved campaign state; the shape a repository reconstitutes from. */
 export interface CampaignProps {
   id: CampaignId;
-  /** The newsletter this campaign belongs to (an id reference, ADR-007). */
+  /** The newsletter this campaign belongs to (an id reference, ADR-012). */
   newsletterId: string;
   name: string;
   /** Reference to a reusable template, or `null` when the content is inline. */

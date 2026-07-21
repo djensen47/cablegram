@@ -1,6 +1,6 @@
 import type { Campaign, CampaignId, CampaignStatus } from '../domain/campaign.js';
 
-/** Options for a forward-only, cursor-paginated list (ADR-007 portable subset). */
+/** Options for a forward-only, cursor-paginated list (ADR-012 portable subset). */
 export interface ListCampaignsOptions {
   /** Optional query-time filters. */
   newsletterId?: string;

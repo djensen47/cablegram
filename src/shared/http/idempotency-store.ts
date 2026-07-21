@@ -11,7 +11,7 @@ export interface IdempotencyRecord {
 
 /**
  * Storage for the `Idempotency-Key` middleware (`idempotency.ts`). A
- * repository-shaped seam (ADR-007's "the repository is the swap seam" stance
+ * repository-shaped seam (ADR-012's "the repository is the swap seam" stance
  * applied to this cross-cutting concern, not persistence): the in-memory
  * default below is what's bound; a durable implementation (e.g. Mongo-backed,
  * with a TTL index) binds behind the same interface with no change to the

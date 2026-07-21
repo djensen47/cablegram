@@ -111,6 +111,10 @@ scope.
   ordinary domain data, not a tenant scope — no tenant/account id on entities.
 - **No `events` component and no `delivery` component** — events are facts applied to aggregates;
   sending is the shared `email` adapter.
+- **No Prisma.** Persistence is the **native MongoDB driver** ([ADR-012](docs/adrs/ADR-012-persistence-mongodb-native-driver.md));
+  Prisma was removed and **ADR-007 is historical**. Do not reintroduce `prisma` / `@prisma/client` or
+  `prisma generate` / `db push`, and don't follow ADR-007's Prisma mechanics. No replica set is
+  needed — a standalone `mongod` suffices.
 - **Postmark wire format** (request/response, webhook schema) is implemented in
   `src/shared/email/postmark-delivery-gateway.ts` and `src/campaigns/presentation/webhook-routes.ts` —
   treat that code (or live docs) as the source of truth, not memory, before restating a Postmark fact
