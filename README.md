@@ -4,13 +4,14 @@ A **headless newsletter manager/sender** — a MailChimp-shaped capability expos
 API, no UI**. Sends via an ESP (Postmark) which owns the fan-out.
 
 Architecture is fixed by the ADRs in [`docs/adrs/`](docs/adrs/README.md); the operative rules live in
-[`CLAUDE.md`](CLAUDE.md). Stack: TypeScript · Hono · Inversify · Prisma/MongoDB · Postmark · deploys on
-DigitalOcean Functions → Docker · single-tenant, multi-newsletter.
+[`CLAUDE.md`](CLAUDE.md). Stack: TypeScript · Hono · Inversify · MongoDB (native driver) · Postmark ·
+deploys on DigitalOcean Functions → Docker · single-tenant, multi-newsletter.
 
 ## Quickstart
 
-Requires **Node 24+** (`.nvmrc`) and MongoDB (a replica set — Prisma needs one for transactions;
-[Atlas](https://www.mongodb.com/atlas) works, or `mongod --replSet rs0` locally).
+Requires **Node 24+** (`.nvmrc`) and MongoDB. A plain standalone `mongod` is enough — cablegram does
+only single-document, no-transaction writes, so no replica set is needed (ADR-012);
+[Atlas](https://www.mongodb.com/atlas) works too.
 
 ```bash
 npm install
@@ -33,8 +34,8 @@ curl -H "x-api-key: dev-key-change-me" localhost:3000/v1/...
 | `npm run build` / `start` | compile to `dist/` / run compiled server |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint + **boundary enforcement** (ADR-005) |
-| `npm test` | Vitest |
-| `npm run prisma:generate` / `prisma:push` | Prisma client / schema sync |
+| `npm test` | Vitest (fast, in-memory repositories) |
+| `npm run test:integration` | Vitest repository contract tests against a real `mongod` |
 
 ## Layout
 
@@ -46,7 +47,6 @@ src/
   function.ts    DigitalOcean Functions entrypoint
   <component>/   domain components, added per ADR-011:
                  newsletters · subscriptions · deliverability · templates · campaigns
-prisma/schema.prisma
 ```
 
 Each component and shared module is fronted by an `index.ts` facade; imports go through facades only,
@@ -55,13 +55,13 @@ enforced by `eslint-plugin-boundaries` (the lint config *is* the encoded archite
 ## Deployment
 
 Docker is the shipped, guaranteed target; DigitalOcean Functions is a best-effort second target. See
-[`docs/deployment.md`](docs/deployment.md) for build details, the Prisma engine/binaryTargets choice,
-the MongoDB `db push` schema-sync note, and what's still unverified on the Functions path.
+[`docs/deployment.md`](docs/deployment.md) for build details, the index-bootstrap note, and what's
+still unverified on the Functions path.
 
 ```bash
 docker build -t cablegram .
 docker run --rm -p 3000:3000 \
-  -e DATABASE_URL="mongodb://host.docker.internal:27017/cablegram?replicaSet=rs0" \
+  -e DATABASE_URL="mongodb://host.docker.internal:27017/cablegram" \
   -e API_KEYS="dev-key-change-me" \
   -e POSTMARK_SERVER_TOKEN="pm-server-token" \
   -e POSTMARK_WEBHOOK_SECRET="change-me" \

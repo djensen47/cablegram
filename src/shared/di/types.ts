@@ -6,12 +6,19 @@ export const TYPES = {
   Config: Symbol.for('Config'),
   Clock: Symbol.for('Clock'),
   /**
-   * The MongoDB connection pool (`PrismaClient`), owned by the composition root
-   * and shared by every component's Prisma repository (ADR-007, ADR-009 — one
-   * pool at module scope). Bound lazily so tests that rebind repositories to
-   * in-memory doubles never open a connection.
+   * The pooled `MongoClient` (native driver), owned by the composition root
+   * (ADR-012, ADR-009 — one pool at module scope, reused across warm
+   * invocations). Bound lazily so tests that rebind repositories to in-memory
+   * doubles never construct a client or open a connection.
    */
-  PrismaClient: Symbol.for('PrismaClient'),
+  MongoClient: Symbol.for('MongoClient'),
+  /**
+   * The MongoDB `Db` handle derived from the pooled `MongoClient`, shared by
+   * every component's Mongo repository (ADR-012). Also bound lazily — a repo
+   * only touches it inside an async method, so no connection opens until an
+   * actual query runs.
+   */
+  MongoDb: Symbol.for('MongoDb'),
   /** Storage for the `Idempotency-Key` middleware (`shared/http`); in-memory by
    * default, bound at container scope so it persists across requests within
    * one warm process (see `InMemoryIdempotencyStore`'s docstring, ADR-009). */

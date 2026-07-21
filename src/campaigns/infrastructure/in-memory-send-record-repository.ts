@@ -4,7 +4,7 @@ import type { SendRecordRepository } from '../application/send-record-repository
 
 /**
  * A real in-memory `SendRecordRepository` (not a mock) — the DI-rebind test
- * seam (ADR-003). One record per send, keyed by `sendId`; mirrors the Prisma
+ * seam (ADR-003). One record per send, keyed by `sendId`; mirrors the Mongo
  * repository's read/write-whole contract so use-case and webhook tests exercise
  * the same behavior the Mongo-backed repository must honor.
  */

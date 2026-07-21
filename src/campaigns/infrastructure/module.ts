@@ -15,8 +15,8 @@ import { SendCampaign } from '../application/send-campaign.js';
 import { GetSendRecord } from '../application/get-send-record.js';
 import { RecordDeliveryEvents } from '../application/record-delivery-events.js';
 import { DispatchDueCampaigns } from '../application/dispatch-due-campaigns.js';
-import { PrismaCampaignRepository } from './prisma-campaign-repository.js';
-import { PrismaSendRecordRepository } from './prisma-send-record-repository.js';
+import { MongoCampaignRepository } from './mongo-campaign-repository.js';
+import { MongoSendRecordRepository } from './mongo-send-record-repository.js';
 import { FacadeNewsletterGateway } from './facade-newsletter-gateway.js';
 import { FacadeRecipientResolver } from './facade-recipient-resolver.js';
 import { FacadeSuppressionGateway } from './facade-suppression-gateway.js';
@@ -24,7 +24,7 @@ import { FacadeMessageRenderer } from './facade-message-renderer.js';
 
 /**
  * The campaigns component's DI wiring (ADR-003) — the integrator. Loaded by the
- * composition root; the canonical repositories are Prisma-backed here and the
+ * composition root; the canonical repositories are Mongo-backed here and the
  * cross-context ports are fulfilled by facade adapters along the ADR-011 DAG
  * (`campaigns → newsletters/subscriptions/deliverability/templates/email`).
  * Tests rebind the two repositories to their in-memory doubles and `email`'s
@@ -33,8 +33,8 @@ import { FacadeMessageRenderer } from './facade-message-renderer.js';
  * are injected — never a concrete class.
  */
 export const campaignModule = new ContainerModule((bind) => {
-  bind<CampaignRepository>(CAMPAIGN_TYPES.CampaignRepository).to(PrismaCampaignRepository);
-  bind<SendRecordRepository>(CAMPAIGN_TYPES.SendRecordRepository).to(PrismaSendRecordRepository);
+  bind<CampaignRepository>(CAMPAIGN_TYPES.CampaignRepository).to(MongoCampaignRepository);
+  bind<SendRecordRepository>(CAMPAIGN_TYPES.SendRecordRepository).to(MongoSendRecordRepository);
 
   bind<NewsletterGateway>(CAMPAIGN_TYPES.NewsletterGateway).to(FacadeNewsletterGateway);
   bind<RecipientResolver>(CAMPAIGN_TYPES.RecipientResolver).to(FacadeRecipientResolver);

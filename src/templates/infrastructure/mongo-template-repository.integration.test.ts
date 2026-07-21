@@ -1,26 +1,29 @@
 // Repository contract test (docs/testing.md) — see the newsletters contract
 // test's header comment for the full rationale; same posture here.
-import { PrismaClient } from '@prisma/client';
+import { MongoClient, type Db } from 'mongodb';
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest';
 import { newId } from '../../shared/ids/index.js';
 import { Template } from '../domain/template.js';
-import { PrismaTemplateRepository } from './prisma-template-repository.js';
+import { MongoTemplateRepository } from './mongo-template-repository.js';
 
-describe('PrismaTemplateRepository (contract)', () => {
-  let prisma: PrismaClient;
-  let repo: PrismaTemplateRepository;
+describe('MongoTemplateRepository (contract)', () => {
+  let client: MongoClient;
+  let db: Db;
+  let repo: MongoTemplateRepository;
 
-  beforeAll(() => {
-    prisma = new PrismaClient({ datasourceUrl: inject('mongoUri') });
-    repo = new PrismaTemplateRepository(prisma);
+  beforeAll(async () => {
+    client = new MongoClient(inject('mongoUri'));
+    await client.connect();
+    db = client.db();
+    repo = new MongoTemplateRepository(db);
   });
 
   afterEach(async () => {
-    await prisma.template.deleteMany({});
+    await db.collection('templates').deleteMany({});
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await client.close();
   });
 
   function make() {

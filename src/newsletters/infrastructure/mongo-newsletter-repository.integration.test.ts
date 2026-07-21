@@ -1,29 +1,32 @@
 // Repository contract test (docs/testing.md): run only via `npm run
 // test:integration`, against a real `mongod` (mongodb-memory-server, a
-// single-node replica set — ADR-007). Asserts the SAME behavioral contract
-// the sibling `InMemoryNewsletterRepository` is exercised against in the
-// default suite, so both are trusted stand-ins for `NewsletterRepository`.
-import { PrismaClient } from '@prisma/client';
+// standalone — ADR-012). Asserts the SAME behavioral contract the sibling
+// `InMemoryNewsletterRepository` is exercised against in the default suite, so
+// both are trusted stand-ins for `NewsletterRepository`.
+import { MongoClient, type Db } from 'mongodb';
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest';
 import { newId } from '../../shared/ids/index.js';
 import { Newsletter } from '../domain/newsletter.js';
-import { PrismaNewsletterRepository } from './prisma-newsletter-repository.js';
+import { MongoNewsletterRepository } from './mongo-newsletter-repository.js';
 
-describe('PrismaNewsletterRepository (contract)', () => {
-  let prisma: PrismaClient;
-  let repo: PrismaNewsletterRepository;
+describe('MongoNewsletterRepository (contract)', () => {
+  let client: MongoClient;
+  let db: Db;
+  let repo: MongoNewsletterRepository;
 
-  beforeAll(() => {
-    prisma = new PrismaClient({ datasourceUrl: inject('mongoUri') });
-    repo = new PrismaNewsletterRepository(prisma);
+  beforeAll(async () => {
+    client = new MongoClient(inject('mongoUri'));
+    await client.connect();
+    db = client.db();
+    repo = new MongoNewsletterRepository(db);
   });
 
   afterEach(async () => {
-    await prisma.newsletter.deleteMany({});
+    await db.collection('newsletters').deleteMany({});
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    await client.close();
   });
 
   function make(overrides: Partial<{ name: string; fromEmail: string }> = {}) {

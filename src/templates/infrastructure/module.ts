@@ -7,18 +7,18 @@ import { GetTemplate } from '../application/get-template.js';
 import { ListTemplates } from '../application/list-templates.js';
 import { UpdateTemplate } from '../application/update-template.js';
 import { DeleteTemplate } from '../application/delete-template.js';
-import { PrismaTemplateRepository } from './prisma-template-repository.js';
+import { MongoTemplateRepository } from './mongo-template-repository.js';
 import { HandlebarsTemplateRenderer } from './handlebars-template-renderer.js';
 
 /**
  * The templates component's DI wiring (ADR-003). Loaded by the composition
- * root; the canonical repository is Prisma-backed here and the canonical
+ * root; the canonical repository is Mongo-backed here and the canonical
  * renderer is the Handlebars implementation. Tests rebind `TemplateRepository`
  * to `InMemoryTemplateRepository`. Interfaces only are injected — never a
  * concrete class.
  */
 export const templateModule = new ContainerModule((bind) => {
-  bind<TemplateRepository>(TEMPLATE_TYPES.TemplateRepository).to(PrismaTemplateRepository);
+  bind<TemplateRepository>(TEMPLATE_TYPES.TemplateRepository).to(MongoTemplateRepository);
   bind<TemplateRenderer>(TEMPLATE_TYPES.TemplateRenderer).to(HandlebarsTemplateRenderer);
 
   bind<CreateTemplate>(TEMPLATE_TYPES.CreateTemplate).to(CreateTemplate);

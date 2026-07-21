@@ -29,9 +29,9 @@ export interface ListSubscriptionsOptions {
 
 /**
  * Persistence gateway for subscriptions. Lives in `application/` next to its
- * consumers (ADR-001) — Prisma is one implementation behind it (ADR-007), the
+ * consumers (ADR-001) — the MongoDB native driver is one implementation behind it (ADR-012), the
  * in-memory double another. Repositories deal in domain aggregates, never
- * Prisma rows or DTOs. The `(newsletterId, email)` compound uniqueness (ADR-011)
+ * driver documents or DTOs. The `(newsletterId, email)` compound uniqueness (ADR-011)
  * is the implementation's responsibility, surfaced via `findByNewsletterAndEmail`.
  */
 export interface SubscriptionRepository {
