@@ -66,3 +66,14 @@ npm run test:integration
 
 First run downloads the `mongod` binary (network required); subsequent runs reuse the cache. No
 `DATABASE_URL` to set — the harness starts its own database and points the tests at it.
+
+## Not yet covered
+
+- **No wired end-to-end suite.** Nothing yet boots the real composition root + real Mongo and drives
+  the full journey (newsletter → subscribe → template → campaign → send → simulated webhook) through
+  HTTP. This is the highest-value gap — it's what would catch cross-layer breaks the unit and
+  isolated-repo tests can't.
+- **No live smoke test.** A Docker container serving `/health`, a real send via Postmark's **test
+  token**, and a real webhook round-trip (via an ngrok tunnel) are manual/pending.
+- **CI runs unit tests only.** Extending the GitHub Action to also run `test:integration` (and a
+  future e2e) is pending.
