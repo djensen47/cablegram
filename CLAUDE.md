@@ -115,6 +115,11 @@ scope.
   Prisma was removed and **ADR-007 is historical**. Do not reintroduce `prisma` / `@prisma/client` or
   `prisma generate` / `db push`, and don't follow ADR-007's Prisma mechanics. No replica set is
   needed — a standalone `mongod` suffices.
+- **Auth is unfinished — don't design as if it's done.** Today `/v1` uses only a static account
+  **API key** (`apiKeyAuth`). cablegram is single-tenant but **multi-user**: user accounts + login
+  are a *decided but not-yet-built* part of the API surface (JWT, roles admin/manager,
+  first-user-is-admin — [ADR-013](docs/adrs/ADR-013-authentication-user-accounts.md); plan in
+  `docs/auth-implementation-plan.md`). "Headless" / "single-tenant" do **not** mean "no user auth."
 - **Postmark wire format** (request/response, webhook schema) is implemented in
   `src/shared/email/postmark-delivery-gateway.ts` and `src/campaigns/presentation/webhook-routes.ts` —
   treat that code (or live docs) as the source of truth, not memory, before restating a Postmark fact
