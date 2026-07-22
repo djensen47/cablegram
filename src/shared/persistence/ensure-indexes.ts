@@ -14,8 +14,7 @@ import { COLLECTIONS } from './collections.js';
  * - `subscriptions`: unique compound `(newsletterId, email)` — the membership
  *   key that both makes a subscription unique within a newsletter and lets a
  *   duplicate `create` be rejected (ADR-011); plus `newsletterId` for listing.
- * - `campaigns`: `newsletterId` for scoped listing; `(status, scheduledAt)`
- *   for the dispatch-due sweep (ADR-009's scheduling seam).
+ * - `campaigns`: `newsletterId` for scoped listing.
  * - `send_records`: `campaignId`.
  *
  * `newsletters` and `templates` need only their `_id` index (implicit, free);
@@ -26,9 +25,6 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { key: { newsletterId: 1, email: 1 }, unique: true },
     { key: { newsletterId: 1 } },
   ]);
-  await db.collection(COLLECTIONS.campaigns).createIndexes([
-    { key: { newsletterId: 1 } },
-    { key: { status: 1, scheduledAt: 1 } },
-  ]);
+  await db.collection(COLLECTIONS.campaigns).createIndexes([{ key: { newsletterId: 1 } }]);
   await db.collection(COLLECTIONS.sendRecords).createIndexes([{ key: { campaignId: 1 } }]);
 }

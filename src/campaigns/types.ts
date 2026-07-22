@@ -25,5 +25,4 @@ export const CAMPAIGN_TYPES = {
   SendCampaign: Symbol.for('SendCampaign'),
   GetSendRecord: Symbol.for('GetSendRecord'),
   RecordDeliveryEvents: Symbol.for('RecordDeliveryEvents'),
-  DispatchDueCampaigns: Symbol.for('DispatchDueCampaigns'),
 } as const;

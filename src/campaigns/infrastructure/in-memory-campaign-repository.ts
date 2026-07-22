@@ -41,14 +41,4 @@ export class InMemoryCampaignRepository implements CampaignRepository {
   async delete(id: CampaignId): Promise<boolean> {
     return this.store.delete(id);
   }
-
-  async listDue(before: Date, limit: number): Promise<Campaign[]> {
-    return [...this.store.values()]
-      .filter((c) => c.status === 'scheduled' && c.scheduledAt !== null && c.scheduledAt.getTime() <= before.getTime())
-      .sort((a, b) => {
-        const byTime = (a.scheduledAt as Date).getTime() - (b.scheduledAt as Date).getTime();
-        return byTime !== 0 ? byTime : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-      })
-      .slice(0, limit);
-  }
 }

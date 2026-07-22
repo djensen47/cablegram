@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted — 2026-07-19. The Docker target is a stated future goal; scheduling (see Consequences) was
-resolved during the build as an external-cron-driven endpoint, not left open.
+Accepted — 2026-07-19. The Docker target is a stated future goal. Scheduling (see Consequences) is
+**deferred to Phase 2**: the v1 build ships send-on-demand only; an earlier external-trigger endpoint
+was removed, and the design sketch below is retained for when scheduling is built properly.
 
 ## Context
 
@@ -52,16 +53,33 @@ scope (ADR-003).
 - Designing to the ephemeral runtime forbids conveniences (in-process cron, background queues,
   local caches). This is what pushes sending to Postmark (ADR-008) and keeps the app simple.
 - Cold-start cost is real; the small Hono footprint (ADR-006) and module-scope container mitigate it.
-- **Resolved — scheduling.** Scheduled campaigns need a time trigger, which an ephemeral function
-  can't provide itself. Of the candidate mechanisms named above, the build picked **an external cron
-  hitting a protected endpoint**: setting `Campaign.scheduledAt` moves a campaign to `scheduled`; a
-  `POST /v1/campaigns/dispatch-due` route (behind the ordinary `/v1` API key — no separate mechanism)
-  runs the `DispatchDueCampaigns` use case, which fetches a bounded batch of due campaigns via
-  `CampaignRepository.listDue(now, limit)` and runs the ordinary `SendCampaign` pipeline on each, one
-  at a time, so a single call can't exceed a function's time budget. A campaign that fails before
-  `SendCampaign` ever marks it `sending` is force-failed by the sweep itself so it isn't retried
-  forever. There is still no in-process timer — the cron caller is external and out of this repo's
-  scope — and nothing about ADR-008's send architecture changes.
+- **Deferred to Phase 2 — scheduling.** Scheduled campaigns need a time trigger, which an ephemeral
+  function can't provide itself. **v1 ships send-on-demand only** (`POST /v1/campaigns/{id}/send`). An
+  earlier v1 build carried an external-trigger endpoint (`POST /v1/campaigns/dispatch-due` + a
+  `scheduled` status + `scheduledAt`); it was **removed** so the API surface doesn't advertise a
+  half-owned feature (a "cron" mechanism was baked in without review — see the removal branch). The
+  prior code is recoverable from git history (the removal is one revertable commit); this note
+  preserves the *design* so Phase 2 doesn't re-derive it:
+
+  - **Trigger:** a time-based caller pings a protected endpoint — there is still no in-process timer,
+    so an ephemeral runtime cannot self-wake. Phase 2 should prefer a **DigitalOcean-native**
+    scheduler — App Platform **Jobs** (cron-like; ~15-minute granularity today) or Functions
+    **scheduled triggers** (beta; confirm App-Platform availability at build) — while keeping the
+    endpoint generic enough that *any* timed HTTP caller works, not just one provider's scheduler.
+    Under JWT-only auth (ADR-013) the trigger's credential is an open Phase-2 decision: an
+    authenticated service account, or an internal entrypoint outside the `/v1` JWT surface.
+  - **Sweep semantics (keep):** setting `Campaign.scheduledAt` moves a campaign to `scheduled`; the
+    endpoint runs a use case that fetches a **bounded batch** of due campaigns (`status = scheduled`
+    and `scheduledAt <= now`, oldest-due first) via a `listDue(now, limit)` repository method (backed
+    by a `(status, scheduledAt)` index) and runs the ordinary `SendCampaign` pipeline on each **one at
+    a time**, so a single call can't exceed a function's time budget; call again for the rest.
+  - **Force-fail rule (keep — easy to lose):** a due campaign that fails **before** `SendCampaign`
+    marks it `sending` (e.g. its newsletter/template reference vanished after it was scheduled) must
+    be force-`failed` by the sweep itself — otherwise it stays `scheduled` and fails on every tick
+    forever.
+  - Nothing about ADR-008's send architecture changes, and Phase 2 is **additive** on the unchanged
+    send pipeline (`SendCampaign`/`SendRecord`/webhooks), which is why removing scheduling now is
+    cheap to reverse later.
 
 ## Related
 

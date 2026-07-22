@@ -50,14 +50,10 @@ export type { NewsletterGateway, CampaignSender } from './application/newsletter
 export type { RecipientResolver, CampaignRecipient } from './application/recipient-resolver.js';
 export type { SuppressionGateway } from './application/suppression-gateway.js';
 export type { MessageRenderer, RenderedCampaignMessage } from './application/message-renderer.js';
-export {
-  DEFAULT_DISPATCH_BATCH,
-  MAX_DISPATCH_BATCH,
-  type CreateCampaignInput,
-  type UpdateCampaignInput,
-  type ListCampaignsInput,
-  type DispatchDueCampaignsInput,
-  type DispatchDueResult,
+export type {
+  CreateCampaignInput,
+  UpdateCampaignInput,
+  ListCampaignsInput,
 } from './application/dtos.js';
 
 // Use case classes (resolved from the container by token; typed here for tests).
@@ -69,4 +65,3 @@ export { DeleteCampaign } from './application/delete-campaign.js';
 export { SendCampaign } from './application/send-campaign.js';
 export { GetSendRecord } from './application/get-send-record.js';
 export { RecordDeliveryEvents } from './application/record-delivery-events.js';
-export { DispatchDueCampaigns } from './application/dispatch-due-campaigns.js';

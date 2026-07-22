@@ -66,10 +66,9 @@ fix is to swap the implementation.
 ### No replica set required (confirmed)
 
 Because every write is a single document and nothing uses transactions, cablegram needs **no replica
-set**. This was verified empirically: the repository contract tests (`*.integration.test.ts`, 30
-assertions covering create/find/update/delete, compound-unique rejection, idempotent upsert, and the
-dispatch-due sweep) were switched from `MongoMemoryReplSet` to a bare **standalone** `mongod` and all
-pass. A plain standalone `mongod` (or Atlas) is therefore sufficient in every environment — no
+set**. This was verified empirically: the repository contract tests (`*.integration.test.ts`,
+covering create/find/update/delete, compound-unique rejection, and idempotent upsert) were switched
+from `MongoMemoryReplSet` to a bare **standalone** `mongod` and all pass. A plain standalone `mongod` (or Atlas) is therefore sufficient in every environment — no
 `--replSet`, no `replicaSet=` in the connection string.
 
 ## Consequences

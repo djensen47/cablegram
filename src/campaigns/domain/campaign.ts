@@ -12,14 +12,12 @@ export type CampaignId = Id;
  * The campaign lifecycle (ADR-011). A closed set so every caller and the send
  * pipeline agree on the vocabulary:
  * - `draft`     — created, editable, not yet sent.
- * - `scheduled` — queued for a future send (no scheduler in this chunk; the
- *   send path still accepts it as a sendable pre-send state).
  * - `sending`   — a send is in flight; persisted **before** the provider call so
  *   a crash leaves a recoverable state reconciled by webhooks (ADR-008).
  * - `sent`      — the provider accepted the broadcast; re-sending is a no-op.
  * - `failed`    — the provider call threw; the campaign may be re-sent (retry).
  */
-export const CAMPAIGN_STATUSES = ['draft', 'scheduled', 'sending', 'sent', 'failed'] as const;
+export const CAMPAIGN_STATUSES = ['draft', 'sending', 'sent', 'failed'] as const;
 
 export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number];
 
@@ -77,13 +75,6 @@ export interface CampaignProps {
   /** Query-time segment tags (AND); empty targets the whole subscribed list. */
   segmentTags: string[];
   status: CampaignStatus;
-  /**
-   * A future send time (ADR-009's open scheduling item), or `null` for a plain
-   * draft. Setting it is what drives `status` to `scheduled`; an external cron
-   * hitting `POST /v1/campaigns/dispatch-due` is the only thing that acts on it
-   * — there is no in-process timer (ADR-009: ephemeral, no background workers).
-   */
-  scheduledAt: Date | null;
   /** The id of this campaign's one `SendRecord`, set when a send begins. */
   sendId: string | null;
   stats: CampaignStats;
@@ -102,8 +93,6 @@ export interface CreateCampaignProps {
   bodyHtml?: string | null;
   bodyText?: string | null;
   segmentTags?: string[];
-  /** A future send time; when set the campaign starts `scheduled` instead of `draft`. */
-  scheduledAt?: Date | null;
   now: Date;
 }
 
@@ -115,12 +104,6 @@ export interface UpdateCampaignProps {
   bodyHtml?: string | null;
   bodyText?: string | null;
   segmentTags?: string[];
-  /**
-   * Setting a future time (re)schedules the campaign (`draft`/`failed` →
-   * `scheduled`); explicitly setting `null` unschedules it back to `draft`.
-   * Omit to leave the schedule untouched.
-   */
-  scheduledAt?: Date | null;
 }
 
 function requireText(value: string, field: string): string {
@@ -176,16 +159,6 @@ function validateContent(
   }
 }
 
-// A schedule must be a real future moment — a past/now time would be "due"
-// the instant it's created, indistinguishable from just sending it directly,
-// and more likely a caller's clock/timezone mistake than an intent to send
-// immediately (that's what `POST /{id}/send` is for).
-function validateScheduledAt(scheduledAt: Date | null, now: Date): void {
-  if (scheduledAt !== null && scheduledAt.getTime() <= now.getTime()) {
-    throw new InvalidCampaignError('scheduledAt', 'must be a future time');
-  }
-}
-
 /**
  * The campaign aggregate (ADR-011): a broadcast a newsletter sends to a
  * query-time segment of its subscribers, resolving content from a template
@@ -204,8 +177,6 @@ export class Campaign {
     const subject = optionalText(input.subject);
     const bodyHtml = optionalText(input.bodyHtml);
     validateContent(templateId, subject, bodyHtml);
-    const scheduledAt = input.scheduledAt ?? null;
-    validateScheduledAt(scheduledAt, input.now);
 
     return new Campaign({
       id: input.id,
@@ -216,8 +187,7 @@ export class Campaign {
       bodyHtml,
       bodyText: optionalText(input.bodyText),
       segmentTags: normalizeTags(input.segmentTags),
-      status: scheduledAt === null ? 'draft' : 'scheduled',
-      scheduledAt,
+      status: 'draft',
       sendId: null,
       stats: zeroStats(),
       createdAt: input.now,
@@ -233,7 +203,7 @@ export class Campaign {
 
   /** `true` while the campaign may still be edited or sent (not sent/sending). */
   private get isEditable(): boolean {
-    return this.props.status === 'draft' || this.props.status === 'scheduled' || this.props.status === 'failed';
+    return this.props.status === 'draft' || this.props.status === 'failed';
   }
 
   /**
@@ -253,19 +223,6 @@ export class Campaign {
     if (changes.bodyHtml !== undefined) next.bodyHtml = optionalText(changes.bodyHtml);
     if (changes.bodyText !== undefined) next.bodyText = optionalText(changes.bodyText);
     if (changes.segmentTags !== undefined) next.segmentTags = normalizeTags(changes.segmentTags);
-    if (changes.scheduledAt !== undefined) {
-      validateScheduledAt(changes.scheduledAt, now);
-      next.scheduledAt = changes.scheduledAt;
-      // (Re)scheduling: a `draft`/`failed` campaign given a future time
-      // becomes `scheduled`. Unscheduling (`scheduledAt: null`) drops a
-      // `scheduled` campaign back to `draft`; on any other status it's a no-op
-      // beyond clearing the field.
-      if (changes.scheduledAt !== null) {
-        next.status = 'scheduled';
-      } else if (next.status === 'scheduled') {
-        next.status = 'draft';
-      }
-    }
 
     validateContent(next.templateId, next.subject, next.bodyHtml);
     next.updatedAt = now;
@@ -275,7 +232,7 @@ export class Campaign {
   /**
    * Begin a send: transition a sendable campaign to `sending` and bind it to a
    * fresh send record. Persisted **before** the provider call (ADR-008). Only
-   * `draft`/`scheduled`/`failed` may transition; `sending`/`sent` refuse.
+   * `draft`/`failed` may transition; `sending`/`sent` refuse.
    */
   markSending(sendId: string, now: Date): void {
     if (!this.isEditable) {
@@ -343,9 +300,6 @@ export class Campaign {
   }
   get status(): CampaignStatus {
     return this.props.status;
-  }
-  get scheduledAt(): Date | null {
-    return this.props.scheduledAt;
   }
   get isSent(): boolean {
     return this.props.status === 'sent';

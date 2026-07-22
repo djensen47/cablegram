@@ -24,7 +24,6 @@ interface CampaignDoc {
   bodyText: string | null;
   segmentTags: string[];
   status: string;
-  scheduledAt: Date | null;
   sendId: string | null;
   stats: CampaignStats;
   createdAt: Date;
@@ -74,15 +73,6 @@ export class MongoCampaignRepository implements CampaignRepository {
     const { deletedCount } = await this.collection.deleteOne({ _id: id });
     return deletedCount > 0;
   }
-
-  async listDue(before: Date, limit: number): Promise<Campaign[]> {
-    const docs = await this.collection
-      .find({ status: 'scheduled', scheduledAt: { $lte: before } })
-      .sort({ scheduledAt: 1, _id: 1 })
-      .limit(limit)
-      .toArray();
-    return docs.map(toDomain);
-  }
 }
 
 function toDoc(campaign: Campaign): CampaignDoc {
@@ -96,7 +86,6 @@ function toDoc(campaign: Campaign): CampaignDoc {
     bodyText: campaign.bodyText,
     segmentTags: [...campaign.segmentTags],
     status: campaign.status,
-    scheduledAt: campaign.scheduledAt,
     sendId: campaign.sendId,
     stats: campaign.stats,
     createdAt: campaign.createdAt,
@@ -119,7 +108,6 @@ function toDomain(doc: CampaignDoc): Campaign {
     bodyText: doc.bodyText,
     segmentTags: doc.segmentTags,
     status: doc.status as CampaignStatus,
-    scheduledAt: doc.scheduledAt,
     sendId: doc.sendId,
     stats: doc.stats,
     createdAt: doc.createdAt,

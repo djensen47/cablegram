@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Container } from 'inversify';
-import { TYPES, buildContainer } from '../../shared/di/index.js';
-import type { Clock } from '../../shared/clock/index.js';
+import { buildContainer } from '../../shared/di/index.js';
 import {
   EMAIL_TYPES,
   InMemoryDeliveryGateway,
@@ -30,28 +29,13 @@ import {
   InMemorySendRecordRepository,
   CreateCampaign,
   GetCampaign,
-  UpdateCampaign,
   SendCampaign,
   GetSendRecord,
   RecordDeliveryEvents,
-  DispatchDueCampaigns,
   CampaignNotFoundError,
   CampaignStateError,
   CampaignContentError,
 } from '../index.js';
-
-/** A `Clock` test double whose `now()` can be advanced deterministically —
- * scheduling tests need explicit control over "before"/"after due" instants
- * that the real `DefaultClock` can't offer. */
-class MutableClock implements Clock {
-  constructor(private current: Date) {}
-  now(): Date {
-    return this.current;
-  }
-  advanceTo(date: Date): void {
-    this.current = date;
-  }
-}
 
 const env = {
   DATABASE_URL: 'mongodb://localhost/cablegram',
@@ -354,150 +338,6 @@ describe('campaigns — the send integrator', () => {
           Tag: 'no-such-campaign',
         }),
       ).resolves.toBeUndefined();
-    });
-  });
-
-  describe('scheduling (ADR-009\'s open item) — dispatch-due', () => {
-    let clock: MutableClock;
-    let t0: Date;
-
-    beforeEach(() => {
-      t0 = new Date('2026-07-20T12:00:00Z');
-      clock = new MutableClock(t0);
-      container.rebind<Clock>(TYPES.Clock).toConstantValue(clock);
-    });
-
-    function inFuture(ms: number): Date {
-      return new Date(t0.getTime() + ms);
-    }
-
-    it('starts a campaign `scheduled` when created with a future scheduledAt', async () => {
-      const templateId = await seedTemplate(container);
-      const campaign = await container.get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign).execute({
-        newsletterId,
-        name: 'March',
-        templateId,
-        scheduledAt: inFuture(60_000),
-      });
-
-      expect(campaign.status).toBe('scheduled');
-      expect(campaign.scheduledAt).toEqual(inFuture(60_000));
-    });
-
-    it('rejects a scheduledAt that is not in the future', async () => {
-      const templateId = await seedTemplate(container);
-      await expect(
-        container.get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign).execute({
-          newsletterId,
-          name: 'March',
-          templateId,
-          scheduledAt: t0,
-        }),
-      ).rejects.toThrow(/must be a future time/);
-    });
-
-    it('unschedules back to draft when scheduledAt is cleared, and reschedules on update', async () => {
-      const templateId = await seedTemplate(container);
-      const campaign = await container.get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign).execute({
-        newsletterId,
-        name: 'March',
-        templateId,
-        scheduledAt: inFuture(60_000),
-      });
-
-      const unscheduled = await container
-        .get<UpdateCampaign>(CAMPAIGN_TYPES.UpdateCampaign)
-        .execute(campaign.id, { scheduledAt: null });
-      expect(unscheduled.status).toBe('draft');
-      expect(unscheduled.scheduledAt).toBeNull();
-
-      const rescheduled = await container
-        .get<UpdateCampaign>(CAMPAIGN_TYPES.UpdateCampaign)
-        .execute(campaign.id, { scheduledAt: inFuture(120_000) });
-      expect(rescheduled.status).toBe('scheduled');
-      expect(rescheduled.scheduledAt).toEqual(inFuture(120_000));
-    });
-
-    it('dispatch-due sends a due campaign and leaves a not-yet-due one untouched', async () => {
-      await subscribe(container, newsletterId, 'reader@dispatch.example');
-      const templateId = await seedTemplate(container);
-      const due = await container.get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign).execute({
-        newsletterId,
-        name: 'Due',
-        templateId,
-        scheduledAt: inFuture(1_000),
-      });
-      const notYetDue = await container.get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign).execute({
-        newsletterId,
-        name: 'Later',
-        templateId,
-        scheduledAt: inFuture(10_000),
-      });
-
-      clock.advanceTo(inFuture(2_000)); // past `due`, still before `notYetDue`
-      gateway.sent.length = 0;
-      const results = await container
-        .get<DispatchDueCampaigns>(CAMPAIGN_TYPES.DispatchDueCampaigns)
-        .execute();
-
-      expect(results).toEqual([{ campaignId: due.id, status: 'sent' }]);
-      expect(gateway.sent).toHaveLength(1);
-
-      const stillScheduled = await container
-        .get<GetCampaign>(CAMPAIGN_TYPES.GetCampaign)
-        .execute(notYetDue.id);
-      expect(stillScheduled.status).toBe('scheduled');
-    });
-
-    it('respects the batch limit, leaving the rest due for a later call', async () => {
-      const templateId = await seedTemplate(container);
-      const createCampaign = container.get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign);
-      const ids: string[] = [];
-      for (let i = 0; i < 3; i += 1) {
-        const c = await createCampaign.execute({
-          newsletterId,
-          name: `Batch ${i}`,
-          templateId,
-          scheduledAt: inFuture(1_000),
-        });
-        ids.push(c.id);
-      }
-      clock.advanceTo(inFuture(2_000));
-
-      const first = await container
-        .get<DispatchDueCampaigns>(CAMPAIGN_TYPES.DispatchDueCampaigns)
-        .execute({ limit: 2 });
-      expect(first).toHaveLength(2);
-
-      const second = await container
-        .get<DispatchDueCampaigns>(CAMPAIGN_TYPES.DispatchDueCampaigns)
-        .execute({ limit: 2 });
-      expect(second).toHaveLength(1);
-    });
-
-    it('force-fails a due campaign that never starts sending, instead of retrying it forever', async () => {
-      await subscribe(container, newsletterId, 'reader@dispatch.example');
-      const campaign = await container.get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign).execute({
-        newsletterId,
-        name: 'Poison pill',
-        templateId: 'no-such-template',
-        scheduledAt: inFuture(1_000),
-      });
-      clock.advanceTo(inFuture(2_000));
-
-      const results = await container
-        .get<DispatchDueCampaigns>(CAMPAIGN_TYPES.DispatchDueCampaigns)
-        .execute();
-      expect(results).toEqual([{ campaignId: campaign.id, status: 'failed' }]);
-
-      const after = await container.get<GetCampaign>(CAMPAIGN_TYPES.GetCampaign).execute(campaign.id);
-      expect(after.status).toBe('failed');
-
-      // A second sweep must not pick it up again (it's no longer `scheduled`).
-      const again = await container
-        .get<DispatchDueCampaigns>(CAMPAIGN_TYPES.DispatchDueCampaigns)
-        .execute();
-      expect(again).toEqual([]);
     });
   });
 });

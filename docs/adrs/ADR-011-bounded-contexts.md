@@ -57,7 +57,7 @@ Five. Each is a folder with `domain/ application/ infrastructure/ presentation/`
   asset, reusable across newsletters and campaigns (not owned by either). Owns `TemplateRepository`
   and a `TemplateRenderer`. *Supporting subdomain.*
 - **`campaigns`** — a newsletter *issue* / one broadcast: belongs to a newsletter, references a
-  template (optional — inline content is allowed), carries content + targeting + schedule, and holds
+  template (optional — inline content is allowed), carries content + targeting, and holds
   the **send record** (per-recipient outcomes + aggregate stats). Owns `CampaignRepository`.
   Orchestrates the send and the applying-back of events. *Core subdomain.*
 
