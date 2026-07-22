@@ -86,9 +86,6 @@ there is no `prisma generate`/`db push`. The repository is the swap seam.
   Postmark Bulk call (`POST /email/bulk`) via `email.send()`. The response is a submission ack (a
   request id), not per-recipient results — `SendRecord` persists it as `bulkRequestId`/`submittedAt`.
   Postmark owns the fan-out — **no queue, no worker, no cursor.**
-- **Schedule:** setting `scheduledAt` on a campaign marks it `scheduled`; there's still no in-process
-  timer — an external cron drives the protected `POST /v1/campaigns/dispatch-due` endpoint, which runs
-  the ordinary send pipeline on each due campaign.
 - **Events:** Postmark webhook → `email.parseProviderEvent()` normalizes → `campaigns` records the
   outcome; hard bounce/complaint → add address to the `deliverability` suppression list. The webhook
   is **HTTP Basic-Auth** protected (Postmark has no HMAC/signing) — `POSTMARK_WEBHOOK_SECRET` is the
@@ -119,6 +116,11 @@ scope.
   ordinary domain data, not a tenant scope — no tenant/account id on entities.
 - **No `events` component and no `delivery` component** — events are facts applied to aggregates;
   sending is the shared `email` adapter.
+- **No scheduled campaigns (v1).** Sending is on-demand only (`POST /v1/campaigns/{id}/send`); a
+  campaign's lifecycle is `draft → sending → sent | failed` (no `scheduled` status, no `scheduledAt`).
+  Scheduled sends + their time trigger are **deferred to Phase 2** — do not reintroduce a
+  `dispatch-due` endpoint or an in-process timer; the design + the DO-native trigger plan live in
+  [ADR-009](docs/adrs/ADR-009-deployment-digitalocean-functions.md).
 - **No Prisma.** Persistence is the **native MongoDB driver** ([ADR-012](docs/adrs/ADR-012-persistence-mongodb-native-driver.md));
   Prisma was removed and **ADR-007 is historical**. Do not reintroduce `prisma` / `@prisma/client` or
   `prisma generate` / `db push`, and don't follow ADR-007's Prisma mechanics. No replica set is

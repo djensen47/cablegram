@@ -24,14 +24,11 @@ import type { UpdateCampaign } from '../application/update-campaign.js';
 import type { DeleteCampaign } from '../application/delete-campaign.js';
 import type { SendCampaign } from '../application/send-campaign.js';
 import type { GetSendRecord } from '../application/get-send-record.js';
-import type { DispatchDueCampaigns } from '../application/dispatch-due-campaigns.js';
 import {
   CampaignIdParamSchema,
   CampaignListSchema,
   CampaignSchema,
   CreateCampaignSchema,
-  DispatchDueQuerySchema,
-  DispatchDueResponseSchema,
   ListCampaignsQuerySchema,
   SendRecordSchema,
   UpdateCampaignSchema,
@@ -53,12 +50,6 @@ const unauthorizedResponse = errorResponse('Missing or invalid API key');
 // the security requirement above only *declares* the scheme, it doesn't
 // document the failure response).
 const authedResponses = { 401: unauthorizedResponse } as const;
-
-/** Converts a wire ISO-datetime string to a `Date`, preserving null/undefined
- * (edge-only mapping — use cases and the domain never see a raw string). */
-function toNullableDate(value: string | null | undefined): Date | null | undefined {
-  return value == null ? value : new Date(value);
-}
 
 // Domain errors carry no HTTP status (ADR-001); translate them here, at the edge.
 function rethrowDomainError(err: unknown): never {
@@ -106,7 +97,7 @@ const createCampaignRoute = createRoute({
   responses: {
     201: {
       content: { 'application/json': { schema: CampaignSchema } },
-      description: 'The created campaign (status draft, or scheduled when scheduledAt is set)',
+      description: 'The created campaign (status draft)',
     },
     400: badRequestResponse,
     404: notFoundResponse,
@@ -205,28 +196,6 @@ const getSendRoute = createRoute({
   },
 });
 
-const dispatchDueRoute = createRoute({
-  method: 'post',
-  path: '/dispatch-due',
-  tags: ['campaigns'],
-  summary: 'Send all due scheduled campaigns',
-  description:
-    'The external-cron target for scheduled sends (ADR-009\'s open scheduling item — there is no ' +
-    'in-process timer). Sends every `scheduled` campaign whose `scheduledAt` has passed, up to ' +
-    '`limit` (a bounded batch per call, respecting the function time-limit posture); call again to ' +
-    'work through a larger due set. A campaign that fails before it starts sending (e.g. its ' +
-    'newsletter/template went missing) is marked `failed` rather than retried forever.',
-  security,
-  request: { query: DispatchDueQuerySchema },
-  responses: {
-    200: {
-      content: { 'application/json': { schema: DispatchDueResponseSchema } },
-      description: 'The outcome of every campaign this call attempted to send',
-    },
-    ...authedResponses,
-  },
-});
-
 /**
  * The campaigns HTTP surface (ADR-006), mounted at `/v1/campaigns`. Thin
  * handlers: validate at the edge, resolve a use case from the container
@@ -251,7 +220,7 @@ export function createCampaignRoutes(container: Container): OpenAPIHono<AppEnv> 
     try {
       const campaign = await container
         .get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign)
-        .execute({ ...body, scheduledAt: toNullableDate(body.scheduledAt) });
+        .execute(body);
       return c.json(toCampaignResponse(campaign), 201);
     } catch (err) {
       rethrowDomainError(err);
@@ -274,7 +243,7 @@ export function createCampaignRoutes(container: Container): OpenAPIHono<AppEnv> 
     try {
       const campaign = await container
         .get<UpdateCampaign>(CAMPAIGN_TYPES.UpdateCampaign)
-        .execute(id, { ...body, scheduledAt: toNullableDate(body.scheduledAt) });
+        .execute(id, body);
       return c.json(toCampaignResponse(campaign), 200);
     } catch (err) {
       rethrowDomainError(err);
@@ -309,14 +278,6 @@ export function createCampaignRoutes(container: Container): OpenAPIHono<AppEnv> 
     } catch (err) {
       rethrowDomainError(err);
     }
-  });
-
-  app.openapi(dispatchDueRoute, async (c) => {
-    const { limit } = c.req.valid('query');
-    const results = await container
-      .get<DispatchDueCampaigns>(CAMPAIGN_TYPES.DispatchDueCampaigns)
-      .execute({ limit });
-    return c.json({ data: results, meta: { dispatched: results.length } }, 200);
   });
 
   return app;

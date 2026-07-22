@@ -31,7 +31,7 @@ const BROADCAST_STREAM = 'broadcast';
  * campaign is written `sending` (with its `sendId`) and the send record opened
  * **before** the provider call, so a crash mid-send leaves a state webhooks
  * reconcile. Re-sending a `sent` campaign is a no-op; only a
- * `draft`/`scheduled`/`failed` campaign transitions to `sending`, once.
+ * `draft`/`failed` campaign transitions to `sending`, once.
  */
 @injectable()
 export class SendCampaign {

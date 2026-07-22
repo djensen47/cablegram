@@ -1,6 +1,5 @@
 // Repository contract test (docs/testing.md) — see the newsletters contract
-// test's header comment for the full rationale; same posture here. Also
-// covers `listDue` — the hardening-chunk scheduling seam (ADR-009).
+// test's header comment for the full rationale; same posture here.
 import { MongoClient, type Db } from 'mongodb';
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest';
 import { newId } from '../../shared/ids/index.js';
@@ -29,13 +28,12 @@ describe('MongoCampaignRepository (contract)', () => {
     await client.close();
   });
 
-  function make(overrides: Partial<{ nlId: string; status: 'draft' | 'scheduled'; scheduledAt: Date | null }> = {}) {
+  function make(overrides: Partial<{ nlId: string }> = {}) {
     const campaign = Campaign.create({
       id: newId(),
       newsletterId: overrides.nlId ?? newsletterId,
       name: 'March Dispatch',
       templateId: 'tpl-1',
-      scheduledAt: overrides.scheduledAt,
       now: t0,
     });
     return campaign;
@@ -89,37 +87,5 @@ describe('MongoCampaignRepository (contract)', () => {
     await repo.create(campaign);
     expect(await repo.delete(campaign.id)).toBe(true);
     expect(await repo.delete(campaign.id)).toBe(false);
-  });
-
-  describe('listDue (the dispatch-due seam)', () => {
-    it('returns only scheduled campaigns whose scheduledAt has passed, oldest first', async () => {
-      const due1 = make({ scheduledAt: new Date('2026-01-01T01:00:00Z') });
-      const due2 = make({ scheduledAt: new Date('2026-01-01T02:00:00Z') });
-      const notYetDue = make({ scheduledAt: new Date('2026-01-01T10:00:00Z') });
-      const notScheduled = make();
-      for (const c of [due2, due1, notYetDue, notScheduled]) await repo.create(c);
-
-      const due = await repo.listDue(new Date('2026-01-01T03:00:00Z'), 10);
-      expect(due.map((c) => c.id)).toEqual([due1.id, due2.id]);
-    });
-
-    it('caps at the given limit', async () => {
-      const scheduledAt = new Date('2026-01-01T01:00:00Z');
-      for (let i = 0; i < 3; i += 1) {
-        await repo.create(make({ scheduledAt }));
-      }
-      const due = await repo.listDue(new Date('2026-01-01T02:00:00Z'), 2);
-      expect(due).toHaveLength(2);
-    });
-
-    it('never returns a campaign whose status has moved past scheduled', async () => {
-      const campaign = make({ scheduledAt: new Date('2026-01-01T01:00:00Z') });
-      await repo.create(campaign);
-      campaign.markSending('send-1', new Date('2026-01-01T01:30:00Z'));
-      await repo.update(campaign);
-
-      const due = await repo.listDue(new Date('2026-01-01T02:00:00Z'), 10);
-      expect(due).toEqual([]);
-    });
   });
 });

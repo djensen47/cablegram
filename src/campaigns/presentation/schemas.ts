@@ -3,7 +3,6 @@ import { listResponseSchema, paginationQuerySchema } from '../../shared/http/ind
 import { CAMPAIGN_STATUSES, type Campaign } from '../domain/campaign.js';
 import type { SendRecord } from '../domain/send-record.js';
 import { OUTCOME_STATUSES } from '../domain/send-record.js';
-import { DEFAULT_DISPATCH_BATCH, MAX_DISPATCH_BATCH } from '../application/dtos.js';
 
 /**
  * zod-OpenAPI schemas for the campaigns API. These are the single source of
@@ -41,7 +40,6 @@ export const CampaignSchema = z
     bodyText: z.string().nullable().openapi({ example: 'Hello' }),
     segmentTags: z.array(z.string()).openapi({ example: ['vip'] }),
     status: z.enum(CAMPAIGN_STATUSES).openapi({ example: 'draft' }),
-    scheduledAt: z.string().datetime().nullable().openapi({ example: null }),
     sendId: z.string().nullable().openapi({ example: null }),
     stats: StatsSchema,
     createdAt: z.string().datetime(),
@@ -60,11 +58,6 @@ export const CreateCampaignSchema = z
     bodyHtml: z.string().min(1).nullish().openapi({ example: '<h1>Hello {{firstName}}</h1>' }),
     bodyText: z.string().nullish().openapi({ example: 'Hello' }),
     segmentTags: segmentTagsField.optional(),
-    scheduledAt: z
-      .string()
-      .datetime()
-      .nullish()
-      .openapi({ example: null, description: 'A future send time; sets the campaign to `scheduled` instead of `draft`.' }),
   })
   .refine((v) => v.templateId != null || (v.subject != null && v.bodyHtml != null), {
     message: 'requires a templateId or inline subject and bodyHtml',
@@ -80,11 +73,6 @@ export const UpdateCampaignSchema = z
     bodyHtml: z.string().min(1).nullish(),
     bodyText: z.string().nullish(),
     segmentTags: segmentTagsField.optional(),
-    scheduledAt: z
-      .string()
-      .datetime()
-      .nullish()
-      .openapi({ description: 'A future time to reschedule to, or `null` to unschedule back to draft.' }),
   })
   .openapi('UpdateCampaign');
 
@@ -125,35 +113,6 @@ export const SendRecordSchema = z
   })
   .openapi('SendRecord');
 
-/** Query params for the scheduling dispatch sweep (ADR-009's open item). */
-export const DispatchDueQuerySchema = z.object({
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(MAX_DISPATCH_BATCH)
-    .optional()
-    .openapi({
-      param: { name: 'limit', in: 'query' },
-      description: `Max due campaigns to send in this call (default ${DEFAULT_DISPATCH_BATCH}, capped at ${MAX_DISPATCH_BATCH}).`,
-      example: DEFAULT_DISPATCH_BATCH,
-    }),
-});
-
-const DispatchDueResultSchema = z
-  .object({
-    campaignId: z.string().openapi({ example: idExample }),
-    status: z.enum(CAMPAIGN_STATUSES).openapi({ example: 'sent' }),
-  })
-  .openapi('DispatchDueResult');
-
-export const DispatchDueResponseSchema = z
-  .object({
-    data: z.array(DispatchDueResultSchema),
-    meta: z.object({ dispatched: z.number().int() }),
-  })
-  .openapi('DispatchDueResponse');
-
 export const WebhookAckSchema = z.object({ status: z.string() }).openapi('WebhookAck');
 
 /** Permissive Postmark webhook body: an event object with a `RecordType`. */
@@ -176,7 +135,6 @@ export function toCampaignResponse(campaign: Campaign): CampaignResponse {
     bodyText: campaign.bodyText,
     segmentTags: [...campaign.segmentTags],
     status: campaign.status,
-    scheduledAt: campaign.scheduledAt?.toISOString() ?? null,
     sendId: campaign.sendId,
     stats: { ...campaign.stats },
     createdAt: campaign.createdAt.toISOString(),
