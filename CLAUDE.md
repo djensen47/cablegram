@@ -102,6 +102,14 @@ Stateless & ephemeral everywhere: no background workers, no long in-request loop
 memory state between requests. Config from env vars. Mongo is the only durable state; pool at module
 scope.
 
+## Testing
+
+- `npm test` — unit: use cases + routes, repositories rebound to `InMemory<X>Repository` (ADR-003). No DB.
+- `npm run test:integration` — repository contracts vs a standalone in-memory Mongo
+  (`mongodb-memory-server`); excluded from the default gate.
+- Green gate before commit/PR: `npm run typecheck && npm run lint && npm test` (add `test:integration`
+  for persistence changes). No end-to-end suite yet — see `docs/testing.md`.
+
 ## Gotchas
 
 - **No `Contact` identity.** Subscriptions are flat and per-newsletter; the same email in two
