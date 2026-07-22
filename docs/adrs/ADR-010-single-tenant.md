@@ -20,8 +20,11 @@ because its consequences ripple through the data model (ADR-012) and the API sur
   **no** tenant scoping. There is a single logical owner of all data in a given deployment.
 - **Tenant ≠ newsletter.** Single-tenant does *not* mean single-newsletter: one account runs many
   newsletters (ADR-011). A `newsletterId` is ordinary within-account domain data, not a tenant scope.
-- **Auth** is a single set of credentials / API keys for that organization — API-key auth on the HTTP
-  surface (ADR-006), not per-tenant user accounts.
+- **Single-tenant ≠ single-user.** One org — but that org has **multiple users** (e.g. admins,
+  managers). Tenancy (how many *orgs* share the deployment) is a different axis from the *user model*
+  (individuals within the org). "No tenant/account id on entities" means no *cross-org* scoping — it
+  does **not** mean "no users." User accounts and authentication are their own decision
+  ([ADR-013](ADR-013-authentication-user-accounts.md)), and single-tenancy does not preclude them.
 - Running cablegram for multiple organizations means **multiple deployments** (separate databases,
   separate configs), not one shared instance partitioned by tenant.
 
@@ -29,7 +32,8 @@ because its consequences ripple through the data model (ADR-012) and the API sur
 
 - Simpler data model and queries — no tenant column, no per-query scoping, no cross-tenant leakage
   class of bugs.
-- Simpler authorization — one trust boundary per deployment.
+- Simpler authorization at the *tenant* level — one org boundary per deployment. Within it, per-user
+  roles/authorization are a separate concern (ADR-013), not a tenancy one.
 - **Multi-tenancy would be a real migration, not a config flip**: it would add an account concept to
   every model, tenant scoping to every repository (ADR-012), and tenant context to every route
   (ADR-006). Recorded so that cost is known up front and not assumed cheap.
@@ -38,6 +42,7 @@ because its consequences ripple through the data model (ADR-012) and the API sur
 
 ## Related
 
-- ADR-004 — Headless / API-only (API-key auth, single trust boundary)
+- ADR-004 — Headless (the API surface — including auth — serves external UIs)
+- ADR-013 — Authentication & user accounts (multiple users *within* the single tenant)
 - ADR-012 — Persistence (no tenant scoping in repositories)
 - ADR-011 — Bounded contexts (entities carry no tenant id)
