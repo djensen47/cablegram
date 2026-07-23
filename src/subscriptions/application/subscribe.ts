@@ -11,9 +11,6 @@ import type { SubscriptionRepository } from './subscription-repository.js';
 import type { NewsletterDirectory, NewsletterInfo } from './newsletter-directory.js';
 import type { SubscribeInput } from './dtos.js';
 
-/** Confirmation emails ride the transactional stream, not the broadcast stream. */
-const TRANSACTIONAL_STREAM = 'outbound';
-
 /**
  * Subscribe an address to a newsletter (ADR-011). Validates the target
  * newsletter exists (via the consumer-owned `NewsletterDirectory` port),
@@ -108,7 +105,8 @@ export class Subscribe {
         textBody: `Please confirm your subscription: ${confirmPath}`,
       },
       recipients: [{ email: subscription.email }],
-      messageStream: TRANSACTIONAL_STREAM,
+      // A confirmation is transactional, not a broadcast (ADR-008).
+      category: 'transactional',
       tag: 'subscription-confirmation',
     });
   }

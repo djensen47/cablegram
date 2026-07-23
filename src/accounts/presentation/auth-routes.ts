@@ -14,6 +14,7 @@ import {
   AccountsError,
   EmailAlreadyExistsError,
   InvalidCredentialsError,
+  InvalidOneTimeTokenError,
   InvalidRefreshTokenError,
   InvalidUserEmailError,
   SetupAlreadyCompletedError,
@@ -23,16 +24,27 @@ import type { RegisterInitialAdmin } from '../application/register-initial-admin
 import type { Login } from '../application/login.js';
 import type { RefreshSession } from '../application/refresh-session.js';
 import type { Logout } from '../application/logout.js';
+import type { RequestPasswordReset } from '../application/request-password-reset.js';
+import type { ResetPassword } from '../application/reset-password.js';
+import type { RequestMagicLink } from '../application/request-magic-link.js';
+import type { ConsumeMagicLink } from '../application/consume-magic-link.js';
 import {
+  AcceptedSchema,
+  ConsumeMagicLinkSchema,
   LoginSchema,
   LogoutSchema,
   RefreshSchema,
+  RequestMagicLinkSchema,
+  RequestPasswordResetSchema,
+  ResetPasswordSchema,
   SessionSchema,
   SetupSchema,
   UserSchema,
   toSessionResponse,
   toUserResponse,
 } from './schemas.js';
+
+const ACCEPTED = { status: 'accepted' } as const;
 
 const conflictResponse = errorResponse('Conflict');
 const badRequestResponse = errorResponse('Invalid request');
@@ -49,7 +61,11 @@ export function rethrowAccountsError(err: unknown): never {
   if (err instanceof UserNotFoundError) {
     throw new NotFoundError(err.message);
   }
-  if (err instanceof InvalidUserEmailError || err instanceof AccountsError) {
+  if (
+    err instanceof InvalidUserEmailError ||
+    err instanceof InvalidOneTimeTokenError ||
+    err instanceof AccountsError
+  ) {
     throw new BadRequestError(err.message);
   }
   throw err;
@@ -126,11 +142,85 @@ const logoutRoute = createRoute({
   },
 });
 
+const acceptedResponse = {
+  200: {
+    content: { 'application/json': { schema: AcceptedSchema } },
+    description: 'Always returned, whether or not the address has an account',
+  },
+  400: badRequestResponse,
+} as const;
+
+const requestPasswordResetRoute = createRoute({
+  method: 'post',
+  path: '/auth/password-reset',
+  tags: ['auth'],
+  summary: 'Request a password-reset email',
+  description:
+    'Open and **non-enumerating** (ADR-013): always returns 200 whether or not the address has an ' +
+    'account. If it does, an email with a single-use, expiring reset token is sent.',
+  request: {
+    body: { content: { 'application/json': { schema: RequestPasswordResetSchema } }, required: true },
+  },
+  responses: acceptedResponse,
+});
+
+const resetPasswordRoute = createRoute({
+  method: 'post',
+  path: '/auth/password-reset/confirm',
+  tags: ['auth'],
+  summary: 'Complete a password reset',
+  description:
+    'Open. Consumes the emailed one-time token (single-use), sets the new password, and revokes all ' +
+    'of the user’s existing sessions. An unknown/expired/used token is rejected (400).',
+  request: {
+    body: { content: { 'application/json': { schema: ResetPasswordSchema } }, required: true },
+  },
+  responses: {
+    204: { description: 'The password was reset and existing sessions were revoked' },
+    400: badRequestResponse,
+  },
+});
+
+const requestMagicLinkRoute = createRoute({
+  method: 'post',
+  path: '/auth/magic-link',
+  tags: ['auth'],
+  summary: 'Request a magic-link login email',
+  description:
+    'Open and **non-enumerating** (ADR-014): always returns 200 whether or not the address has an ' +
+    'account. If it does, an email with a single-use, expiring login token is sent.',
+  request: {
+    body: { content: { 'application/json': { schema: RequestMagicLinkSchema } }, required: true },
+  },
+  responses: acceptedResponse,
+});
+
+const consumeMagicLinkRoute = createRoute({
+  method: 'post',
+  path: '/auth/magic-link/consume',
+  tags: ['auth'],
+  summary: 'Exchange a magic-link token for a session',
+  description:
+    'Open (ADR-014). Consumes the emailed one-time token (single-use) and returns a normal session — ' +
+    'identical in shape to a password login. An unknown/expired/used token is rejected (400).',
+  request: {
+    body: { content: { 'application/json': { schema: ConsumeMagicLinkSchema } }, required: true },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: SessionSchema } },
+      description: 'A new session (access + refresh tokens)',
+    },
+    400: badRequestResponse,
+  },
+});
+
 /**
- * The open authentication surface (ADR-013): first-run setup plus
- * login / refresh / logout. Mounted under `/v1` **without** `jwtAuth` — these
- * are the endpoints a caller reaches before (or to obtain) a token. Thin
- * handlers: validate at the edge, resolve a use case (ADR-003), map to a DTO.
+ * The open authentication surface (ADR-013/014): first-run setup, the
+ * login / refresh / logout exchange, and the password-reset + magic-link flows.
+ * Mounted under `/v1` **without** `jwtAuth` — these are the endpoints a caller
+ * reaches before (or to obtain) a token. Thin handlers: validate at the edge,
+ * resolve a use case (ADR-003), map to a DTO.
  */
 export function createAccountsAuthRoutes(container: Container): OpenAPIHono<AppEnv> {
   const app = new OpenAPIHono<AppEnv>({ defaultHook: throwOnInvalid });
@@ -173,6 +263,44 @@ export function createAccountsAuthRoutes(container: Container): OpenAPIHono<AppE
     const body = c.req.valid('json');
     await container.get<Logout>(ACCOUNTS_TYPES.Logout).execute(body);
     return c.body(null, 204);
+  });
+
+  app.openapi(requestPasswordResetRoute, async (c) => {
+    const body = c.req.valid('json');
+    // Non-enumerating: succeed identically whether or not the account exists.
+    await container.get<RequestPasswordReset>(ACCOUNTS_TYPES.RequestPasswordReset).execute(body);
+    return c.json(ACCEPTED, 200);
+  });
+
+  app.openapi(resetPasswordRoute, async (c) => {
+    const body = c.req.valid('json');
+    try {
+      await container
+        .get<ResetPassword>(ACCOUNTS_TYPES.ResetPassword)
+        .execute({ token: body.token, newPassword: body.password });
+      return c.body(null, 204);
+    } catch (err) {
+      rethrowAccountsError(err);
+    }
+  });
+
+  app.openapi(requestMagicLinkRoute, async (c) => {
+    const body = c.req.valid('json');
+    // Non-enumerating: succeed identically whether or not the account exists.
+    await container.get<RequestMagicLink>(ACCOUNTS_TYPES.RequestMagicLink).execute(body);
+    return c.json(ACCEPTED, 200);
+  });
+
+  app.openapi(consumeMagicLinkRoute, async (c) => {
+    const body = c.req.valid('json');
+    try {
+      const session = await container
+        .get<ConsumeMagicLink>(ACCOUNTS_TYPES.ConsumeMagicLink)
+        .execute(body);
+      return c.json(toSessionResponse(session), 200);
+    } catch (err) {
+      rethrowAccountsError(err);
+    }
   });
 
   return app;

@@ -15,6 +15,7 @@ export { emailModule } from './module.js';
 export type {
   DeliveryGateway,
   BulkMessage,
+  MessageCategory,
   RenderedMessage,
   SenderIdentity,
   EmailRecipient,

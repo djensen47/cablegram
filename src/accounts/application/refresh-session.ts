@@ -2,7 +2,7 @@ import { inject, injectable } from 'inversify';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
 import type { AppConfig } from '../../shared/config/index.js';
 import type { Clock } from '../../shared/clock/index.js';
-import { AUTH_TYPES, hashRefreshToken, type AccessTokenService } from '../../shared/auth/index.js';
+import { AUTH_TYPES, hashOpaqueToken, type AccessTokenService } from '../../shared/auth/index.js';
 import { ACCOUNTS_TYPES } from '../types.js';
 import { InvalidRefreshTokenError } from '../domain/errors.js';
 import type { UserRepository } from './user-repository.js';
@@ -29,7 +29,7 @@ export class RefreshSession {
   ) {}
 
   async execute(input: RefreshInput): Promise<SessionTokens> {
-    const tokenHash = hashRefreshToken(input.refreshToken);
+    const tokenHash = hashOpaqueToken(input.refreshToken);
     const stored = await this.refreshTokens.findByHash(tokenHash);
     if (stored === null) {
       throw new InvalidRefreshTokenError();

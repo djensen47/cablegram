@@ -56,3 +56,15 @@ export class SetupAlreadyCompletedError extends AccountsError {
     super('Setup has already been completed');
   }
 }
+
+/**
+ * A presented one-time email token (password-reset or magic-link) is unknown,
+ * expired, already used, or scoped to a different purpose (ADR-013/014). Like
+ * `InvalidCredentialsError` it is deliberately non-specific — it never reveals
+ * which of those it was.
+ */
+export class InvalidOneTimeTokenError extends AccountsError {
+  constructor() {
+    super('Invalid or expired token');
+  }
+}

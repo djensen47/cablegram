@@ -13,4 +13,5 @@ export const COLLECTIONS = {
   sendRecords: 'send_records',
   users: 'users',
   refreshTokens: 'refresh_tokens',
+  oneTimeTokens: 'one_time_tokens',
 } as const;
