@@ -29,17 +29,19 @@ Shared technical modules live under `src/shared/`, each its own facade.
 
 ## Bounded contexts & the dependency DAG ([ADR-011](docs/adrs/ADR-011-bounded-contexts.md))
 
-Domain: `newsletters` · `subscriptions` · `deliverability` · `templates` · `campaigns`.
-Shared: `email` (Postmark ACL) · `auth` · `config` · `ids` · `clock` · `http` · `di`.
+Domain: `newsletters` · `subscriptions` · `deliverability` · `templates` · `campaigns` · `accounts`.
+Shared: `email` (Postmark ACL) · `auth` (JWT + refresh-token helpers) · `config` · `ids` · `clock` ·
+`http` · `di`.
 
 ```
 campaigns     → { newsletters, subscriptions, deliverability, templates, email }
 subscriptions → { newsletters }
 newsletters   → { templates }        (only if it names a default template)
+accounts      → { shared/* only }    (user accounts + auth; depends on no domain component)
 deliverability, templates, email, auth, shared/* → leaves
 ```
 
-Keep it acyclic. `email` (and every `shared/*`) imports **no** domain component.
+Keep it acyclic. `email`, `auth` (and every `shared/*`) import **no** domain component.
 
 ## Layer & boundary rules ([ADR-005](docs/adrs/ADR-005-boundary-enforcement.md))
 
@@ -125,11 +127,16 @@ scope.
   Prisma was removed and **ADR-007 is historical**. Do not reintroduce `prisma` / `@prisma/client` or
   `prisma generate` / `db push`, and don't follow ADR-007's Prisma mechanics. No replica set is
   needed — a standalone `mongod` suffices.
-- **Auth is unfinished — don't design as if it's done.** Today `/v1` uses only a static account
-  **API key** (`apiKeyAuth`). cablegram is single-tenant but **multi-user**: user accounts + login
-  are a *decided but not-yet-built* part of the API surface (JWT, roles admin/manager,
-  first-user-is-admin — [ADR-013](docs/adrs/ADR-013-authentication-user-accounts.md); plan in
-  `docs/auth-implementation-plan.md`). "Headless" / "single-tenant" do **not** mean "no user auth."
+- **Auth is JWT-only; there is no API key.** `/v1` is protected by a per-user **Bearer access JWT**
+  ([ADR-013](docs/adrs/ADR-013-authentication-user-accounts.md)); the old static `API_KEYS` /
+  `apiKeyAuth` are **gone** — don't reintroduce them. cablegram is single-tenant but **multi-user**:
+  the `accounts` component owns `User` (roles `admin` | `manager`, first-user-is-admin via one-time
+  `POST /v1/setup`). Login/refresh/logout (`/v1/auth/*`) and setup are the only open `/v1` routes;
+  every other `/v1` route needs a JWT, and `/v1/users` also needs `admin` (`requireRole`). Access
+  tokens are HS256 (`jose`, `JWT_SECRET`) minted/verified in `shared/auth`; refresh tokens are
+  **opaque + stored hashed** (`refresh_tokens`, revocable, rotated on refresh); passwords are
+  **argon2id** (`@node-rs/argon2`) behind a `PasswordHasher` interface. The **only** non-JWT
+  credential is the Postmark webhook's HTTP Basic-Auth (`/webhooks/postmark`, outside `/v1`).
 - **Postmark wire format** (request/response, webhook schema) is implemented in
   `src/shared/email/postmark-delivery-gateway.ts` and `src/campaigns/presentation/webhook-routes.ts` —
   treat that code (or live docs) as the source of truth, not memory, before restating a Postmark fact

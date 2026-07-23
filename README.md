@@ -23,7 +23,14 @@ npm run dev                 # tsx watch, serves on $PORT (default 3000)
 curl localhost:3000/health
 # {"status":"ok","service":"cablegram"}
 
-curl -H "x-api-key: dev-key-change-me" localhost:3000/v1/...
+# Bootstrap the first admin (open, one-time), then log in for a Bearer token (ADR-013):
+curl -X POST localhost:3000/v1/setup \
+  -H 'content-type: application/json' \
+  -d '{"email":"admin@example.com","password":"a-strong-password"}'
+TOKEN=$(curl -sX POST localhost:3000/v1/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"admin@example.com","password":"a-strong-password"}' | jq -r .accessToken)
+curl -H "authorization: Bearer $TOKEN" localhost:3000/v1/...
 ```
 
 ## Scripts
@@ -62,7 +69,7 @@ still unverified on the Functions path.
 docker build -t cablegram .
 docker run --rm -p 3000:3000 \
   -e DATABASE_URL="mongodb://host.docker.internal:27017/cablegram" \
-  -e API_KEYS="dev-key-change-me" \
+  -e JWT_SECRET="change-me-to-a-long-random-secret-at-least-32-chars" \
   -e POSTMARK_SERVER_TOKEN="pm-server-token" \
   -e POSTMARK_WEBHOOK_SECRET="change-me" \
   cablegram

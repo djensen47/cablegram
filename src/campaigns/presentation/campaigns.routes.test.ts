@@ -16,18 +16,10 @@ import { SUBSCRIPTION_TYPES, InMemorySubscriptionRepository, Subscribe } from '.
 import { DELIVERABILITY_TYPES, InMemorySuppressionRepository } from '../../deliverability/index.js';
 import { TEMPLATE_TYPES, InMemoryTemplateRepository, CreateTemplate } from '../../templates/index.js';
 import { CAMPAIGN_TYPES, InMemoryCampaignRepository, InMemorySendRecordRepository } from '../index.js';
-
-const env = {
-  DATABASE_URL: 'mongodb://localhost/cablegram',
-  API_KEYS: 'k1',
-  POSTMARK_SERVER_TOKEN: 't',
-  POSTMARK_WEBHOOK_SECRET: 's',
-} as NodeJS.ProcessEnv;
-
-const auth = { 'x-api-key': 'k1', 'content-type': 'application/json' };
+import { TEST_ENV, bearerHeaders } from '../../shared/testing/index.js';
 
 function build() {
-  const container: Container = buildContainer(env);
+  const container: Container = buildContainer(TEST_ENV);
   container.rebind(CAMPAIGN_TYPES.CampaignRepository).to(InMemoryCampaignRepository);
   container.rebind(CAMPAIGN_TYPES.SendRecordRepository).to(InMemorySendRecordRepository);
   container.rebind(NEWSLETTER_TYPES.NewsletterRepository).to(InMemoryNewsletterRepository);
@@ -63,9 +55,11 @@ describe('campaigns routes', () => {
   let gateway: InMemoryDeliveryGateway;
   let newsletterId: string;
   let templateId: string;
+  let auth: Record<string, string>;
 
   beforeEach(async () => {
     ({ app, container, gateway } = build());
+    auth = await bearerHeaders();
     newsletterId = await seedNewsletter(container);
     templateId = await seedTemplate(container);
   });
@@ -78,7 +72,7 @@ describe('campaigns routes', () => {
     });
   }
 
-  it('requires an API key', async () => {
+  it('requires a JWT', async () => {
     const res = await app.request('/v1/campaigns');
     expect(res.status).toBe(401);
   });

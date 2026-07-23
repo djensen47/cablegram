@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Container } from 'inversify';
 import { buildContainer } from '../../shared/di/index.js';
+import { TEST_ENV, bearerHeaders } from '../../shared/testing/index.js';
 import { createApp } from '../../app.js';
 import {
   EMAIL_TYPES,
@@ -14,17 +15,8 @@ import {
 } from '../../newsletters/index.js';
 import { SUBSCRIPTION_TYPES, InMemorySubscriptionRepository } from '../index.js';
 
-const env = {
-  DATABASE_URL: 'mongodb://localhost/cablegram',
-  API_KEYS: 'k1',
-  POSTMARK_SERVER_TOKEN: 't',
-  POSTMARK_WEBHOOK_SECRET: 's',
-} as NodeJS.ProcessEnv;
-
-const auth = { 'x-api-key': 'k1', 'content-type': 'application/json' };
-
 function build() {
-  const container: Container = buildContainer(env);
+  const container: Container = buildContainer(TEST_ENV);
   container.rebind(SUBSCRIPTION_TYPES.SubscriptionRepository).to(InMemorySubscriptionRepository);
   container.rebind(NEWSLETTER_TYPES.NewsletterRepository).to(InMemoryNewsletterRepository);
   const gateway = new InMemoryDeliveryGateway();
@@ -48,9 +40,11 @@ describe('subscriptions routes', () => {
   let container: Container;
   let gateway: InMemoryDeliveryGateway;
   let newsletterId: string;
+  let auth: Record<string, string>;
 
   beforeEach(async () => {
     ({ app, container, gateway } = build());
+    auth = await bearerHeaders();
     newsletterId = await seedNewsletter(container);
   });
 
@@ -62,7 +56,7 @@ describe('subscriptions routes', () => {
     });
   }
 
-  it('requires an API key', async () => {
+  it('requires a JWT', async () => {
     const res = await app.request(`/v1/newsletters/${newsletterId}/subscriptions`);
     expect(res.status).toBe(401);
   });

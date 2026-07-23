@@ -28,7 +28,7 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [010](ADR-010-single-tenant.md) | Single-Tenant model | Accepted |
 | [011](ADR-011-bounded-contexts.md) | Bounded Contexts & Component Topology | Accepted |
 | [012](ADR-012-persistence-mongodb-native-driver.md) | Persistence — MongoDB Native Driver behind the repository seam | Accepted |
-| [013](ADR-013-authentication-user-accounts.md) | Authentication & User Accounts (JWT, roles) | Accepted — not yet implemented |
+| [013](ADR-013-authentication-user-accounts.md) | Authentication & User Accounts (JWT, roles) | Accepted — implemented |
 
 ## How to read these
 

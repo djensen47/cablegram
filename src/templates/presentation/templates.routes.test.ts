@@ -1,17 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Container } from 'inversify';
 import { buildContainer } from '../../shared/di/index.js';
+import { TEST_ENV, bearerHeaders } from '../../shared/testing/index.js';
 import { createApp } from '../../app.js';
 import { TEMPLATE_TYPES, InMemoryTemplateRepository } from '../index.js';
-
-const env = {
-  DATABASE_URL: 'mongodb://localhost/cablegram',
-  API_KEYS: 'k1',
-  POSTMARK_SERVER_TOKEN: 't',
-  POSTMARK_WEBHOOK_SECRET: 's',
-} as NodeJS.ProcessEnv;
-
-const auth = { 'x-api-key': 'k1', 'content-type': 'application/json' };
 
 const body = {
   name: 'Weekly digest',
@@ -20,16 +12,18 @@ const body = {
 };
 
 function build() {
-  const container: Container = buildContainer(env);
+  const container: Container = buildContainer(TEST_ENV);
   container.rebind(TEMPLATE_TYPES.TemplateRepository).to(InMemoryTemplateRepository);
   return createApp(container);
 }
 
 describe('templates routes', () => {
   let app: ReturnType<typeof build>;
+  let auth: Record<string, string>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     app = build();
+    auth = await bearerHeaders();
   });
 
   async function create(overrides: Record<string, unknown> = {}) {
@@ -40,7 +34,7 @@ describe('templates routes', () => {
     });
   }
 
-  it('requires an API key', async () => {
+  it('requires a JWT', async () => {
     const res = await app.request('/v1/templates');
     expect(res.status).toBe(401);
   });

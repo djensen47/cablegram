@@ -11,7 +11,7 @@ open, rather than asserted as working.
 docker build -t cablegram .
 docker run --rm -p 3000:3000 \
   -e DATABASE_URL="mongodb://host.docker.internal:27017/cablegram" \
-  -e API_KEYS="dev-key-change-me" \
+  -e JWT_SECRET="change-me-to-a-long-random-secret-at-least-32-chars" \
   -e POSTMARK_SERVER_TOKEN="pm-server-token" \
   -e POSTMARK_WEBHOOK_SECRET="change-me" \
   cablegram

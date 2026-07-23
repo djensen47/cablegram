@@ -23,7 +23,7 @@ import {
   toSuppressionResponse,
 } from './schemas.js';
 
-const security = [{ ApiKeyAuth: [] }];
+const security = [{ BearerAuth: [] }];
 
 const notFoundResponse = errorResponse('Suppression not found');
 const badRequestResponse = errorResponse('Invalid request');

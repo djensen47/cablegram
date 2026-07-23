@@ -27,7 +27,7 @@ import {
 
 const env = {
   DATABASE_URL: 'mongodb://localhost/cablegram',
-  API_KEYS: 'k1',
+  JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 't',
   POSTMARK_WEBHOOK_SECRET: 's',
 } as NodeJS.ProcessEnv;
