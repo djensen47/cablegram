@@ -11,4 +11,6 @@ export const COLLECTIONS = {
   templates: 'templates',
   campaigns: 'campaigns',
   sendRecords: 'send_records',
+  users: 'users',
+  refreshTokens: 'refresh_tokens',
 } as const;

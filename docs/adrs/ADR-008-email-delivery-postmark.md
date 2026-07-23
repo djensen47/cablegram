@@ -73,8 +73,8 @@ Two things kept separate on purpose:
   webhook mechanism has no signing, only Basic Auth on the callback URL (and IP allowlisting).
   `POSTMARK_WEBHOOK_SECRET` (`shared/config`) is the Basic-Auth password the receiver checks with a
   constant-time comparison, not a signing key; the username is ignored. This is why the route is
-  mounted at the **top level** with its own middleware instead of behind the `/v1` API key
-  (`src/campaigns/presentation/webhook-routes.ts`).
+  mounted at the **top level** with its own middleware instead of behind the `/v1` JWT — it is the
+  sole non-JWT credential in the app (ADR-013) (`src/campaigns/presentation/webhook-routes.ts`).
 
 ## Consequences
 

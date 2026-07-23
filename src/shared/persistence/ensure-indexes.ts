@@ -16,6 +16,12 @@ import { COLLECTIONS } from './collections.js';
  *   duplicate `create` be rejected (ADR-011); plus `newsletterId` for listing.
  * - `campaigns`: `newsletterId` for scoped listing.
  * - `send_records`: `campaignId`.
+ * - `users`: unique `email` — one account per address (ADR-013); the login
+ *   lookup and the create-user guard both key on it.
+ * - `refresh_tokens`: a TTL index on `expiresAt` (`expireAfterSeconds: 0`) so
+ *   Mongo reaps expired refresh tokens on its own — validity is still checked
+ *   explicitly at refresh time, this is just housekeeping. The hash is the
+ *   `_id`, so lookup by hash is free.
  *
  * `newsletters` and `templates` need only their `_id` index (implicit, free);
  * `suppressions` keys on the address as `_id`, so its uniqueness is free too.
@@ -27,4 +33,8 @@ export async function ensureIndexes(db: Db): Promise<void> {
   ]);
   await db.collection(COLLECTIONS.campaigns).createIndexes([{ key: { newsletterId: 1 } }]);
   await db.collection(COLLECTIONS.sendRecords).createIndexes([{ key: { campaignId: 1 } }]);
+  await db.collection(COLLECTIONS.users).createIndexes([{ key: { email: 1 }, unique: true }]);
+  await db
+    .collection(COLLECTIONS.refreshTokens)
+    .createIndexes([{ key: { expiresAt: 1 }, expireAfterSeconds: 0 }]);
 }

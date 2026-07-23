@@ -1,29 +1,23 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Container } from 'inversify';
 import { buildContainer } from '../../shared/di/index.js';
+import { TEST_ENV, bearerHeaders } from '../../shared/testing/index.js';
 import { createApp } from '../../app.js';
 import { DELIVERABILITY_TYPES, InMemorySuppressionRepository } from '../index.js';
 
-const env = {
-  DATABASE_URL: 'mongodb://localhost/cablegram',
-  API_KEYS: 'k1',
-  POSTMARK_SERVER_TOKEN: 't',
-  POSTMARK_WEBHOOK_SECRET: 's',
-} as NodeJS.ProcessEnv;
-
-const auth = { 'x-api-key': 'k1', 'content-type': 'application/json' };
-
 function build() {
-  const container: Container = buildContainer(env);
+  const container: Container = buildContainer(TEST_ENV);
   container.rebind(DELIVERABILITY_TYPES.SuppressionRepository).to(InMemorySuppressionRepository);
   return createApp(container);
 }
 
 describe('deliverability routes', () => {
   let app: ReturnType<typeof build>;
+  let auth: Record<string, string>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     app = build();
+    auth = await bearerHeaders();
   });
 
   async function add(overrides: Record<string, unknown> = {}) {
@@ -34,7 +28,7 @@ describe('deliverability routes', () => {
     });
   }
 
-  it('requires an API key', async () => {
+  it('requires a JWT', async () => {
     const res = await app.request('/v1/suppressions');
     expect(res.status).toBe(401);
   });

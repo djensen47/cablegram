@@ -12,15 +12,12 @@ import { SUBSCRIPTION_TYPES, InMemorySubscriptionRepository, Subscribe } from '.
 import { DELIVERABILITY_TYPES, InMemorySuppressionRepository } from '../../deliverability/index.js';
 import { TEMPLATE_TYPES, InMemoryTemplateRepository, CreateTemplate } from '../../templates/index.js';
 import { CAMPAIGN_TYPES, InMemoryCampaignRepository, InMemorySendRecordRepository } from '../index.js';
+import { TEST_ENV, bearerHeaders } from '../../shared/testing/index.js';
 
-const env = {
-  DATABASE_URL: 'mongodb://localhost/cablegram',
-  API_KEYS: 'k1',
-  POSTMARK_SERVER_TOKEN: 't',
-  POSTMARK_WEBHOOK_SECRET: 'hook-secret',
-} as NodeJS.ProcessEnv;
+// This suite needs a known webhook secret for the Basic-Auth assertions; the
+// JWT secret stays the default so `bearerHeaders()` matches the app.
+const env = { ...TEST_ENV, POSTMARK_WEBHOOK_SECRET: 'hook-secret' } as NodeJS.ProcessEnv;
 
-const auth = { 'x-api-key': 'k1', 'content-type': 'application/json' };
 // Postmark sends Basic Auth; the receiver checks the password against the secret.
 const webhookAuth = {
   authorization: `Basic ${Buffer.from('postmark:hook-secret').toString('base64')}`,
@@ -47,9 +44,11 @@ function post(app: ReturnType<typeof build>['app'], headers: Record<string, stri
 describe('postmark webhook receiver', () => {
   let app: ReturnType<typeof build>['app'];
   let container: Container;
+  let auth: Record<string, string>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     ({ app, container } = build());
+    auth = await bearerHeaders();
   });
 
   async function sendOne(): Promise<string> {

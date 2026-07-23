@@ -69,7 +69,9 @@ Small, focused, each its own facade, each a **leaf** that imports no domain comp
   interface + `PostmarkDeliveryGateway` (Bulk API, ADR-008) + `parseProviderEvent(raw) →
   DeliveryEvent[]`. Consumed by `campaigns` (broadcasts) and `subscriptions` (transactional opt-in /
   unsubscribe confirmations).
-- **`auth`** — single-tenant API-key authentication (ADR-004, ADR-010).
+- **`auth`** — JWT access-token issue/verify seam (`jose`, HS256) plus opaque refresh-token helpers;
+  consumed by `accounts` (issuing) and `shared/http`'s `jwtAuth` (verifying). JWT-only, no API key
+  (ADR-013).
 - **`config`** (env, ADR-009) · **`ids`** (id value objects, ADR-012) · **`clock`** · **`http`**
   (Hono middleware, ADR-006) · **`di`** (composition root, ADR-003).
 

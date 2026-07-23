@@ -28,7 +28,7 @@ import {
   toSubscriptionResponse,
 } from './schemas.js';
 
-const security = [{ ApiKeyAuth: [] }];
+const security = [{ BearerAuth: [] }];
 
 const notFoundResponse = errorResponse('Newsletter or subscription not found');
 const badRequestResponse = errorResponse('Invalid request');

@@ -5,6 +5,8 @@ import { loadConfig, type AppConfig } from '../config/index.js';
 import { DefaultClock, type Clock } from '../clock/index.js';
 import { InMemoryIdempotencyStore, type IdempotencyStore } from '../http/index.js';
 import { emailModule } from '../email/index.js';
+import { authModule } from '../auth/index.js';
+import { accountsModule } from '../../accounts/index.js';
 import { newsletterModule } from '../../newsletters/index.js';
 import { subscriptionModule } from '../../subscriptions/index.js';
 import { deliverabilityModule } from '../../deliverability/index.js';
@@ -47,11 +49,15 @@ export function buildContainer(env: NodeJS.ProcessEnv = process.env): Container 
 
   // Shared technical modules with their own DI wiring. `email` binds the
   // Postmark-backed delivery gateway (ADR-008); tests rebind it to an in-memory
-  // double. Still a leaf — it imports no domain component.
+  // double. `auth` binds the `jose` access-token service (ADR-013). Both stay
+  // leaves — they import no domain component.
   container.load(emailModule);
+  container.load(authModule);
 
   // Domain component modules (ADR-011). Each names its own concrete repositories
   // and use cases; tests rebind the repository token to an in-memory double.
+  // `accounts` (user accounts + auth, ADR-013) depends only on shared modules.
+  container.load(accountsModule);
   container.load(newsletterModule);
   container.load(subscriptionModule);
   container.load(deliverabilityModule);

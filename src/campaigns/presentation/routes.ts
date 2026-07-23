@@ -36,16 +36,16 @@ import {
   toSendRecordResponse,
 } from './schemas.js';
 
-const security = [{ ApiKeyAuth: [] }];
+const security = [{ BearerAuth: [] }];
 
 const notFoundResponse = errorResponse('Campaign or newsletter not found');
 const badRequestResponse = errorResponse('Invalid request');
 const conflictResponse = errorResponse(
   'The campaign is not in a state that permits this operation',
 );
-const unauthorizedResponse = errorResponse('Missing or invalid API key');
+const unauthorizedResponse = errorResponse('Missing or invalid access token');
 
-// Every route on this router sits behind `apiKeyAuth` (mounted at `/v1` in
+// Every route on this router sits behind `jwtAuth` (mounted at `/v1` in
 // app.ts) — document the 401 it can produce on all of them (OpenAPI polish:
 // the security requirement above only *declares* the scheme, it doesn't
 // document the failure response).

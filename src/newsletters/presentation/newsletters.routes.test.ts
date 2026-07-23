@@ -1,17 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Container } from 'inversify';
 import { buildContainer } from '../../shared/di/index.js';
+import { TEST_ENV, bearerHeaders } from '../../shared/testing/index.js';
 import { createApp } from '../../app.js';
 import { NEWSLETTER_TYPES, InMemoryNewsletterRepository } from '../index.js';
-
-const env = {
-  DATABASE_URL: 'mongodb://localhost/cablegram',
-  API_KEYS: 'k1',
-  POSTMARK_SERVER_TOKEN: 't',
-  POSTMARK_WEBHOOK_SECRET: 's',
-} as NodeJS.ProcessEnv;
-
-const auth = { 'x-api-key': 'k1', 'content-type': 'application/json' };
 
 const body = {
   name: 'The Weekly Dispatch',
@@ -20,16 +12,18 @@ const body = {
 };
 
 function build() {
-  const container: Container = buildContainer(env);
+  const container: Container = buildContainer(TEST_ENV);
   container.rebind(NEWSLETTER_TYPES.NewsletterRepository).to(InMemoryNewsletterRepository);
   return createApp(container);
 }
 
 describe('newsletters routes', () => {
   let app: ReturnType<typeof build>;
+  let auth: Record<string, string>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     app = build();
+    auth = await bearerHeaders();
   });
 
   async function create(overrides: Record<string, unknown> = {}) {
@@ -41,7 +35,7 @@ describe('newsletters routes', () => {
     return res;
   }
 
-  it('requires an API key', async () => {
+  it('requires a JWT', async () => {
     const res = await app.request('/v1/newsletters');
     expect(res.status).toBe(401);
   });
@@ -141,6 +135,6 @@ describe('newsletters routes', () => {
     expect(doc.openapi).toMatch(/^3\.1/);
     expect(doc.paths).toHaveProperty('/v1/newsletters');
     expect(doc.paths).toHaveProperty('/v1/newsletters/{id}');
-    expect(doc.components?.securitySchemes).toHaveProperty('ApiKeyAuth');
+    expect(doc.components?.securitySchemes).toHaveProperty('BearerAuth');
   });
 });

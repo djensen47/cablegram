@@ -25,7 +25,7 @@ import {
   toNewsletterResponse,
 } from './schemas.js';
 
-const security = [{ ApiKeyAuth: [] }];
+const security = [{ BearerAuth: [] }];
 
 const notFoundResponse = errorResponse('Newsletter not found');
 const badRequestResponse = errorResponse('Invalid request');
