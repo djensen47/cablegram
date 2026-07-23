@@ -1,8 +1,7 @@
 # Testing
 
-Two suites, two `vitest` configs, on purpose — the "no real-DB tests yet" trade-off documented in
-[`docs/BUILD-PLAN.md`](BUILD-PLAN.md) has been resolved for the Mongo repositories, but not by making
-the default suite slower or DB-dependent.
+Two suites, two `vitest` configs, on purpose. The Mongo repositories are verified against a real
+database, but not by making the default suite slower or DB-dependent — the two suites split that work.
 
 ## `npm test` — the default suite (fast, no DB)
 
@@ -21,8 +20,7 @@ non-blocking job later.
 
 ### Why `mongodb-memory-server`, not testcontainers
 
-Both were the realistic options (`docs/BUILD-PLAN.md`'s chunk 8 named this as an open decision). Picked
-`mongodb-memory-server`:
+Both were realistic options. Picked `mongodb-memory-server`:
 
 - **No Docker.** It downloads and runs a real `mongod` binary directly (cached under
   `~/.cache/mongodb-binaries` after the first run) — testcontainers needs a working Docker daemon in

@@ -71,5 +71,5 @@ no loss of functionality — the two entrypoints share every line of business lo
 
 `.github/workflows/ci.yml` runs on every PR (and on push to `main`): `npm ci` → `npm run typecheck`
 → `npm run lint` (includes `eslint-plugin-boundaries`, ADR-005) → `npm test` (Vitest, in-memory
-repositories only — no live database, per the locked test convention in `docs/BUILD-PLAN.md`). There
-is no `prisma generate` step anymore — the native driver needs no codegen (ADR-012).
+repositories only — no live database, ADR-003). There is no `prisma generate` step — the native
+driver needs no codegen (ADR-012).
