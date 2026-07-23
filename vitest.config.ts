@@ -1,8 +1,8 @@
 import { defineConfig } from 'vitest/config';
 
 // The default, fast suite (`npm test`): use cases + routes against
-// `InMemory<X>Repository` doubles only — no live database (the locked
-// convention, docs/BUILD-PLAN.md). Prisma repository contract tests live in
+// `InMemory<X>Repository` doubles only — no live database (the locked test
+// convention, ADR-003). Mongo repository contract tests live in
 // `*.integration.test.ts` files and run only via `npm run test:integration`
 // (`vitest.integration.config.ts`) — see docs/testing.md.
 export default defineConfig({
