@@ -114,7 +114,7 @@ export class SendCampaign {
             textBody: message.textBody,
           },
           recipients: allowed.map((r) => {
-            const headers = this.unsubscribeHeaders(campaign.newsletterId, r.subscriptionId);
+            const headers = this.unsubscribeHeaders(campaign.newsletterId, r.subscriptionId, r.address);
             return headers === undefined ? { email: r.address } : { email: r.address, headers };
           }),
           // Newsletters are broadcasts (ADR-008): broadcast stream + token.
@@ -141,25 +141,32 @@ export class SendCampaign {
 
   /**
    * Build a recipient's RFC 8058 `List-Unsubscribe` headers (ADR-015): an
-   * absolute, token-carrying URL plus the one-click marker. Returns `undefined`
-   * when no public `baseUrl` is configured — the API then has nowhere to point,
-   * so the send simply omits the headers. The token is a stateless HMAC bound to
-   * `(newsletterId, subscriptionId)`.
+   * absolute, token-carrying URL plus the one-click marker. The URL points at
+   * the operator's own `unsubscribe.url` when configured, otherwise at the
+   * built-in `GET /v1/unsubscribe` page under `baseUrl`. Returns `undefined`
+   * when neither is set — there is nowhere to point, so the send omits the
+   * headers. The token is a stateless HMAC bound to `(newsletterId,
+   * subscriptionId)`; `email` rides along for the landing page to display.
    */
   private unsubscribeHeaders(
     newsletterId: string,
     subscriptionId: string,
+    email: string,
   ): readonly EmailHeader[] | undefined {
-    const base = this.config.baseUrl;
-    if (base === null) return undefined;
+    const target =
+      this.config.unsubscribe.url ??
+      (this.config.baseUrl === null ? null : `${this.config.baseUrl}${PUBLIC_UNSUBSCRIBE_PATH}`);
+    if (target === null) return undefined;
+
     const token = unsubscribeToken(this.config.unsubscribe.tokenSecret, newsletterId, subscriptionId);
-    const url =
-      `${base}${PUBLIC_UNSUBSCRIBE_PATH}` +
-      `?newsletterId=${encodeURIComponent(newsletterId)}` +
-      `&subscriptionId=${encodeURIComponent(subscriptionId)}` +
-      `&token=${encodeURIComponent(token)}`;
+    // The URL API preserves any query already on an operator-supplied url.
+    const url = new URL(target);
+    url.searchParams.set('newsletterId', newsletterId);
+    url.searchParams.set('subscriptionId', subscriptionId);
+    url.searchParams.set('token', token);
+    url.searchParams.set('email', email);
     return [
-      { name: 'List-Unsubscribe', value: `<${url}>` },
+      { name: 'List-Unsubscribe', value: `<${url.toString()}>` },
       { name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' },
     ];
   }

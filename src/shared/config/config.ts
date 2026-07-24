@@ -91,10 +91,12 @@ export interface AppConfig {
   /**
    * cablegram's own public origin (ADR-015), e.g. `https://api.example.com`. The
    * first URL the API needs to point at **itself** (unlike the account-mail bases,
-   * which point at an operator front-end): it builds the absolute
-   * `List-Unsubscribe` header + body-link URLs recipients hit. When it is unset,
-   * campaign sends simply omit the `List-Unsubscribe` headers — sending is
-   * unaffected. No trailing slash (normalized here).
+   * which point at an operator front-end). It is used to build the absolute
+   * `List-Unsubscribe` link when no operator `unsubscribe.url` is configured —
+   * the link then points at the built-in `GET /v1/unsubscribe` page. When both
+   * this and `unsubscribe.url` are unset, campaign sends omit the
+   * `List-Unsubscribe` headers — sending is unaffected. No trailing slash
+   * (normalized here).
    */
   readonly baseUrl: string | null;
   /** Public, token-authenticated unsubscribe settings (ADR-015). */
@@ -108,14 +110,14 @@ export interface AppConfig {
      */
     readonly tokenSecret: string;
     /**
-     * How the browser-facing unsubscribe GET responds. When true, it `302`s to
-     * `redirectUrl` (with the address on the query string) after unsubscribing;
-     * when false it renders a small generic confirmation page instead. The
-     * mail-client one-click POST (RFC 8058) is unaffected — it always returns 200.
+     * The operator's **own** unsubscribe page, e.g. `https://example.com/unsubscribe`.
+     * When set, each recipient's `List-Unsubscribe` link points here, carrying
+     * `newsletterId`, `subscriptionId`, `token` and `email` on the query string;
+     * the operator's page is responsible for POSTing back to `POST /v1/unsubscribe`
+     * (which returns JSON). When null, the link instead points at the built-in
+     * `GET /v1/unsubscribe` page (served from `baseUrl`), which POSTs for the user.
      */
-    readonly redirectEnabled: boolean;
-    /** Where the browser GET redirects on success; required when `redirectEnabled`. */
-    readonly redirectUrl: string | null;
+    readonly url: string | null;
   };
 }
 
@@ -154,19 +156,16 @@ const schema = z
     MAGIC_LINK_URL_BASE: z.string().url().optional(),
     PASSWORD_RESET_TTL_SECONDS: z.coerce.number().int().positive().default(3_600),
     MAGIC_LINK_TTL_SECONDS: z.coerce.number().int().positive().default(900),
-    // The API's own public origin — needed to emit absolute List-Unsubscribe
-    // links (ADR-015); when unset, campaign sends omit those headers.
+    // The API's own public origin — used to build the built-in unsubscribe
+    // page's link when no operator UNSUBSCRIBE_URL is set (ADR-015); when both
+    // are unset, campaign sends omit the List-Unsubscribe headers.
     BASE_URL: z.string().url().optional(),
     // Optional dedicated HMAC secret for unsubscribe tokens; falls back to
     // JWT_SECRET below when unset (a single-secret deployment is unchanged).
     UNSUBSCRIBE_TOKEN_SECRET: z.string().min(1).optional(),
-    // Same explicit-opt-in string flag shape as EMAIL_LINK_ENABLED — `z.coerce.
-    // boolean()` would wrongly read the string "false" as true.
-    UNSUBSCRIBE_REDIRECT_ENABLED: z
-      .string()
-      .optional()
-      .transform((v) => v?.toLowerCase() === 'true'),
-    UNSUBSCRIBE_REDIRECT_URL: z.string().url().optional(),
+    // The operator's own unsubscribe page. When set, List-Unsubscribe links
+    // point here (carrying the token + email); the page POSTs to /v1/unsubscribe.
+    UNSUBSCRIBE_URL: z.string().url().optional(),
   })
   // When links are enabled, both front-end base URLs must be present — the email
   // has nowhere to point otherwise.
@@ -184,16 +183,6 @@ const schema = z
         code: z.ZodIssueCode.custom,
         path: ['MAGIC_LINK_URL_BASE'],
         message: 'is required when EMAIL_LINK_ENABLED is true',
-      });
-    }
-  })
-  // The unsubscribe redirect has nowhere to send the browser without a target.
-  .superRefine((e, ctx) => {
-    if (e.UNSUBSCRIBE_REDIRECT_ENABLED && !e.UNSUBSCRIBE_REDIRECT_URL) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['UNSUBSCRIBE_REDIRECT_URL'],
-        message: 'is required when UNSUBSCRIBE_REDIRECT_ENABLED is true',
       });
     }
   });
@@ -242,8 +231,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     unsubscribe: {
       // Dedicated secret when provided, else the JWT secret (single-secret setup).
       tokenSecret: e.UNSUBSCRIBE_TOKEN_SECRET ?? e.JWT_SECRET,
-      redirectEnabled: e.UNSUBSCRIBE_REDIRECT_ENABLED,
-      redirectUrl: e.UNSUBSCRIBE_REDIRECT_URL ?? null,
+      url: e.UNSUBSCRIBE_URL ?? null,
     },
   };
 }

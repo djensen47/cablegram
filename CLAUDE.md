@@ -153,21 +153,24 @@ scope.
   (`RefreshTokenRepository.deleteAllForUser`); magic-link consume reuses login's exported
   `issueSession(...)` so both session types are identical. Account mail is sent by `AccountMailer` from
   `SYSTEM_EMAIL_FROM_ADDRESS`; the link vs. raw-token presentation is gated by `EMAIL_LINK_ENABLED`.
-- **Public unsubscribe is a stateless-HMAC token endpoint, and unsubscribe ≠ suppression**
-  ([ADR-015](docs/adrs/ADR-015-public-token-unsubscribe.md)). The subscriber-facing `GET`/`POST
-  /v1/unsubscribe` (open; in `OPEN_V1_PATHS`) is authenticated by an **HMAC token bound to
+- **Public unsubscribe is a stateless-HMAC token endpoint where only `POST` mutates, and unsubscribe ≠
+  suppression** ([ADR-015](docs/adrs/ADR-015-public-token-unsubscribe.md)). The subscriber-facing
+  `/v1/unsubscribe` (open; in `OPEN_V1_PATHS`) is authenticated by an **HMAC token bound to
   `(newsletterId, subscriptionId)`** — `unsubscribeToken()` / `verifyUnsubscribeToken()` in `shared/auth`,
   secret `UNSUBSCRIBE_TOKEN_SECRET` (**falls back to `JWT_SECRET`**). It's **derived, not stored** —
   long-lived + idempotent by design, so **don't** route it through the expiring, single-use
-  `one_time_tokens` store, and there's **no** new column/collection/index. The `PublicUnsubscribe` use
-  case is non-revealing (forged token → 400; valid-but-missing row → quiet success) and reuses the
-  domain `subscription.unsubscribe(now)`. It flips **per-newsletter status only — it does NOT add to the
-  global `deliverability` suppression list** (that's hard-bounce/complaint territory; keep them
-  separate). Every campaign send emits a **per-recipient** `List-Unsubscribe` + `List-Unsubscribe-Post`
-  (RFC 8058 one-click) header, built from `BASE_URL` (the API's own public origin; unset → headers
-  omitted) — carried on the `email` port's per-recipient `EmailRecipient.headers`, mapped to the Postmark
-  Bulk per-message `Headers`. The operator JWT endpoint
-  (`.../subscriptions/{id}/unsubscribe`) is kept as-is — different caller.
+  `one_time_tokens` store, and there's **no** new column/collection/index. **`POST` does the unsubscribe**
+  (returns JSON; the RFC 8058 one-click target + what the pages call); **`GET` only renders a page and
+  changes no state** — that split is deliberate, so a link scanner that pre-fetches the URL can't opt
+  anyone out. **Don't** move the mutation back onto `GET`. The `PublicUnsubscribe` use case is
+  non-revealing (forged token → 400; valid-but-missing row → quiet success) and reuses the domain
+  `subscription.unsubscribe(now)`. It flips **per-newsletter status only — it does NOT add to the global
+  `deliverability` suppression list** (that's hard-bounce/complaint territory; keep them separate). Every
+  campaign send emits a **per-recipient** `List-Unsubscribe` + `List-Unsubscribe-Post` header — carried
+  on the `email` port's per-recipient `EmailRecipient.headers`, mapped to the Postmark Bulk per-message
+  `Headers`. The link points at the operator's own `UNSUBSCRIBE_URL` when set (their page POSTs back),
+  else at the built-in `GET` page under `BASE_URL`; unset-both → headers omitted. The operator JWT
+  endpoint (`.../subscriptions/{id}/unsubscribe`) is kept as-is — different caller.
 - **The email port carries a business `category`, not a Postmark stream.** `BulkMessage.category` is
   `'broadcast' | 'transactional'` (campaigns → broadcast; subscribe confirmations + account mail →
   transactional). The Postmark adapter maps it to both the message stream **and** the signing token:

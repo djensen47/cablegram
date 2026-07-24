@@ -27,7 +27,7 @@ async function seed(container: Container): Promise<{ newsletterId: string; subsc
 }
 
 function unsubUrl(newsletterId: string, subscriptionId: string, token: string): string {
-  const q = new URLSearchParams({ newsletterId, subscriptionId, token });
+  const q = new URLSearchParams({ newsletterId, subscriptionId, token, email: 'reader@dispatch.example' });
   return `/v1/unsubscribe?${q.toString()}`;
 }
 
@@ -51,42 +51,32 @@ describe('public unsubscribe routes (ADR-015)', () => {
     return rows[0]?.status;
   }
 
-  it('GET is reachable with NO JWT and renders an HTML confirmation by default', async () => {
+  it('GET is reachable with NO JWT, renders an HTML page, and does NOT unsubscribe (scanner-safe)', async () => {
     const res = await app.request(unsubUrl(newsletterId, subscriptionId, token));
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
-    expect(await res.text()).toMatch(/unsubscribed/i);
-    expect(await currentStatus()).toBe('unsubscribed');
+    const body = await res.text();
+    expect(body).toMatch(/unsubscribe/i);
+    // The GET must not mutate — a pre-fetching link scanner cannot opt anyone out.
+    expect(await currentStatus()).toBe('subscribed');
   });
 
-  it('GET redirects to the configured landing page (with the address) when enabled', async () => {
-    ({ app, container } = build({
-      UNSUBSCRIBE_REDIRECT_ENABLED: 'true',
-      UNSUBSCRIBE_REDIRECT_URL: 'https://example.com/goodbye',
-    }));
-    ({ newsletterId, subscriptionId } = await seed(container));
-    token = unsubscribeToken(TEST_JWT_SECRET, newsletterId, subscriptionId);
-
-    const res = await app.request(unsubUrl(newsletterId, subscriptionId, token));
-    expect(res.status).toBe(302);
-    const location = res.headers.get('location')!;
-    expect(location).toContain('https://example.com/goodbye');
-    expect(location).toContain('email=reader%40dispatch.example');
-  });
-
-  it('POST one-click (List-Unsubscribe=One-Click) works with no JWT and returns 200', async () => {
+  it('POST one-click (List-Unsubscribe=One-Click) unsubscribes with no JWT and returns JSON', async () => {
     const res = await app.request(unsubUrl(newsletterId, subscriptionId, token), {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: 'List-Unsubscribe=One-Click',
     });
     expect(res.status).toBe(200);
-    expect((await res.json()) as { status: string }).toEqual({ status: 'unsubscribed' });
+    expect((await res.json()) as { status: string; email: string }).toEqual({
+      status: 'unsubscribed',
+      email: 'reader@dispatch.example',
+    });
     expect(await currentStatus()).toBe('unsubscribed');
   });
 
-  it('rejects a forged token (400) and leaves the subscription subscribed', async () => {
-    const res = await app.request(unsubUrl(newsletterId, subscriptionId, 'forged'));
+  it('POST rejects a forged token (400) and leaves the subscription subscribed', async () => {
+    const res = await app.request(unsubUrl(newsletterId, subscriptionId, 'forged'), { method: 'POST' });
     expect(res.status).toBe(400);
     expect(await currentStatus()).toBe('subscribed');
   });

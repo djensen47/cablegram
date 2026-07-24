@@ -351,11 +351,15 @@ describe('campaigns — per-recipient List-Unsubscribe headers (ADR-015)', () =>
 
   // A container whose config carries a public BASE_URL + a distinct unsubscribe
   // secret, so the send path emits List-Unsubscribe headers.
-  function withHeadersEnv(): { container: Container; gateway: InMemoryDeliveryGateway } {
+  function withHeadersEnv(extraEnv: Record<string, string> = {}): {
+    container: Container;
+    gateway: InMemoryDeliveryGateway;
+  } {
     const container = buildContainer({
       ...env,
       BASE_URL,
       UNSUBSCRIBE_TOKEN_SECRET: UNSUB_SECRET,
+      ...extraEnv,
     } as NodeJS.ProcessEnv);
     container.rebind(CAMPAIGN_TYPES.CampaignRepository).to(InMemoryCampaignRepository);
     container.rebind(CAMPAIGN_TYPES.SendRecordRepository).to(InMemorySendRecordRepository);
@@ -392,13 +396,27 @@ describe('campaigns — per-recipient List-Unsubscribe headers (ADR-015)', () =>
     const listUnsub = headers['List-Unsubscribe'];
     expect(listUnsub).toMatch(/^<https:\/\/api\.dispatch\.test\/v1\/unsubscribe\?.+>$/);
 
-    // The URL carries this recipient's own newsletter + subscription + a token
-    // that verifies against the configured unsubscribe secret.
+    // The URL carries this recipient's own newsletter + subscription + email + a
+    // token that verifies against the configured unsubscribe secret.
     const url = new URL(listUnsub!.slice(1, -1));
     expect(url.searchParams.get('newsletterId')).toBe(newsletterId);
+    expect(url.searchParams.get('email')).toBe('reader@dispatch.example');
     const subscriptionId = url.searchParams.get('subscriptionId')!;
     const token = url.searchParams.get('token')!;
     expect(verifyUnsubscribeToken(UNSUB_SECRET, newsletterId, subscriptionId, token)).toBe(true);
+  });
+
+  it('points the List-Unsubscribe link at the operator UNSUBSCRIBE_URL when configured', async () => {
+    const { container, gateway } = withHeadersEnv({ UNSUBSCRIBE_URL: 'https://acme.example/goodbye' });
+    const { newsletterId, recipient } = await sendOneCampaign(container, gateway);
+
+    const listUnsub = (recipient.headers ?? []).find((h) => h.name === 'List-Unsubscribe')!.value;
+    const url = new URL(listUnsub.slice(1, -1));
+    expect(url.origin + url.pathname).toBe('https://acme.example/goodbye');
+    // Still carries the token params the operator's page needs to POST back.
+    expect(url.searchParams.get('newsletterId')).toBe(newsletterId);
+    expect(url.searchParams.get('token')).toBeTruthy();
+    expect(url.searchParams.get('email')).toBe('reader@dispatch.example');
   });
 
   it('round-trips: the header URL’s token unsubscribes at the public use case', async () => {

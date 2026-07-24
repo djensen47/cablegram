@@ -94,12 +94,11 @@ describe('loadConfig', () => {
     });
   });
 
-  it('defaults BASE_URL to null and the unsubscribe secret to the JWT secret (ADR-015)', () => {
+  it('defaults BASE_URL + UNSUBSCRIBE_URL to null and the unsubscribe secret to the JWT secret (ADR-015)', () => {
     const c = loadConfig(base);
     expect(c.baseUrl).toBeNull();
     expect(c.unsubscribe.tokenSecret).toBe(base.JWT_SECRET);
-    expect(c.unsubscribe.redirectEnabled).toBe(false);
-    expect(c.unsubscribe.redirectUrl).toBeNull();
+    expect(c.unsubscribe.url).toBeNull();
   });
 
   it('normalizes BASE_URL by trimming a trailing slash', () => {
@@ -113,17 +112,8 @@ describe('loadConfig', () => {
     expect(c.unsubscribe.tokenSecret).toBe('a-separate-unsub-secret');
   });
 
-  it('requires UNSUBSCRIBE_REDIRECT_URL when UNSUBSCRIBE_REDIRECT_ENABLED is true', () => {
-    expect(() =>
-      loadConfig({ ...base, UNSUBSCRIBE_REDIRECT_ENABLED: 'true' } as NodeJS.ProcessEnv),
-    ).toThrow(/UNSUBSCRIBE_REDIRECT_URL.*required/);
-
-    const c = loadConfig({
-      ...base,
-      UNSUBSCRIBE_REDIRECT_ENABLED: 'true',
-      UNSUBSCRIBE_REDIRECT_URL: 'https://example.com/goodbye',
-    } as NodeJS.ProcessEnv);
-    expect(c.unsubscribe.redirectEnabled).toBe(true);
-    expect(c.unsubscribe.redirectUrl).toBe('https://example.com/goodbye');
+  it('carries the operator UNSUBSCRIBE_URL when set', () => {
+    const c = loadConfig({ ...base, UNSUBSCRIBE_URL: 'https://example.com/unsubscribe' } as NodeJS.ProcessEnv);
+    expect(c.unsubscribe.url).toBe('https://example.com/unsubscribe');
   });
 });

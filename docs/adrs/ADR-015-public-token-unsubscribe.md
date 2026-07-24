@@ -48,19 +48,34 @@ URL-safe base64, verified by recomputing and comparing in constant time (`shared
 Because `OPEN_V1_PATHS` in `src/app.ts` is an **exact-match** set, the endpoint is a **fixed** path,
 `/v1/unsubscribe`, carrying `newsletterId`, `subscriptionId` and `token` as query parameters — added as
 one entry to `OPEN_V1_PATHS` with no change to the JWT gate. (A parameterized path under the nested
-subscriptions router could not be exact-matched there.) Two methods on it:
+subscriptions router could not be exact-matched there.) Two methods, split so **only `POST` mutates**:
 
-- **`GET`** — the human's body link. Verifies the token, flips the subscription to `unsubscribed`
-  (reusing the domain `subscription.unsubscribe(now)`; idempotent), then either **`302`-redirects** to a
-  configured landing page (`UNSUBSCRIBE_REDIRECT_ENABLED` + `UNSUBSCRIBE_REDIRECT_URL`, with the address
-  on the query string) or renders a small, self-contained HTML confirmation.
-- **`POST`** — the RFC 8058 one-click target. Same verification and effect, always returns `200` (mail
-  clients don't render a body or follow redirects).
+- **`POST`** — the single state-changing call. Verifies the token, flips the subscription to
+  `unsubscribed` (reusing the domain `subscription.unsubscribe(now)`; idempotent), returns
+  `200 {"status":"unsubscribed","email":…}`. This is the target for the RFC 8058 one-click header, for
+  the built-in page's script, and for an operator's own page.
+- **`GET`** — serves a small, self-contained HTML page (inlined CSS + vanilla JS) that POSTs back to the
+  same endpoint on a confirm button and swaps in the result. It **changes no state**.
+
+Putting the mutation on `POST` (not `GET`) is deliberate: email **link scanners pre-fetch URLs** with
+`GET`, so a state-changing `GET` would let a scanner unsubscribe recipients who never clicked. A `GET`
+that only renders, with the opt-out on a `POST`, closes that hole and still satisfies RFC 8058 (its
+one-click *is* a `POST`).
 
 The use case is **non-revealing and idempotent**: a forged/mismatched token is a flat `400`; a valid
 token whose row no longer exists succeeds quietly; an already-unsubscribed row is a `200` no-op — none
 of these leak whether an address is subscribed. The operator JWT endpoint is **kept unchanged** — the
 two serve different callers.
+
+### Where the link points: operator page or built-in
+
+The per-recipient `List-Unsubscribe` link points at the operator's **own** page when `UNSUBSCRIBE_URL`
+is configured — carrying `newsletterId`, `subscriptionId`, `token` and `email` on the query string, so
+the operator's page can display the address and POST back to `/v1/unsubscribe`. When `UNSUBSCRIBE_URL`
+is unset, the link points at the **built-in** `GET /v1/unsubscribe` page (served from `BASE_URL`), which
+does the POST for the user. Either way the API's `POST /v1/unsubscribe` is the one authority that
+performs the unsubscribe and returns JSON. (There is no redirect: the email link points straight at
+whichever page is in play, so no `302` hop is needed.)
 
 ### Per-recipient List-Unsubscribe headers on sends
 
@@ -94,9 +109,12 @@ Unsubscribing flips **per-newsletter status only**. It does **not** add the addr
 - Trade-off: a stateless token can only be revoked **en masse** by rotating `UNSUBSCRIBE_TOKEN_SECRET`,
   not per subscription. That is an accepted cost — an unsubscribe link is low-risk (its only power is to
   stop mail), so global rotation is a sufficient and simple kill switch.
-- The `GET` confirmation page is a small HTML surface on an otherwise headless API ([ADR-004](ADR-004-headless-api-only.md)).
-  It is unavoidable — a human clicked a link and a browser will render *something* — and is opt-out via
-  a redirect to the operator's own page. It serves no application data and consumes no API contract.
+- The built-in `GET` page is a small HTML surface on an otherwise headless API ([ADR-004](ADR-004-headless-api-only.md)).
+  It is unavoidable — a human clicked a link and a browser will render *something* — and is fully opt-out:
+  set `UNSUBSCRIBE_URL` and the email links to the operator's own page instead. It serves no application
+  data and consumes no API contract.
+- Because the unsubscribe is on `POST` and the `GET` only renders, a link scanner that pre-fetches the
+  URL cannot opt anyone out — the safety property that motivated the GET/POST split.
 
 ## Related
 
