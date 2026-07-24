@@ -105,6 +105,7 @@ users).
 | `POST /v1/auth/logout` | open | Revoke a refresh token. |
 | `POST /v1/auth/password-reset` · `POST /v1/auth/password-reset/confirm` | open | Email-based password reset (request → confirm). |
 | `POST /v1/auth/magic-link` · `POST /v1/auth/magic-link/consume` | open | Passwordless login (request → consume). |
+| `GET /v1/unsubscribe` · `POST /v1/unsubscribe` | **open, token** | Public unsubscribe: the query `token` (HMAC-bound to the newsletter + subscription) authenticates — no JWT. `GET` is the body link; `POST` is the RFC 8058 one-click target. |
 | `POST /v1/users` · `GET /v1/users` · `GET /v1/users/{id}` | JWT + **admin** | Manage operators. |
 | everything else under `/v1` | JWT (any role) | The domain API. |
 | `POST /webhooks/postmark` | **HTTP Basic-Auth** | Provider events — the sole non-JWT credential; mounted outside `/v1`. |
@@ -123,6 +124,13 @@ users).
   as a clickable link or as a raw token depends on `EMAIL_LINK_ENABLED` (see Configuration) — cablegram
   is headless, so with no front-end configured the email carries the token plus the API path to post it
   to. Account emails are sent as **transactional** mail from the configured `SYSTEM_EMAIL_FROM_ADDRESS`.
+- **Public unsubscribe** (`/v1/unsubscribe`) is open but **token-authenticated**: the link carries
+  `newsletterId`, `subscriptionId` and a stateless `HMAC-SHA256` **token** bound to that pair, so it
+  needs no login yet can't be forged or replayed against another newsletter. It is long-lived (a link in
+  an old email still works) and idempotent, and it flips **per-newsletter status only** — it does *not*
+  add the address to the global suppression list. Every campaign send emits a per-recipient
+  `List-Unsubscribe` + `List-Unsubscribe-Post` header pointing here (RFC 8058 one-click), built from
+  `BASE_URL`. See [ADR-015](docs/adrs/ADR-015-public-token-unsubscribe.md).
 
 ```bash
 # First-run bootstrap (open, one-time):
@@ -226,9 +234,11 @@ always-current contract — this table is the map.
 |---|---|---|
 | POST · GET | `/v1/newsletters/{id}/subscriptions` | Subscribe / list (`?status=&tag=`) |
 | POST | `/v1/newsletters/{id}/subscriptions/{subId}/confirm` | Confirm a pending (double opt-in) subscription |
-| POST | `/v1/newsletters/{id}/subscriptions/{subId}/unsubscribe` | Unsubscribe |
+| POST | `/v1/newsletters/{id}/subscriptions/{subId}/unsubscribe` | Unsubscribe (operator; JWT) |
+| GET · POST | `/v1/unsubscribe?newsletterId=&subscriptionId=&token=` | **Public** unsubscribe — no JWT, the HMAC `token` authenticates (ADR-015). `GET` = body link (redirect or HTML confirmation); `POST` = RFC 8058 one-click (`List-Unsubscribe=One-Click`, returns 200) |
 
 Statuses: `pending` · `subscribed` · `unsubscribed`.
+Public unsubscribe flips per-newsletter status only — it does **not** add to the global suppression list.
 
 ### Templates
 | Method | Path | Notes |
@@ -294,6 +304,10 @@ All configuration is environment variables (no config files on disk). See [`.env
 | `MAGIC_LINK_URL_BASE` | if links on | — | Front-end base for the magic-link; the token is appended as `?token=`. |
 | `PASSWORD_RESET_TTL_SECONDS` | no | `3600` | Password-reset token lifetime (1h). |
 | `MAGIC_LINK_TTL_SECONDS` | no | `900` | Magic-link token lifetime (15m). |
+| `BASE_URL` | no | — | The API's **own** public origin (e.g. `https://api.example.com`). Needed to emit per-recipient `List-Unsubscribe` links on sends (ADR-015); unset → those headers are omitted. |
+| `UNSUBSCRIBE_TOKEN_SECRET` | no | *(= `JWT_SECRET`)* | HMAC secret for the stateless unsubscribe token. Falls back to `JWT_SECRET`; set separately to decouple link validity from JWT-secret rotation. |
+| `UNSUBSCRIBE_REDIRECT_ENABLED` | no | `false` | If `true`, the browser `GET` unsubscribe redirects to `UNSUBSCRIBE_REDIRECT_URL` (address appended as `?email=`); else it renders a generic HTML confirmation. |
+| `UNSUBSCRIBE_REDIRECT_URL` | if redirect on | — | Landing page the unsubscribe `GET` redirects to on success. |
 
 ## Gotchas worth knowing
 

@@ -52,3 +52,14 @@ export class SubscriptionStateError extends SubscriptionError {
     super(`Invalid subscription state transition: ${reason}`);
   }
 }
+
+/**
+ * A public unsubscribe token failed verification — forged, tampered, or minted
+ * for a different `(newsletter, subscription)` pair (ADR-015). Deliberately
+ * carries no detail about which: the edge maps it to a flat 400.
+ */
+export class InvalidUnsubscribeTokenError extends SubscriptionError {
+  constructor() {
+    super('Invalid or expired unsubscribe link');
+  }
+}

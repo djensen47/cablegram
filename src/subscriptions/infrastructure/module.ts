@@ -5,6 +5,7 @@ import type { NewsletterDirectory } from '../application/newsletter-directory.js
 import { Subscribe } from '../application/subscribe.js';
 import { ConfirmSubscription } from '../application/confirm-subscription.js';
 import { Unsubscribe } from '../application/unsubscribe.js';
+import { PublicUnsubscribe } from '../application/public-unsubscribe.js';
 import { ListSubscriptions } from '../application/list-subscriptions.js';
 import { ResolveRecipients } from '../application/resolve-recipients.js';
 import { MongoSubscriptionRepository } from './mongo-subscription-repository.js';
@@ -27,6 +28,7 @@ export const subscriptionModule = new ContainerModule((bind) => {
   bind<Subscribe>(SUBSCRIPTION_TYPES.Subscribe).to(Subscribe);
   bind<ConfirmSubscription>(SUBSCRIPTION_TYPES.ConfirmSubscription).to(ConfirmSubscription);
   bind<Unsubscribe>(SUBSCRIPTION_TYPES.Unsubscribe).to(Unsubscribe);
+  bind<PublicUnsubscribe>(SUBSCRIPTION_TYPES.PublicUnsubscribe).to(PublicUnsubscribe);
   bind<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions).to(ListSubscriptions);
   bind<ResolveRecipients>(SUBSCRIPTION_TYPES.ResolveRecipients).to(ResolveRecipients);
 });

@@ -93,9 +93,10 @@ export class MongoSubscriptionRepository implements SubscriptionRepository {
       ...(tags.length === 0 ? {} : { tags: { $all: [...tags] } }),
     };
     const docs = await this.collection
-      .find(filter, { projection: { email: 1, mergeFields: 1 } })
+      .find(filter, { projection: { _id: 1, email: 1, mergeFields: 1 } })
       .toArray();
     return docs.map((doc) => ({
+      subscriptionId: doc._id,
       address: doc.email,
       mergeModel: fromStored(doc.mergeFields),
     }));
