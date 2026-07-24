@@ -132,9 +132,11 @@ scope.
   `apiKeyAuth` are **gone** — don't reintroduce them. cablegram is single-tenant but **multi-user**:
   the `accounts` component owns `User` (roles `admin` | `manager`, first-user-is-admin via one-time
   `POST /v1/setup`). The open `/v1` routes are `setup`, `auth/login`, `auth/refresh`, `auth/logout`,
-  **`auth/password-reset` + `auth/password-reset/confirm`**, and **`auth/magic-link` +
-  `auth/magic-link/consume`** — all listed in `OPEN_V1_PATHS` (an **exact-match** set in `src/app.ts`;
-  add every new open route there). Every other `/v1` route needs a JWT, and `/v1/users` also needs
+  **`auth/password-reset` + `auth/password-reset/confirm`**, **`auth/magic-link` +
+  `auth/magic-link/consume`**, and **`unsubscribe`** (the public token unsubscribe, ADR-015) — all
+  listed in `OPEN_V1_PATHS` (an **exact-match** set in `src/app.ts`; add every new open route there —
+  which is why the public unsubscribe is the *fixed* path `/v1/unsubscribe`, not a parameterized one).
+  Every other `/v1` route needs a JWT, and `/v1/users` also needs
   `admin` (`requireRole`). Access tokens are HS256 (`jose`, `JWT_SECRET`) minted/verified in
   `shared/auth`; refresh tokens are **opaque + stored hashed** (`refresh_tokens`, revocable, rotated on
   refresh); passwords are **argon2id** (`@node-rs/argon2`) behind a `PasswordHasher` interface. The
@@ -151,6 +153,21 @@ scope.
   (`RefreshTokenRepository.deleteAllForUser`); magic-link consume reuses login's exported
   `issueSession(...)` so both session types are identical. Account mail is sent by `AccountMailer` from
   `SYSTEM_EMAIL_FROM_ADDRESS`; the link vs. raw-token presentation is gated by `EMAIL_LINK_ENABLED`.
+- **Public unsubscribe is a stateless-HMAC token endpoint, and unsubscribe ≠ suppression**
+  ([ADR-015](docs/adrs/ADR-015-public-token-unsubscribe.md)). The subscriber-facing `GET`/`POST
+  /v1/unsubscribe` (open; in `OPEN_V1_PATHS`) is authenticated by an **HMAC token bound to
+  `(newsletterId, subscriptionId)`** — `unsubscribeToken()` / `verifyUnsubscribeToken()` in `shared/auth`,
+  secret `UNSUBSCRIBE_TOKEN_SECRET` (**falls back to `JWT_SECRET`**). It's **derived, not stored** —
+  long-lived + idempotent by design, so **don't** route it through the expiring, single-use
+  `one_time_tokens` store, and there's **no** new column/collection/index. The `PublicUnsubscribe` use
+  case is non-revealing (forged token → 400; valid-but-missing row → quiet success) and reuses the
+  domain `subscription.unsubscribe(now)`. It flips **per-newsletter status only — it does NOT add to the
+  global `deliverability` suppression list** (that's hard-bounce/complaint territory; keep them
+  separate). Every campaign send emits a **per-recipient** `List-Unsubscribe` + `List-Unsubscribe-Post`
+  (RFC 8058 one-click) header, built from `BASE_URL` (the API's own public origin; unset → headers
+  omitted) — carried on the `email` port's per-recipient `EmailRecipient.headers`, mapped to the Postmark
+  Bulk per-message `Headers`. The operator JWT endpoint
+  (`.../subscriptions/{id}/unsubscribe`) is kept as-is — different caller.
 - **The email port carries a business `category`, not a Postmark stream.** `BulkMessage.category` is
   `'broadcast' | 'transactional'` (campaigns → broadcast; subscribe confirmations + account mail →
   transactional). The Postmark adapter maps it to both the message stream **and** the signing token:

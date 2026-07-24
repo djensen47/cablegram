@@ -15,7 +15,9 @@ import {
   SUBSCRIPTION_TYPES,
   InMemorySubscriptionRepository,
   Subscribe,
+  PublicUnsubscribe,
 } from '../../subscriptions/index.js';
+import { verifyUnsubscribeToken } from '../../shared/auth/index.js';
 import {
   DELIVERABILITY_TYPES,
   InMemorySuppressionRepository,
@@ -340,5 +342,88 @@ describe('campaigns — the send integrator', () => {
         }),
       ).resolves.toBeUndefined();
     });
+  });
+});
+
+describe('campaigns — per-recipient List-Unsubscribe headers (ADR-015)', () => {
+  const UNSUB_SECRET = 'a-dedicated-unsubscribe-hmac-secret';
+  const BASE_URL = 'https://api.dispatch.test';
+
+  // A container whose config carries a public BASE_URL + a distinct unsubscribe
+  // secret, so the send path emits List-Unsubscribe headers.
+  function withHeadersEnv(): { container: Container; gateway: InMemoryDeliveryGateway } {
+    const container = buildContainer({
+      ...env,
+      BASE_URL,
+      UNSUBSCRIBE_TOKEN_SECRET: UNSUB_SECRET,
+    } as NodeJS.ProcessEnv);
+    container.rebind(CAMPAIGN_TYPES.CampaignRepository).to(InMemoryCampaignRepository);
+    container.rebind(CAMPAIGN_TYPES.SendRecordRepository).to(InMemorySendRecordRepository);
+    container.rebind(NEWSLETTER_TYPES.NewsletterRepository).to(InMemoryNewsletterRepository);
+    container.rebind(SUBSCRIPTION_TYPES.SubscriptionRepository).to(InMemorySubscriptionRepository);
+    container.rebind(DELIVERABILITY_TYPES.SuppressionRepository).to(InMemorySuppressionRepository);
+    container.rebind(TEMPLATE_TYPES.TemplateRepository).to(InMemoryTemplateRepository);
+    const gateway = new InMemoryDeliveryGateway();
+    container.rebind<DeliveryGateway>(EMAIL_TYPES.DeliveryGateway).toConstantValue(gateway);
+    return { container, gateway };
+  }
+
+  async function sendOneCampaign(container: Container, gateway: InMemoryDeliveryGateway) {
+    const newsletterId = await seedNewsletter(container);
+    await subscribe(container, newsletterId, 'reader@dispatch.example');
+    const campaign = await container.get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign).execute({
+      newsletterId,
+      name: 'March',
+      subject: 'Hi',
+      bodyHtml: '<p>x</p>',
+    });
+    gateway.sent.length = 0;
+    await container.get<SendCampaign>(CAMPAIGN_TYPES.SendCampaign).execute(campaign.id);
+    return { newsletterId, recipient: gateway.sent[0]!.recipients[0]! };
+  }
+
+  it('attaches a token-carrying List-Unsubscribe + one-click header per recipient', async () => {
+    const { container, gateway } = withHeadersEnv();
+    const { newsletterId, recipient } = await sendOneCampaign(container, gateway);
+
+    const headers = Object.fromEntries((recipient.headers ?? []).map((h) => [h.name, h.value]));
+    expect(headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
+
+    const listUnsub = headers['List-Unsubscribe'];
+    expect(listUnsub).toMatch(/^<https:\/\/api\.dispatch\.test\/v1\/unsubscribe\?.+>$/);
+
+    // The URL carries this recipient's own newsletter + subscription + a token
+    // that verifies against the configured unsubscribe secret.
+    const url = new URL(listUnsub!.slice(1, -1));
+    expect(url.searchParams.get('newsletterId')).toBe(newsletterId);
+    const subscriptionId = url.searchParams.get('subscriptionId')!;
+    const token = url.searchParams.get('token')!;
+    expect(verifyUnsubscribeToken(UNSUB_SECRET, newsletterId, subscriptionId, token)).toBe(true);
+  });
+
+  it('round-trips: the header URL’s token unsubscribes at the public use case', async () => {
+    const { container, gateway } = withHeadersEnv();
+    const { newsletterId, recipient } = await sendOneCampaign(container, gateway);
+
+    const listUnsub = (recipient.headers ?? []).find((h) => h.name === 'List-Unsubscribe')!.value;
+    const url = new URL(listUnsub.slice(1, -1));
+
+    const unsubscribed = await container
+      .get<PublicUnsubscribe>(SUBSCRIPTION_TYPES.PublicUnsubscribe)
+      .execute(
+        newsletterId,
+        url.searchParams.get('subscriptionId')!,
+        url.searchParams.get('token')!,
+      );
+
+    expect(unsubscribed?.status).toBe('unsubscribed');
+    expect(unsubscribed?.email).toBe('reader@dispatch.example');
+  });
+
+  it('omits List-Unsubscribe headers when no BASE_URL is configured', async () => {
+    // The default `env` has no BASE_URL — the send must still work, headerless.
+    const { container, gateway } = testContainer();
+    const { recipient } = await sendOneCampaign(container, gateway);
+    expect(recipient.headers).toBeUndefined();
   });
 });

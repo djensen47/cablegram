@@ -100,5 +100,9 @@ describe('MongoSubscriptionRepository (contract)', () => {
 
     const vipSegment = await repo.resolveRecipients(newsletterId, { tags: ['vip'] });
     expect(vipSegment.map((r) => r.address)).toEqual(['vip@dispatch.example']);
+    // The projection carries the subscription id (from `_id`) so the send path
+    // can mint a per-recipient unsubscribe token (ADR-015).
+    const vip = await repo.findByNewsletterAndEmail(newsletterId, 'vip@dispatch.example');
+    expect(vipSegment[0]?.subscriptionId).toBe(vip?.id);
   });
 });

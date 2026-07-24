@@ -19,6 +19,10 @@ export class FacadeRecipientResolver implements RecipientResolver {
 
   async resolve(newsletterId: string, segment: CampaignSegment): Promise<CampaignRecipient[]> {
     const recipients = await this.resolveRecipients.execute(newsletterId, { tags: segment.tags });
-    return recipients.map((r) => ({ address: r.address, mergeModel: r.mergeModel }));
+    return recipients.map((r) => ({
+      subscriptionId: r.subscriptionId,
+      address: r.address,
+      mergeModel: r.mergeModel,
+    }));
   }
 }
