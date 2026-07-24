@@ -74,7 +74,19 @@ caller, so **every `/v1` caller is now a human with a JWT**. That settled the re
   both created by `ensureIndexes` (ADR-012 — the app owns index creation).
 - Password storage and JWT signing are security-sensitive surfaces: `JWT_SECRET` must be a long
   random string (config enforces ≥32 chars), access tokens are short-lived, and refresh tokens are
-  hashed-at-rest and rotated. **Password reset (email-based) is deferred** to a follow-up.
+  hashed-at-rest and rotated.
+- **Password reset (email-based)** — deferred at first, **implemented 2026-07-23**. An open,
+  non-enumerating `POST /v1/auth/password-reset` (always 200, whether or not the address exists) emails
+  a single-use, expiring **opaque one-time token** (only its hash is stored — the same posture as
+  refresh tokens, in a generic `one_time_tokens` store); `POST /v1/auth/password-reset/confirm` verifies
+  it, sets the new password (still argon2id via `PasswordHasher`), and **revokes all of the user's
+  sessions** (`deleteAllForUser`). Both routes are open. The one-time-token store, the generic
+  opaque-token helpers (`newOpaqueToken`/`hashOpaqueToken`), the transactional account mailer, and the
+  session-revocation primitive are shared with — and were built alongside — magic-link login
+  ([ADR-014](ADR-014-passwordless-magic-link-login.md)).
+- The login use case was also hardened against a **user-enumeration timing oracle**: an unknown email
+  now runs a verify against a fixed dummy argon2id digest, so it pays the same KDF cost as a wrong
+  password and returns the identical `InvalidCredentialsError`.
 - Corrects the earlier drift: ADR-004 and ADR-010 no longer imply "no users."
 
 ## Related
@@ -85,3 +97,6 @@ caller, so **every `/v1` caller is now a human with a JWT**. That settled the re
 - ADR-009 — Deployment (removing `dispatch-due` left no service caller, settling JWT-only)
 - ADR-001/002/005 — the `accounts` component follows the same layering/facade/boundary rules
 - ADR-006 — HTTP delivery (auth middleware + endpoints)
+- ADR-008 — Email delivery (account mail rides the shared `DeliveryGateway` as transactional mail)
+- [ADR-014](ADR-014-passwordless-magic-link-login.md) — passwordless magic-link login, which reuses
+  this ADR's one-time-token store, opaque-token helpers, and session issuance

@@ -20,6 +20,7 @@ export const TEST_ENV = {
   JWT_SECRET: TEST_JWT_SECRET,
   POSTMARK_SERVER_TOKEN: 't',
   POSTMARK_WEBHOOK_SECRET: 's',
+  SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
 } as NodeJS.ProcessEnv;
 
 /** Mint a signed access token for the given claims (defaults to an admin). */

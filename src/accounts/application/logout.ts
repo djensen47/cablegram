@@ -1,5 +1,5 @@
 import { inject, injectable } from 'inversify';
-import { hashRefreshToken } from '../../shared/auth/index.js';
+import { hashOpaqueToken } from '../../shared/auth/index.js';
 import { ACCOUNTS_TYPES } from '../types.js';
 import type { RefreshTokenRepository } from './refresh-token-repository.js';
 import type { LogoutInput } from './dtos.js';
@@ -18,6 +18,6 @@ export class Logout {
   ) {}
 
   async execute(input: LogoutInput): Promise<void> {
-    await this.refreshTokens.deleteByHash(hashRefreshToken(input.refreshToken));
+    await this.refreshTokens.deleteByHash(hashOpaqueToken(input.refreshToken));
   }
 }

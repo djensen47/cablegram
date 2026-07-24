@@ -49,4 +49,18 @@ describe('MongoRefreshTokenRepository (contract)', () => {
     expect(await repo.deleteByHash('hash-1')).toBe(false);
     expect(await repo.findByHash('hash-1')).toBeNull();
   });
+
+  it('deletes every token for a user (session revocation), leaving others', async () => {
+    await repo.create(token({ tokenHash: 'u1-a', userId: 'u1' }));
+    await repo.create(token({ tokenHash: 'u1-b', userId: 'u1' }));
+    await repo.create(token({ tokenHash: 'u2-a', userId: 'u2' }));
+
+    expect(await repo.deleteAllForUser('u1')).toBe(2);
+    expect(await repo.findByHash('u1-a')).toBeNull();
+    expect(await repo.findByHash('u1-b')).toBeNull();
+    // Another user's tokens are untouched.
+    expect(await repo.findByHash('u2-a')).not.toBeNull();
+    // Idempotent: nothing left to delete.
+    expect(await repo.deleteAllForUser('u1')).toBe(0);
+  });
 });

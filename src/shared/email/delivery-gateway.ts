@@ -20,6 +20,17 @@ export interface SenderIdentity {
   readonly replyTo?: string | null;
 }
 
+/**
+ * The business classification of a send — Postmark's own two categories, used
+ * here as provider-neutral intent the caller declares:
+ *  - `broadcast` — bulk newsletter/campaign mail (marketing);
+ *  - `transactional` — one-off operational mail (subscribe confirmations,
+ *    password-reset and magic-link emails).
+ * The adapter maps a category to the provider's message stream **and** to which
+ * server token signs the request (a transactional server may have its own token).
+ */
+export type MessageCategory = 'broadcast' | 'transactional';
+
 /** A message body rendered in-app (`templates`) before it reaches the gateway. */
 export interface RenderedMessage {
   readonly subject: string;
@@ -38,10 +49,11 @@ export interface BulkMessage {
   readonly content: RenderedMessage;
   readonly recipients: readonly EmailRecipient[];
   /**
-   * Provider message stream. Newsletters are broadcasts, so this defaults to
-   * `"broadcast"` in the implementation when omitted.
+   * Business classification of this send. The adapter maps it to the provider's
+   * message stream and to the signing token; the caller declares intent, not a
+   * provider stream name.
    */
-  readonly messageStream?: string;
+  readonly category: MessageCategory;
   /** Optional correlation tag (e.g. a campaign id) echoed back on events. */
   readonly tag?: string;
 }

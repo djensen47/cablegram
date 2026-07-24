@@ -4,6 +4,7 @@ import type { AppConfig } from '../config/index.js';
 import type {
   BulkMessage,
   DeliveryGateway,
+  MessageCategory,
   SendAcknowledgment,
 } from './delivery-gateway.js';
 import { EmailDeliveryError } from './errors.js';
@@ -11,8 +12,15 @@ import { EmailDeliveryError } from './errors.js';
 /** Postmark REST base. Pinned; no SDK, raw `fetch` keeps the bundle thin. */
 const POSTMARK_API_BASE = 'https://api.postmarkapp.com';
 
-/** Newsletters are broadcasts; Postmark routes those on the broadcast stream. */
-const DEFAULT_MESSAGE_STREAM = 'broadcast';
+/**
+ * How each business category maps onto a Postmark message stream. Broadcasts
+ * (campaigns) ride the `broadcast` stream; transactional mail rides `outbound`,
+ * Postmark's default transactional stream (ADR-008).
+ */
+const STREAM_BY_CATEGORY: Record<MessageCategory, string> = {
+  broadcast: 'broadcast',
+  transactional: 'outbound',
+};
 
 /**
  * The `POST /email/bulk` request: content defined ONCE at the top level, with a
@@ -76,7 +84,13 @@ export class PostmarkDeliveryGateway implements DeliveryGateway {
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        'X-Postmark-Server-Token': this.config.postmark.serverToken,
+        // A token *is* a server in Postmark: broadcast mail signs with the
+        // broadcast token, transactional mail with the transactional token
+        // (which falls back to the broadcast token when not separately set).
+        'X-Postmark-Server-Token':
+          message.category === 'broadcast'
+            ? this.config.postmark.serverToken
+            : this.config.postmark.transactionalServerToken,
       },
       body: JSON.stringify(this.toRequest(message)),
     });
@@ -110,7 +124,7 @@ export class PostmarkDeliveryGateway implements DeliveryGateway {
       From: formatFrom(message.from.fromName, message.from.fromEmail),
       Subject: message.content.subject,
       HtmlBody: message.content.htmlBody,
-      MessageStream: message.messageStream ?? DEFAULT_MESSAGE_STREAM,
+      MessageStream: STREAM_BY_CATEGORY[message.category],
       Messages: message.recipients.map((r) => ({ To: r.email })),
     };
     const replyTo = message.from.replyTo;

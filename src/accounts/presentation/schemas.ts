@@ -55,6 +55,33 @@ export const LogoutSchema = z
   .object({ refreshToken: z.string().min(1) })
   .openapi('Logout');
 
+const oneTimeTokenField = z.string().min(1).openapi({ example: 'M0v2…opaque-token' });
+
+export const RequestPasswordResetSchema = z
+  .object({ email: emailField })
+  .openapi('RequestPasswordReset');
+
+export const ResetPasswordSchema = z
+  .object({ token: oneTimeTokenField, password: newPasswordField })
+  .openapi('ResetPassword');
+
+export const RequestMagicLinkSchema = z
+  .object({ email: emailField })
+  .openapi('RequestMagicLink');
+
+export const ConsumeMagicLinkSchema = z
+  .object({ token: oneTimeTokenField })
+  .openapi('ConsumeMagicLink');
+
+/**
+ * The deliberately uniform body for the two non-enumerating request endpoints:
+ * it is identical whether or not the address has an account, so the response
+ * never reveals which (ADR-013/014).
+ */
+export const AcceptedSchema = z
+  .object({ status: z.literal('accepted') })
+  .openapi('Accepted');
+
 export const SessionSchema = z
   .object({
     tokenType: z.literal('Bearer'),

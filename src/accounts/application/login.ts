@@ -5,15 +5,15 @@ import type { AppConfig } from '../../shared/config/index.js';
 import type { Clock } from '../../shared/clock/index.js';
 import {
   AUTH_TYPES,
-  hashRefreshToken,
-  newRefreshToken,
+  hashOpaqueToken,
+  newOpaqueToken,
   type AccessTokenService,
 } from '../../shared/auth/index.js';
 import { ACCOUNTS_TYPES } from '../types.js';
 import { InvalidCredentialsError } from '../domain/errors.js';
 import type { User } from '../domain/user.js';
 import type { UserRepository } from './user-repository.js';
-import type { PasswordHasher } from './password-hasher.js';
+import { DUMMY_PASSWORD_DIGEST, type PasswordHasher } from './password-hasher.js';
 import type { RefreshTokenRepository } from './refresh-token-repository.js';
 import type { LoginInput, SessionTokens } from './dtos.js';
 
@@ -37,11 +37,12 @@ export class Login {
 
   async execute(input: LoginInput): Promise<SessionTokens> {
     const user = await this.users.findByEmail(normalizeEmailAddress(input.email));
-    if (user === null) {
-      throw new InvalidCredentialsError();
-    }
-    const ok = await this.hasher.verify(user.passwordHash, input.password);
-    if (!ok) {
+    // Run a verify on BOTH paths so an unknown email and a wrong password take
+    // equivalent time — otherwise the KDF cost only paid on the known-email path
+    // is a user-enumeration timing oracle (ADR-013). The unknown-email path
+    // verifies against a fixed dummy digest that no credential can satisfy.
+    const ok = await this.hasher.verify(user?.passwordHash ?? DUMMY_PASSWORD_DIGEST, input.password);
+    if (user === null || !ok) {
       throw new InvalidCredentialsError();
     }
     return issueSession(this.tokens, this.refreshTokens, this.config, this.clock, user);
@@ -61,10 +62,10 @@ export async function issueSession(
   user: User,
 ): Promise<SessionTokens> {
   const accessToken = await tokens.issueAccessToken({ userId: user.id, role: user.role });
-  const refreshToken = newRefreshToken();
+  const refreshToken = newOpaqueToken();
   const now = clock.now();
   await refreshTokens.create({
-    tokenHash: hashRefreshToken(refreshToken),
+    tokenHash: hashOpaqueToken(refreshToken),
     userId: user.id,
     expiresAt: new Date(now.getTime() + config.jwt.refreshTtlSeconds * 1000),
     createdAt: now,

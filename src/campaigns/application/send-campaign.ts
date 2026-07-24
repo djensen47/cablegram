@@ -14,8 +14,6 @@ import type { RecipientResolver } from './recipient-resolver.js';
 import type { SuppressionGateway } from './suppression-gateway.js';
 import type { MessageRenderer } from './message-renderer.js';
 
-/** Newsletters are broadcasts — they ride Postmark's broadcast stream (ADR-008). */
-const BROADCAST_STREAM = 'broadcast';
 
 /**
  * The send-now pipeline (ADR-008) — the integrator. Resolves recipients, applies
@@ -109,7 +107,8 @@ export class SendCampaign {
             textBody: message.textBody,
           },
           recipients: addresses.map((email) => ({ email })),
-          messageStream: BROADCAST_STREAM,
+          // Newsletters are broadcasts (ADR-008): broadcast stream + token.
+          category: 'broadcast',
           // Echoed back on webhooks so events correlate to this campaign.
           tag: campaign.id,
         });

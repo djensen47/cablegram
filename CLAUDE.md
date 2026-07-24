@@ -30,8 +30,8 @@ Shared technical modules live under `src/shared/`, each its own facade.
 ## Bounded contexts & the dependency DAG ([ADR-011](docs/adrs/ADR-011-bounded-contexts.md))
 
 Domain: `newsletters` · `subscriptions` · `deliverability` · `templates` · `campaigns` · `accounts`.
-Shared: `email` (Postmark ACL) · `auth` (JWT + refresh-token helpers) · `config` · `ids` · `clock` ·
-`http` · `di`.
+Shared: `email` (Postmark ACL) · `auth` (JWT + generic opaque-token helpers) · `config` · `ids` ·
+`clock` · `http` · `di`.
 
 ```
 campaigns     → { newsletters, subscriptions, deliverability, templates, email }
@@ -131,12 +131,32 @@ scope.
   ([ADR-013](docs/adrs/ADR-013-authentication-user-accounts.md)); the old static `API_KEYS` /
   `apiKeyAuth` are **gone** — don't reintroduce them. cablegram is single-tenant but **multi-user**:
   the `accounts` component owns `User` (roles `admin` | `manager`, first-user-is-admin via one-time
-  `POST /v1/setup`). Login/refresh/logout (`/v1/auth/*`) and setup are the only open `/v1` routes;
-  every other `/v1` route needs a JWT, and `/v1/users` also needs `admin` (`requireRole`). Access
-  tokens are HS256 (`jose`, `JWT_SECRET`) minted/verified in `shared/auth`; refresh tokens are
-  **opaque + stored hashed** (`refresh_tokens`, revocable, rotated on refresh); passwords are
-  **argon2id** (`@node-rs/argon2`) behind a `PasswordHasher` interface. The **only** non-JWT
-  credential is the Postmark webhook's HTTP Basic-Auth (`/webhooks/postmark`, outside `/v1`).
+  `POST /v1/setup`). The open `/v1` routes are `setup`, `auth/login`, `auth/refresh`, `auth/logout`,
+  **`auth/password-reset` + `auth/password-reset/confirm`**, and **`auth/magic-link` +
+  `auth/magic-link/consume`** — all listed in `OPEN_V1_PATHS` (an **exact-match** set in `src/app.ts`;
+  add every new open route there). Every other `/v1` route needs a JWT, and `/v1/users` also needs
+  `admin` (`requireRole`). Access tokens are HS256 (`jose`, `JWT_SECRET`) minted/verified in
+  `shared/auth`; refresh tokens are **opaque + stored hashed** (`refresh_tokens`, revocable, rotated on
+  refresh); passwords are **argon2id** (`@node-rs/argon2`) behind a `PasswordHasher` interface. The
+  **only** non-JWT credential is the Postmark webhook's HTTP Basic-Auth (`/webhooks/postmark`, outside
+  `/v1`).
+- **Password reset + magic-link are email one-time tokens** ([ADR-013](docs/adrs/ADR-013-authentication-user-accounts.md)
+  / [ADR-014](docs/adrs/ADR-014-passwordless-magic-link-login.md)). Both request endpoints are
+  **non-enumerating** (always `200 {"status":"accepted"}`, equivalent work either way — same posture as
+  the login timing fix, which now verifies a dummy argon2id digest on the unknown-email path). One
+  generic store backs both: `one_time_tokens` + `OneTimeTokenRepository` with a `purpose`
+  (`password-reset` | `magic-link`), hashed-at-rest, single-use, TTL-indexed — **don't** split it into
+  two collections. Opaque tokens all mint/hash through `newOpaqueToken()` / `hashOpaqueToken()`
+  (`shared/auth`, generalized from the old refresh-token helpers). Reset revokes all sessions
+  (`RefreshTokenRepository.deleteAllForUser`); magic-link consume reuses login's exported
+  `issueSession(...)` so both session types are identical. Account mail is sent by `AccountMailer` from
+  `SYSTEM_EMAIL_FROM_ADDRESS`; the link vs. raw-token presentation is gated by `EMAIL_LINK_ENABLED`.
+- **The email port carries a business `category`, not a Postmark stream.** `BulkMessage.category` is
+  `'broadcast' | 'transactional'` (campaigns → broadcast; subscribe confirmations + account mail →
+  transactional). The Postmark adapter maps it to both the message stream **and** the signing token:
+  broadcast uses `POSTMARK_SERVER_TOKEN`, transactional uses `POSTMARK_TRANSACTIONAL_SERVER_TOKEN`
+  (which **falls back** to the broadcast token when unset — a single-server setup is unchanged). Don't
+  reintroduce a raw `messageStream` field on the port.
 - **Postmark wire format** (request/response, webhook schema) is implemented in
   `src/shared/email/postmark-delivery-gateway.ts` and `src/campaigns/presentation/webhook-routes.ts` —
   treat that code (or live docs) as the source of truth, not memory, before restating a Postmark fact

@@ -31,6 +31,27 @@ export interface LogoutInput {
   refreshToken: string;
 }
 
+/** Request a password-reset email for an address (always succeeds; non-enumerating). */
+export interface RequestPasswordResetInput {
+  email: string;
+}
+
+/** Complete a password reset: the emailed one-time token + the new password. */
+export interface ResetPasswordInput {
+  token: string;
+  newPassword: string;
+}
+
+/** Request a magic-link login email for an address (always succeeds; non-enumerating). */
+export interface RequestMagicLinkInput {
+  email: string;
+}
+
+/** Consume a magic-link token to mint a session. */
+export interface ConsumeMagicLinkInput {
+  token: string;
+}
+
 export interface ListUsersInput {
   limit: number;
   cursor?: string;

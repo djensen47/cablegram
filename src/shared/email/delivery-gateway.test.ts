@@ -14,12 +14,21 @@ const env = {
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 'server-token',
   POSTMARK_WEBHOOK_SECRET: 's',
+  SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
 } as NodeJS.ProcessEnv;
+
+/** A gateway wired with the two tokens the config resolves (fallback applied). */
+function gatewayWith(serverToken: string, transactionalServerToken = serverToken) {
+  return new PostmarkDeliveryGateway({
+    postmark: { serverToken, transactionalServerToken, webhookSecret: 's' },
+  } as never);
+}
 
 const message: BulkMessage = {
   from: { fromName: 'Dispatch Editors', fromEmail: 'editors@dispatch.example', replyTo: 'replies@dispatch.example' },
   content: { subject: 'Issue #1', htmlBody: '<h1>Hello</h1>', textBody: 'Hello' },
   recipients: [{ email: 'a@example.com' }, { email: 'b@example.com' }],
+  category: 'broadcast',
   tag: 'campaign-42',
 };
 
@@ -52,7 +61,7 @@ describe('PostmarkDeliveryGateway.send', () => {
 
   it('submits one /email/bulk request: content once + a Messages array of recipients', async () => {
     const { calls } = stubBulk();
-    const gateway = new PostmarkDeliveryGateway({ postmark: { serverToken: 'server-token', webhookSecret: 's' } } as never);
+    const gateway = gatewayWith('server-token');
 
     const ack = await gateway.send(message);
 
@@ -80,28 +89,52 @@ describe('PostmarkDeliveryGateway.send', () => {
     });
   });
 
-  it('omits ReplyTo/TextBody/Tag when not provided and honors an explicit stream', async () => {
+  it('omits ReplyTo/TextBody/Tag when not provided and maps a transactional category', async () => {
     const { calls } = stubBulk();
-    const gateway = new PostmarkDeliveryGateway({ postmark: { serverToken: 't', webhookSecret: 's' } } as never);
+    const gateway = gatewayWith('t');
 
     await gateway.send({
       from: { fromName: 'Solo', fromEmail: 'solo@example.com' },
       content: { subject: 'Hi', htmlBody: '<p>x</p>' },
       recipients: [{ email: 'c@example.com' }],
-      messageStream: 'outbound',
+      category: 'transactional',
     });
 
     const req = calls[0]!.body;
     expect(req).not.toHaveProperty('ReplyTo');
     expect(req).not.toHaveProperty('TextBody');
     expect(req).not.toHaveProperty('Tag');
+    // A transactional category maps to Postmark's `outbound` stream.
     expect(req.MessageStream).toBe('outbound');
     expect(req.Messages).toEqual([{ To: 'c@example.com' }]);
   });
 
+  it('signs broadcast with the broadcast token and transactional with the transactional token', async () => {
+    const { calls } = stubBulk();
+    const gateway = gatewayWith('broadcast-token', 'txn-token');
+
+    await gateway.send({ ...message, category: 'broadcast' });
+    await gateway.send({ ...message, category: 'transactional' });
+
+    expect(calls[0]!.headers['X-Postmark-Server-Token']).toBe('broadcast-token');
+    expect(calls[0]!.body.MessageStream).toBe('broadcast');
+    expect(calls[1]!.headers['X-Postmark-Server-Token']).toBe('txn-token');
+    expect(calls[1]!.body.MessageStream).toBe('outbound');
+  });
+
+  it('falls transactional back to the broadcast token when only one is configured', async () => {
+    const { calls } = stubBulk();
+    // The config resolves an unset transactional token to the broadcast token.
+    const gateway = gatewayWith('only-token');
+
+    await gateway.send({ ...message, category: 'transactional' });
+
+    expect(calls[0]!.headers['X-Postmark-Server-Token']).toBe('only-token');
+  });
+
   it('sends any number of recipients in ONE bulk call (no 500-cap splitting)', async () => {
     const { calls } = stubBulk();
-    const gateway = new PostmarkDeliveryGateway({ postmark: { serverToken: 't', webhookSecret: 's' } } as never);
+    const gateway = gatewayWith('t');
 
     const recipients = Array.from({ length: 5000 }, (_, i) => ({ email: `r${i}@example.com` }));
     const ack = await gateway.send({ ...message, recipients, tag: undefined });
@@ -113,7 +146,7 @@ describe('PostmarkDeliveryGateway.send', () => {
 
   it('does not call the provider for an empty recipient set', async () => {
     const { calls } = stubBulk();
-    const gateway = new PostmarkDeliveryGateway({ postmark: { serverToken: 't', webhookSecret: 's' } } as never);
+    const gateway = gatewayWith('t');
 
     const ack = await gateway.send({ ...message, recipients: [] });
 
@@ -124,7 +157,7 @@ describe('PostmarkDeliveryGateway.send', () => {
 
   it('throws EmailDeliveryError on a non-2xx provider response', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('bad token', { status: 401 }));
-    const gateway = new PostmarkDeliveryGateway({ postmark: { serverToken: 't', webhookSecret: 's' } } as never);
+    const gateway = gatewayWith('t');
 
     await expect(gateway.send(message)).rejects.toThrow(/Postmark bulk send failed \(HTTP 401\)/);
   });
@@ -133,7 +166,7 @@ describe('PostmarkDeliveryGateway.send', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ Status: 'Failed', Message: 'nope' }), { status: 200 }),
     );
-    const gateway = new PostmarkDeliveryGateway({ postmark: { serverToken: 't', webhookSecret: 's' } } as never);
+    const gateway = gatewayWith('t');
 
     await expect(gateway.send(message)).rejects.toThrow(/not accepted/);
   });

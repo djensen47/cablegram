@@ -19,15 +19,21 @@ import { createTemplateRoutes } from './templates/index.js';
 import { createCampaignRoutes, createPostmarkWebhookRoutes } from './campaigns/index.js';
 
 /**
- * The open `/v1` endpoints that do **not** require a JWT (ADR-013): first-run
- * setup and the login/refresh/logout exchange — the endpoints a caller reaches
- * before, or in order to obtain, a token. Everything else under `/v1` is gated.
+ * The open `/v1` endpoints that do **not** require a JWT (ADR-013/014): first-run
+ * setup, the login/refresh/logout exchange, and the password-reset + magic-link
+ * flows — the endpoints a caller reaches before, or in order to obtain, a token.
+ * Everything else under `/v1` is gated. This is an exact-match set: every new
+ * open route must be listed here explicitly.
  */
 const OPEN_V1_PATHS = new Set([
   '/v1/setup',
   '/v1/auth/login',
   '/v1/auth/refresh',
   '/v1/auth/logout',
+  '/v1/auth/password-reset',
+  '/v1/auth/password-reset/confirm',
+  '/v1/auth/magic-link',
+  '/v1/auth/magic-link/consume',
 ]);
 
 /**

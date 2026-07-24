@@ -24,4 +24,15 @@ export class InMemoryRefreshTokenRepository implements RefreshTokenRepository {
   async deleteByHash(tokenHash: string): Promise<boolean> {
     return this.byHash.delete(tokenHash);
   }
+
+  async deleteAllForUser(userId: string): Promise<number> {
+    let deleted = 0;
+    for (const [hash, token] of this.byHash) {
+      if (token.userId === userId) {
+        this.byHash.delete(hash);
+        deleted += 1;
+      }
+    }
+    return deleted;
+  }
 }

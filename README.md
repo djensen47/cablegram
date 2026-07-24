@@ -103,6 +103,8 @@ users).
 | `POST /v1/auth/login` | open | Email + password → access + refresh tokens. |
 | `POST /v1/auth/refresh` | open | Exchange a refresh token for a new session (rotates it). |
 | `POST /v1/auth/logout` | open | Revoke a refresh token. |
+| `POST /v1/auth/password-reset` · `POST /v1/auth/password-reset/confirm` | open | Email-based password reset (request → confirm). |
+| `POST /v1/auth/magic-link` · `POST /v1/auth/magic-link/consume` | open | Passwordless login (request → consume). |
 | `POST /v1/users` · `GET /v1/users` · `GET /v1/users/{id}` | JWT + **admin** | Manage operators. |
 | everything else under `/v1` | JWT (any role) | The domain API. |
 | `POST /webhooks/postmark` | **HTTP Basic-Auth** | Provider events — the sole non-JWT credential; mounted outside `/v1`. |
@@ -112,6 +114,15 @@ users).
   Use it at `/v1/auth/refresh` to get a fresh access token; `/v1/auth/logout` revokes it.
 - Passwords are hashed with **argon2id**. Bootstrap the first admin with `POST /v1/setup`, then
   admins create teammates with `POST /v1/users`. There is no public self-registration.
+- **Password reset & magic-link** both work by email: the request endpoint takes an address, always
+  returns `200 {"status":"accepted"}` (it never reveals whether the account exists), and — if it does
+  — emails a single-use, expiring **opaque token** (only its hash is stored). The confirm/consume
+  endpoint takes that token: reset sets a new password **and revokes all existing sessions**;
+  magic-link issues a normal session identical to a password login. Token lifetimes default to 1h
+  (reset) and 15m (magic-link). The emailed **token** is what matters; whether the email presents it
+  as a clickable link or as a raw token depends on `EMAIL_LINK_ENABLED` (see Configuration) — cablegram
+  is headless, so with no front-end configured the email carries the token plus the API path to post it
+  to. Account emails are sent as **transactional** mail from the configured `SYSTEM_EMAIL_FROM_ADDRESS`.
 
 ```bash
 # First-run bootstrap (open, one-time):
@@ -197,6 +208,10 @@ always-current contract — this table is the map.
 | POST | `/v1/auth/login` | open | → access + refresh tokens |
 | POST | `/v1/auth/refresh` | open | Rotates the refresh token |
 | POST | `/v1/auth/logout` | open | Revokes a refresh token (idempotent, 204) |
+| POST | `/v1/auth/password-reset` | open | Request a reset email (always 200; non-enumerating) |
+| POST | `/v1/auth/password-reset/confirm` | open | Token + new password → sets password, revokes sessions (204) |
+| POST | `/v1/auth/magic-link` | open | Request a login email (always 200; non-enumerating) |
+| POST | `/v1/auth/magic-link/consume` | open | Token → a normal session (access + refresh) |
 | POST · GET | `/v1/users` | admin | Create / list operators |
 | GET | `/v1/users/{id}` | admin | Get one |
 
@@ -265,11 +280,20 @@ All configuration is environment variables (no config files on disk). See [`.env
 |---|---|---|---|
 | `DATABASE_URL` | yes | — | MongoDB connection string (db name in the path). Standalone `mongod` is fine. |
 | `JWT_SECRET` | yes | — | HS256 signing secret for access tokens. **Must be ≥32 chars, long and random.** |
-| `POSTMARK_SERVER_TOKEN` | yes | — | Postmark server token for the Bulk send API. |
+| `POSTMARK_SERVER_TOKEN` | yes | — | Postmark **broadcast** server token for the Bulk send API. |
 | `POSTMARK_WEBHOOK_SECRET` | yes | — | Basic-Auth password guarding `POST /webhooks/postmark`. |
+| `SYSTEM_EMAIL_FROM_ADDRESS` | yes | — | `From` address for account mail (reset / magic-link). Must be a Postmark-verified sender/domain. |
 | `PORT` | no | `3000` | HTTP port. |
 | `JWT_ACCESS_TTL_SECONDS` | no | `900` | Access-token lifetime (15m). |
 | `JWT_REFRESH_TTL_SECONDS` | no | `2592000` | Refresh-token lifetime (30d). |
+| `EMAIL_PROVIDER` | no | `postmark` | Email backend seam; only `postmark` today. |
+| `POSTMARK_TRANSACTIONAL_SERVER_TOKEN` | no | *(= broadcast token)* | Separate token for **transactional** sends (account + confirmation mail). Falls back to `POSTMARK_SERVER_TOKEN`. |
+| `SYSTEM_EMAIL_FROM_NAME` | no | `cablegram` | Display name for account mail. |
+| `EMAIL_LINK_ENABLED` | no | `false` | If `true`, account emails link to the base URLs below (both then **required**); else they carry the raw token + API path. |
+| `PASSWORD_RESET_URL_BASE` | if links on | — | Front-end base for the reset link; the token is appended as `?token=`. |
+| `MAGIC_LINK_URL_BASE` | if links on | — | Front-end base for the magic-link; the token is appended as `?token=`. |
+| `PASSWORD_RESET_TTL_SECONDS` | no | `3600` | Password-reset token lifetime (1h). |
+| `MAGIC_LINK_TTL_SECONDS` | no | `900` | Magic-link token lifetime (15m). |
 
 ## Gotchas worth knowing
 

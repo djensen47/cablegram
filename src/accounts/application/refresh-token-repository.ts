@@ -22,4 +22,11 @@ export interface RefreshTokenRepository {
   findByHash(tokenHash: string): Promise<StoredRefreshToken | null>;
   /** Returns `true` if a row was deleted, `false` if none existed (idempotent logout). */
   deleteByHash(tokenHash: string): Promise<boolean>;
+  /**
+   * Revoke **every** session for a user by deleting all their stored refresh
+   * tokens (ADR-013). Used after a password reset (and any future
+   * change-password) so a credential change logs out all existing sessions.
+   * Returns the number of tokens deleted.
+   */
+  deleteAllForUser(userId: string): Promise<number>;
 }

@@ -21,9 +21,29 @@ export interface AppConfig {
     /** Refresh-token lifetime in seconds (long-lived; default 30d). */
     readonly refreshTtlSeconds: number;
   };
+  /**
+   * Email backend selection (ADR-008). Only `postmark` is supported today; the
+   * field is a forward-looking seam so a second provider can be added without a
+   * config reshape. It is wired to nothing yet — the composition root always
+   * binds the Postmark gateway.
+   */
+  readonly email: {
+    readonly provider: 'postmark';
+  };
   readonly postmark: {
-    /** Server-level API token, sent as `X-Postmark-Server-Token` on sends (ADR-008). */
+    /**
+     * The **broadcast** server token, sent as `X-Postmark-Server-Token` on
+     * broadcast (campaign) sends (ADR-008). Historically the only token.
+     */
     readonly serverToken: string;
+    /**
+     * The **transactional** server token, used for transactional sends
+     * (subscribe confirmations, account emails). In Postmark a token *is* a
+     * server, so a separate transactional server has its own token. Resolved
+     * with a fallback: when `POSTMARK_TRANSACTIONAL_SERVER_TOKEN` is unset this
+     * equals `serverToken`, so a single-server setup keeps working unchanged.
+     */
+    readonly transactionalServerToken: string;
     /**
      * Shared secret guarding the inbound webhook endpoint. Postmark provides
      * **no** HMAC/signature verification (pinned against the live webhook docs);
@@ -36,19 +56,90 @@ export interface AppConfig {
      */
     readonly webhookSecret: string;
   };
+  /**
+   * The sender identity for cablegram's own transactional account mail
+   * (password-reset, magic-link — ADR-013/014). These emails have no newsletter
+   * to borrow a `from` from, so a dedicated system identity is configured here.
+   */
+  readonly systemEmail: {
+    /** `From` address for account mail; must be a Postmark-verified sender/domain. */
+    readonly fromAddress: string;
+    /** Display name for account mail (defaults to `cablegram`). */
+    readonly fromName: string;
+  };
+  /**
+   * How account emails present their reset / magic-link references (ADR-013/014).
+   * cablegram is headless, so a link needs a front-end base URL the operator
+   * provides. When `enabled` is false the email carries the raw token + the API
+   * path instead, and the two base URLs are absent.
+   */
+  readonly accountLinks: {
+    /** When true, account emails link to the configured base URLs (both required). */
+    readonly enabled: boolean;
+    /** Front-end base for the password-reset link; token appended as `?token=`. */
+    readonly passwordResetUrlBase: string | null;
+    /** Front-end base for the magic-link login; token appended as `?token=`. */
+    readonly magicLinkUrlBase: string | null;
+  };
+  /** One-time email-token lifetimes (ADR-013/014); both tokens are single-use. */
+  readonly oneTimeTokens: {
+    /** Password-reset token lifetime in seconds (default 1h). */
+    readonly passwordResetTtlSeconds: number;
+    /** Magic-link login token lifetime in seconds (default 15m). */
+    readonly magicLinkTtlSeconds: number;
+  };
 }
 
-const schema = z.object({
-  PORT: z.coerce.number().int().positive().default(3000),
-  DATABASE_URL: z.string().min(1),
-  // HS256 needs a key at least as long as its 256-bit digest; require a
-  // reasonably long secret so a weak key can never silently weaken signing.
-  JWT_SECRET: z.string().min(32, 'must be at least 32 characters'),
-  JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
-  JWT_REFRESH_TTL_SECONDS: z.coerce.number().int().positive().default(2_592_000),
-  POSTMARK_SERVER_TOKEN: z.string().min(1),
-  POSTMARK_WEBHOOK_SECRET: z.string().min(1),
-});
+const schema = z
+  .object({
+    PORT: z.coerce.number().int().positive().default(3000),
+    DATABASE_URL: z.string().min(1),
+    // HS256 needs a key at least as long as its 256-bit digest; require a
+    // reasonably long secret so a weak key can never silently weaken signing.
+    JWT_SECRET: z.string().min(32, 'must be at least 32 characters'),
+    JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+    JWT_REFRESH_TTL_SECONDS: z.coerce.number().int().positive().default(2_592_000),
+    // Email backend seam — only `postmark` is supported today (ADR-008).
+    EMAIL_PROVIDER: z.enum(['postmark']).default('postmark'),
+    POSTMARK_SERVER_TOKEN: z.string().min(1),
+    // Optional distinct token for transactional sends; falls back to the
+    // broadcast token below when unset (a single-server Postmark setup).
+    POSTMARK_TRANSACTIONAL_SERVER_TOKEN: z.string().min(1).optional(),
+    POSTMARK_WEBHOOK_SECRET: z.string().min(1),
+    // System sender identity for cablegram's own account mail (ADR-013/014).
+    SYSTEM_EMAIL_FROM_ADDRESS: z.string().email(),
+    SYSTEM_EMAIL_FROM_NAME: z.string().min(1).default('cablegram'),
+    // Account-email link presentation. `EMAIL_LINK_ENABLED` is an explicit
+    // opt-in string flag (`true`); anything else (including unset) is false —
+    // `z.coerce.boolean()` would wrongly treat the string `"false"` as true.
+    EMAIL_LINK_ENABLED: z
+      .string()
+      .optional()
+      .transform((v) => v?.toLowerCase() === 'true'),
+    PASSWORD_RESET_URL_BASE: z.string().url().optional(),
+    MAGIC_LINK_URL_BASE: z.string().url().optional(),
+    PASSWORD_RESET_TTL_SECONDS: z.coerce.number().int().positive().default(3_600),
+    MAGIC_LINK_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  })
+  // When links are enabled, both front-end base URLs must be present — the email
+  // has nowhere to point otherwise.
+  .superRefine((e, ctx) => {
+    if (!e.EMAIL_LINK_ENABLED) return;
+    if (!e.PASSWORD_RESET_URL_BASE) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PASSWORD_RESET_URL_BASE'],
+        message: 'is required when EMAIL_LINK_ENABLED is true',
+      });
+    }
+    if (!e.MAGIC_LINK_URL_BASE) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MAGIC_LINK_URL_BASE'],
+        message: 'is required when EMAIL_LINK_ENABLED is true',
+      });
+    }
+  });
 
 /** Parse and validate configuration, throwing a readable error on any problem. */
 export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
@@ -68,9 +159,27 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
       accessTtlSeconds: e.JWT_ACCESS_TTL_SECONDS,
       refreshTtlSeconds: e.JWT_REFRESH_TTL_SECONDS,
     },
+    email: {
+      provider: e.EMAIL_PROVIDER,
+    },
     postmark: {
       serverToken: e.POSTMARK_SERVER_TOKEN,
+      transactionalServerToken:
+        e.POSTMARK_TRANSACTIONAL_SERVER_TOKEN ?? e.POSTMARK_SERVER_TOKEN,
       webhookSecret: e.POSTMARK_WEBHOOK_SECRET,
+    },
+    systemEmail: {
+      fromAddress: e.SYSTEM_EMAIL_FROM_ADDRESS,
+      fromName: e.SYSTEM_EMAIL_FROM_NAME,
+    },
+    accountLinks: {
+      enabled: e.EMAIL_LINK_ENABLED,
+      passwordResetUrlBase: e.PASSWORD_RESET_URL_BASE ?? null,
+      magicLinkUrlBase: e.MAGIC_LINK_URL_BASE ?? null,
+    },
+    oneTimeTokens: {
+      passwordResetTtlSeconds: e.PASSWORD_RESET_TTL_SECONDS,
+      magicLinkTtlSeconds: e.MAGIC_LINK_TTL_SECONDS,
     },
   };
 }
