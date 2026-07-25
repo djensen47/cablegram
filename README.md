@@ -17,6 +17,7 @@ DigitalOcean Functions · **single-tenant, multi-user, multi-newsletter**.
 - [Quickstart](#quickstart)
 - [Authentication](#authentication)
 - [API walkthrough (end to end)](#api-walkthrough-end-to-end)
+- [CLI](#cli)
 - [API reference](#api-reference)
 - [Conventions every endpoint shares](#conventions-every-endpoint-shares)
 - [Configuration](#configuration)
@@ -209,6 +210,58 @@ curl -sX POST localhost:3000/v1/suppressions -H "$A" -H "$J" \
 Provider events arrive out of band at `POST /webhooks/postmark` (Basic-Auth, not `/v1`): cablegram
 normalizes each event, updates the send record, and suppresses hard-bounce / spam-complaint addresses.
 
+## CLI
+
+`cablegram` is a first-party CLI for the same walkthrough above, so you do not have to hand-roll
+`curl` and paste tokens. It is an **HTTP client of `/v1`** — it talks to a running deployment and
+never to the database, so it can do exactly what any API consumer can do and nothing more
+([ADR-016](docs/adrs/ADR-016-cli-client.md)). This is why a CLI does not contradict the headless
+posture: ADR-004 scopes out a bundled *UI*, and explicitly anticipates clients.
+
+```bash
+npm run build && npm link     # or: npm run cli -- <args>   (tsx, no build)
+
+cablegram setup --url http://localhost:3000 --email admin@example.com   # first-run admin
+cablegram login                                                          # prompts for the password
+
+NL=$(cablegram --json newsletters create \
+      --name "The Weekly Dispatch" --from-name "Dispatch Editors" \
+      --from-email editors@dispatch.example | jq -r .id)
+
+cablegram subscriptions import "$NL" subscribers.csv --no-double-opt-in
+cablegram templates create --name "Weekly digest" --subject "Your {{weekOf}} digest" --html body.html
+cablegram campaigns send <campaign-id> --dry-run    # recipient count, sends nothing
+cablegram campaigns send <campaign-id>              # confirms first; --yes to skip
+cablegram campaigns report <campaign-id> --failures
+```
+
+**Command groups:** `setup` · `login` / `logout` / `whoami` · `password-reset` · `config` ·
+`newsletters` · `subscriptions` (aka `subs`) · `campaigns` · `templates` · `suppressions` · `users`.
+Run `cablegram <group> --help` for the flags.
+
+**Scriptable by default.** Every command works non-interactively when given flags; prompting is
+reserved for masked passwords, confirmations on irreversible actions, and omitted required arguments.
+Without a TTY a missing input is an error rather than a hang. `--json` on any command emits the raw
+API response (the same DTO the HTTP API returns, so `jq` expressions carry over), and `--yes` skips
+confirmations for CI.
+
+**Exit codes** let scripts branch on the kind of failure: `0` ok · `1` refused (404/409/partial) ·
+`2` bad invocation · `3` not authenticated · `4` deployment unreachable · `130` cancelled.
+
+**CSV import** expects an `email` column; `tags` is semicolon-separated (a comma would collide with
+the delimiter), and every other column becomes a merge field with its **casing preserved**, so a
+`firstName` column feeds `{{firstName}}`. Use `--dry-run` to validate a file before importing it.
+
+| variable | does |
+|---|---|
+| `CABLEGRAM_URL` | base URL, overriding the stored config |
+| `CABLEGRAM_TOKEN` | access token used as-is (CI) — never refreshed or written to disk |
+| `CABLEGRAM_PASSWORD` | password for non-interactive `login` / `setup` |
+| `CABLEGRAM_CONFIG` | config path (default `~/.config/cablegram/config.json`, written `0600`) |
+
+The session file holds a live refresh token, so it is written `0600` inside a `0700` directory. When
+the access token expires the CLI refreshes and retries transparently, persisting the rotated pair.
+
 ## API reference
 
 All paths are under `/v1` (JWT required) except where noted. `GET /openapi.json` is the authoritative,
@@ -334,6 +387,7 @@ src/
   app.ts         Hono app assembly (route mounting + the JWT gate)
   server.ts      Node entrypoint (Docker / App Platform)
   function.ts    DigitalOcean Functions entrypoint
+  cli/           the `cablegram` CLI — an HTTP client of /v1, not a delivery mechanism (ADR-016)
   <component>/   domain components (ADR-011):
                  newsletters · subscriptions · deliverability · templates · campaigns · accounts
 ```
@@ -349,7 +403,8 @@ lint config *is* the encoded architecture). The full rationale is in the
 | script | does |
 |---|---|
 | `npm run dev` | watch-mode server (`tsx`) |
-| `npm run build` / `start` | compile to `dist/` / run compiled server |
+| `npm run cli` | run the CLI from source (`npm run cli -- newsletters list`) |
+| `npm run build` / `start` | compile to `dist/` / run compiled server (also makes `dist/cli/main.js` executable) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint + **boundary enforcement** (ADR-005) |
 | `npm test` | Vitest (fast, in-memory repositories, no DB) |

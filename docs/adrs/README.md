@@ -31,6 +31,7 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [013](ADR-013-authentication-user-accounts.md) | Authentication & User Accounts (JWT, roles) | Accepted — implemented |
 | [014](ADR-014-passwordless-magic-link-login.md) | Passwordless Magic-Link Login | Accepted — implemented |
 | [015](ADR-015-public-token-unsubscribe.md) | Public Token Unsubscribe & RFC 8058 List-Unsubscribe | Accepted — implemented |
+| [016](ADR-016-cli-client.md) | A First-Party CLI — an API *client*, not a delivery mechanism | Accepted — implemented |
 
 ## How to read these
 
