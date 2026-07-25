@@ -1,8 +1,11 @@
 import { inject, injectable } from 'inversify';
 import { newId } from '../../shared/ids/index.js';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
+import type { AppConfig } from '../../shared/config/index.js';
 import type { Clock } from '../../shared/clock/index.js';
-import { EMAIL_TYPES, type DeliveryGateway } from '../../shared/email/index.js';
+import { unsubscribeToken } from '../../shared/auth/index.js';
+import { EMAIL_TYPES, type DeliveryGateway, type EmailHeader } from '../../shared/email/index.js';
+import { PUBLIC_UNSUBSCRIBE_PATH } from '../../subscriptions/index.js';
 import { CAMPAIGN_TYPES } from '../types.js';
 import type { Campaign, CampaignId } from '../domain/campaign.js';
 import { SendRecord } from '../domain/send-record.js';
@@ -47,6 +50,7 @@ export class SendCampaign {
     @inject(CAMPAIGN_TYPES.MessageRenderer)
     private readonly renderer: MessageRenderer,
     @inject(EMAIL_TYPES.DeliveryGateway) private readonly delivery: DeliveryGateway,
+    @inject(SHARED_TYPES.Config) private readonly config: AppConfig,
     @inject(SHARED_TYPES.Clock) private readonly clock: Clock,
   ) {}
 
@@ -72,13 +76,16 @@ export class SendCampaign {
     const suppressed = new Set(
       await this.suppression.filterSuppressed(resolved.map((r) => r.address)),
     );
-    const addresses = resolved.map((r) => r.address).filter((a) => !suppressed.has(a));
+    // Keep the whole recipient (address + subscriptionId) past the gate so each
+    // survivor can carry its own List-Unsubscribe header (ADR-015).
+    const allowed = resolved.filter((r) => !suppressed.has(r.address));
 
     // Render once — one shared message for the whole broadcast (may throw
     // CampaignContentError). Done before marking `sending` so a bad template
     // leaves the campaign editable.
     const message = await this.renderer.render(campaign.contentRef(), {});
 
+    const addresses = allowed.map((r) => r.address);
     const sendId = newId();
     // Durable record opened BEFORE the provider call (crash recovery).
     const record = SendRecord.create({
@@ -94,7 +101,7 @@ export class SendCampaign {
     await this.campaigns.update(campaign);
 
     try {
-      if (addresses.length > 0) {
+      if (allowed.length > 0) {
         const ack = await this.delivery.send({
           from: {
             fromName: sender.fromName,
@@ -106,7 +113,10 @@ export class SendCampaign {
             htmlBody: message.htmlBody,
             textBody: message.textBody,
           },
-          recipients: addresses.map((email) => ({ email })),
+          recipients: allowed.map((r) => {
+            const headers = this.unsubscribeHeaders(campaign.newsletterId, r.subscriptionId, r.address);
+            return headers === undefined ? { email: r.address } : { email: r.address, headers };
+          }),
           // Newsletters are broadcasts (ADR-008): broadcast stream + token.
           category: 'broadcast',
           // Echoed back on webhooks so events correlate to this campaign.
@@ -127,5 +137,34 @@ export class SendCampaign {
       await this.campaigns.update(campaign);
       throw err;
     }
+  }
+
+  /**
+   * Build a recipient's RFC 8058 `List-Unsubscribe` headers (ADR-015). The URL
+   * **always** points at the API's own `POST /v1/unsubscribe` (built from
+   * `baseUrl`) — that is the machine one-click endpoint, and the token can only
+   * travel per-recipient in the header (a campaign is one bulk send with a shared
+   * body, ADR-008). Any operator `unsubscribe.url` page is reached by the API's
+   * `GET` forwarding this token, not by pointing the header there. Returns
+   * `undefined` when no `baseUrl` is set — nowhere to point, so headers are
+   * omitted. `email` rides along for the landing page to display.
+   */
+  private unsubscribeHeaders(
+    newsletterId: string,
+    subscriptionId: string,
+    email: string,
+  ): readonly EmailHeader[] | undefined {
+    if (this.config.baseUrl === null) return undefined;
+
+    const token = unsubscribeToken(this.config.unsubscribe.tokenSecret, newsletterId, subscriptionId);
+    const url = new URL(`${this.config.baseUrl}${PUBLIC_UNSUBSCRIBE_PATH}`);
+    url.searchParams.set('newsletterId', newsletterId);
+    url.searchParams.set('subscriptionId', subscriptionId);
+    url.searchParams.set('token', token);
+    url.searchParams.set('email', email);
+    return [
+      { name: 'List-Unsubscribe', value: `<${url.toString()}>` },
+      { name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' },
+    ];
   }
 }

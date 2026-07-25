@@ -38,9 +38,21 @@ interface PostmarkBulkRequest {
   Messages: PostmarkBulkRecipient[];
 }
 
+/** A Postmark custom header (`{ Name, Value }`). Message-level headers win. */
+interface PostmarkHeader {
+  Name: string;
+  Value: string;
+}
+
 /** One per-recipient entry of the bulk `Messages` array. */
 interface PostmarkBulkRecipient {
   To: string;
+  /**
+   * Per-recipient custom headers. In the Bulk API, message-level headers take
+   * precedence over request-level ones — this is how each subscriber gets their
+   * own `List-Unsubscribe` value (ADR-015).
+   */
+  Headers?: PostmarkHeader[];
 }
 
 /** The bulk submission acknowledgment Postmark returns (HTTP 200, async). */
@@ -125,7 +137,13 @@ export class PostmarkDeliveryGateway implements DeliveryGateway {
       Subject: message.content.subject,
       HtmlBody: message.content.htmlBody,
       MessageStream: STREAM_BY_CATEGORY[message.category],
-      Messages: message.recipients.map((r) => ({ To: r.email })),
+      Messages: message.recipients.map((r) => {
+        const entry: PostmarkBulkRecipient = { To: r.email };
+        if (r.headers && r.headers.length > 0) {
+          entry.Headers = r.headers.map((h) => ({ Name: h.name, Value: h.value }));
+        }
+        return entry;
+      }),
     };
     const replyTo = message.from.replyTo;
     if (replyTo != null && replyTo.length > 0) request.ReplyTo = replyTo;

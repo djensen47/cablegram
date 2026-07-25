@@ -89,6 +89,25 @@ describe('PostmarkDeliveryGateway.send', () => {
     });
   });
 
+  it('maps per-recipient headers onto each bulk Messages entry (ADR-015)', async () => {
+    const { calls } = stubBulk();
+    const gateway = gatewayWith('t');
+
+    await gateway.send({
+      ...message,
+      recipients: [
+        { email: 'a@example.com', headers: [{ name: 'List-Unsubscribe', value: '<https://api.example/u?a>' }] },
+        { email: 'b@example.com' },
+      ],
+    });
+
+    expect(calls[0]!.body.Messages).toEqual([
+      { To: 'a@example.com', Headers: [{ Name: 'List-Unsubscribe', Value: '<https://api.example/u?a>' }] },
+      // No headers → no Headers key, unchanged from the base shape.
+      { To: 'b@example.com' },
+    ]);
+  });
+
   it('omits ReplyTo/TextBody/Tag when not provided and maps a transactional category', async () => {
     const { calls } = stubBulk();
     const gateway = gatewayWith('t');

@@ -7,10 +7,23 @@
  * upstream (in `campaigns`), never here.
  */
 
+/** A custom message header (name/value), e.g. RFC 8058 `List-Unsubscribe`. */
+export interface EmailHeader {
+  readonly name: string;
+  readonly value: string;
+}
+
 /** A single resolved recipient. Rendering/personalization happens upstream. */
 export interface EmailRecipient {
   /** The destination address (already validated/normalized by the caller). */
   readonly email: string;
+  /**
+   * Optional per-recipient custom headers. Each recipient may carry different
+   * values — the campaigns send path uses this for a per-subscriber
+   * `List-Unsubscribe` header (ADR-015). The gateway is a leaf: it transports
+   * these verbatim and ascribes no meaning to them.
+   */
+  readonly headers?: readonly EmailHeader[];
 }
 
 /** The sender identity for a send — mapped from a newsletter's fields upstream. */

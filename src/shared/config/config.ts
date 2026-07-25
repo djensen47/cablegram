@@ -88,6 +88,42 @@ export interface AppConfig {
     /** Magic-link login token lifetime in seconds (default 15m). */
     readonly magicLinkTtlSeconds: number;
   };
+  /**
+   * cablegram's own public origin (ADR-015), e.g. `https://api.example.com`. The
+   * first URL the API needs to point at **itself** (unlike the account-mail bases,
+   * which point at an operator front-end). It is used to build the absolute
+   * `List-Unsubscribe` link when no operator `unsubscribe.url` is configured —
+   * the link then points at the built-in `GET /v1/unsubscribe` page. When both
+   * this and `unsubscribe.url` are unset, campaign sends omit the
+   * `List-Unsubscribe` headers — sending is unaffected. No trailing slash
+   * (normalized here).
+   */
+  readonly baseUrl: string | null;
+  /** Public, token-authenticated unsubscribe settings (ADR-015). */
+  readonly unsubscribe: {
+    /**
+     * HMAC secret for the stateless per-subscription unsubscribe token. In
+     * Postmark-token style it **falls back to the JWT secret** when unset, so a
+     * minimal deployment needs no extra config; setting it separately decouples
+     * link validity from JWT-secret rotation (rotating one need not invalidate
+     * the other). Rotating *this* secret invalidates all outstanding links.
+     */
+    readonly tokenSecret: string;
+    /**
+     * The operator's **own** unsubscribe page, e.g. `https://example.com/unsubscribe`.
+     * When set, each recipient's `List-Unsubscribe` link points here, carrying
+     * `newsletterId`, `subscriptionId`, `token` and `email` on the query string;
+     * the operator's page is responsible for POSTing back to `POST /v1/unsubscribe`
+     * (which returns JSON). When null, the link instead points at the built-in
+     * `GET /v1/unsubscribe` page (served from `baseUrl`), which POSTs for the user.
+     */
+    readonly url: string | null;
+  };
+}
+
+/** Strip a single trailing slash so `${base}/v1/...` never doubles up. */
+function trimTrailingSlash(url: string): string {
+  return url.endsWith('/') ? url.slice(0, -1) : url;
 }
 
 const schema = z
@@ -120,6 +156,16 @@ const schema = z
     MAGIC_LINK_URL_BASE: z.string().url().optional(),
     PASSWORD_RESET_TTL_SECONDS: z.coerce.number().int().positive().default(3_600),
     MAGIC_LINK_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+    // The API's own public origin — used to build the built-in unsubscribe
+    // page's link when no operator UNSUBSCRIBE_URL is set (ADR-015); when both
+    // are unset, campaign sends omit the List-Unsubscribe headers.
+    BASE_URL: z.string().url().optional(),
+    // Optional dedicated HMAC secret for unsubscribe tokens; falls back to
+    // JWT_SECRET below when unset (a single-secret deployment is unchanged).
+    UNSUBSCRIBE_TOKEN_SECRET: z.string().min(1).optional(),
+    // The operator's own unsubscribe page. When set, List-Unsubscribe links
+    // point here (carrying the token + email); the page POSTs to /v1/unsubscribe.
+    UNSUBSCRIBE_URL: z.string().url().optional(),
   })
   // When links are enabled, both front-end base URLs must be present — the email
   // has nowhere to point otherwise.
@@ -180,6 +226,12 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     oneTimeTokens: {
       passwordResetTtlSeconds: e.PASSWORD_RESET_TTL_SECONDS,
       magicLinkTtlSeconds: e.MAGIC_LINK_TTL_SECONDS,
+    },
+    baseUrl: e.BASE_URL ? trimTrailingSlash(e.BASE_URL) : null,
+    unsubscribe: {
+      // Dedicated secret when provided, else the JWT secret (single-secret setup).
+      tokenSecret: e.UNSUBSCRIBE_TOKEN_SECRET ?? e.JWT_SECRET,
+      url: e.UNSUBSCRIBE_URL ?? null,
     },
   };
 }

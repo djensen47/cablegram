@@ -13,7 +13,11 @@ import {
 } from './shared/http/index.js';
 import { createAccountsAuthRoutes, createUserRoutes } from './accounts/index.js';
 import { createNewsletterRoutes } from './newsletters/index.js';
-import { createSubscriptionRoutes } from './subscriptions/index.js';
+import {
+  createSubscriptionRoutes,
+  createPublicUnsubscribeRoutes,
+  PUBLIC_UNSUBSCRIBE_PATH,
+} from './subscriptions/index.js';
 import { createDeliverabilityRoutes } from './deliverability/index.js';
 import { createTemplateRoutes } from './templates/index.js';
 import { createCampaignRoutes, createPostmarkWebhookRoutes } from './campaigns/index.js';
@@ -34,6 +38,10 @@ const OPEN_V1_PATHS = new Set([
   '/v1/auth/password-reset/confirm',
   '/v1/auth/magic-link',
   '/v1/auth/magic-link/consume',
+  // Public, token-authenticated unsubscribe + RFC 8058 one-click (ADR-015): the
+  // recipient (or their mail client) reaches this with no session, authenticated
+  // by the HMAC token in the query, not a JWT.
+  PUBLIC_UNSUBSCRIBE_PATH,
 ]);
 
 /**
@@ -85,6 +93,9 @@ export function createApp(container: Container): OpenAPIHono<AppEnv> {
   // routers' paths do not collide.
   v1.route('/newsletters', createNewsletterRoutes(container));
   v1.route('/newsletters', createSubscriptionRoutes(container));
+  // Public unsubscribe (open; listed in OPEN_V1_PATHS above). Mounted at
+  // /v1/unsubscribe — a fixed path, so the exact-match open-path gate covers it.
+  v1.route('/unsubscribe', createPublicUnsubscribeRoutes(container));
   v1.route('/suppressions', createDeliverabilityRoutes(container));
   v1.route('/templates', createTemplateRoutes(container));
   v1.route('/campaigns', createCampaignRoutes(container));

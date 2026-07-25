@@ -93,4 +93,27 @@ describe('loadConfig', () => {
       magicLinkUrlBase: 'https://app.example/magic',
     });
   });
+
+  it('defaults BASE_URL + UNSUBSCRIBE_URL to null and the unsubscribe secret to the JWT secret (ADR-015)', () => {
+    const c = loadConfig(base);
+    expect(c.baseUrl).toBeNull();
+    expect(c.unsubscribe.tokenSecret).toBe(base.JWT_SECRET);
+    expect(c.unsubscribe.url).toBeNull();
+  });
+
+  it('normalizes BASE_URL by trimming a trailing slash', () => {
+    expect(loadConfig({ ...base, BASE_URL: 'https://api.example.com/' } as NodeJS.ProcessEnv).baseUrl).toBe(
+      'https://api.example.com',
+    );
+  });
+
+  it('uses a dedicated UNSUBSCRIBE_TOKEN_SECRET when set', () => {
+    const c = loadConfig({ ...base, UNSUBSCRIBE_TOKEN_SECRET: 'a-separate-unsub-secret' } as NodeJS.ProcessEnv);
+    expect(c.unsubscribe.tokenSecret).toBe('a-separate-unsub-secret');
+  });
+
+  it('carries the operator UNSUBSCRIBE_URL when set', () => {
+    const c = loadConfig({ ...base, UNSUBSCRIBE_URL: 'https://example.com/unsubscribe' } as NodeJS.ProcessEnv);
+    expect(c.unsubscribe.url).toBe('https://example.com/unsubscribe');
+  });
 });

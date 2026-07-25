@@ -6,3 +6,4 @@ export { authModule } from './module.js';
 export type { AccessClaims, AccessTokenService } from './token-service.js';
 export { JoseAccessTokenService } from './jose-access-token-service.js';
 export { newOpaqueToken, hashOpaqueToken } from './opaque-token.js';
+export { unsubscribeToken, verifyUnsubscribeToken } from './unsubscribe-token.js';

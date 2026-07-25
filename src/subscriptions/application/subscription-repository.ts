@@ -2,6 +2,9 @@ import type { MergeFields, Subscription, SubscriptionStatus } from '../domain/su
 
 /** A resolved send target: an address plus the merge model to render for it. */
 export interface RecipientProjection {
+  /** The subscription's id — carried so the send path can mint a per-recipient
+   * unsubscribe token (ADR-015). */
+  readonly subscriptionId: string;
   readonly address: string;
   readonly mergeModel: MergeFields;
 }

@@ -11,6 +11,8 @@ export const SUBSCRIPTION_TYPES = {
   Subscribe: Symbol.for('Subscribe'),
   ConfirmSubscription: Symbol.for('ConfirmSubscription'),
   Unsubscribe: Symbol.for('Unsubscribe'),
+  /** Public, token-authenticated unsubscribe (ADR-015); no JWT. */
+  PublicUnsubscribe: Symbol.for('PublicUnsubscribe'),
   ListSubscriptions: Symbol.for('ListSubscriptions'),
   ResolveRecipients: Symbol.for('ResolveRecipients'),
 } as const;

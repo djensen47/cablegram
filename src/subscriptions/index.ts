@@ -8,6 +8,12 @@ export { SUBSCRIPTION_TYPES } from './types.js';
 
 // HTTP router (mounted under /v1/newsletters by the app assembly).
 export { createSubscriptionRoutes } from './presentation/routes.js';
+// Public, open unsubscribe router (mounted at /v1/unsubscribe, ADR-015) + the
+// shared path constant the send path builds its List-Unsubscribe URL from.
+export {
+  createPublicUnsubscribeRoutes,
+  PUBLIC_UNSUBSCRIBE_PATH,
+} from './presentation/public-unsubscribe-routes.js';
 
 // In-memory repository: the DI-rebind test double (ADR-003).
 export { InMemorySubscriptionRepository } from './infrastructure/in-memory-subscription-repository.js';
@@ -28,6 +34,7 @@ export {
   SubscriptionNotFoundError,
   SubscriptionNewsletterNotFoundError,
   SubscriptionStateError,
+  InvalidUnsubscribeTokenError,
 } from './domain/errors.js';
 export type {
   SubscriptionRepository,
@@ -42,5 +49,6 @@ export type { SubscribeInput, ListSubscriptionsInput } from './application/dtos.
 export { Subscribe } from './application/subscribe.js';
 export { ConfirmSubscription } from './application/confirm-subscription.js';
 export { Unsubscribe } from './application/unsubscribe.js';
+export { PublicUnsubscribe } from './application/public-unsubscribe.js';
 export { ListSubscriptions } from './application/list-subscriptions.js';
 export { ResolveRecipients } from './application/resolve-recipients.js';

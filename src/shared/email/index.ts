@@ -19,6 +19,7 @@ export type {
   RenderedMessage,
   SenderIdentity,
   EmailRecipient,
+  EmailHeader,
   SendAcknowledgment,
 } from './delivery-gateway.js';
 export { PostmarkDeliveryGateway } from './postmark-delivery-gateway.js';

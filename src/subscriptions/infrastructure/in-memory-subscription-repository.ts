@@ -65,7 +65,7 @@ export class InMemorySubscriptionRepository implements SubscriptionRepository {
     return [...this.store.values()]
       .filter((s) => s.newsletterId === newsletterId && s.status === 'subscribed')
       .filter((s) => wantedTags.every((tag) => s.tags.includes(tag)))
-      .map((s) => ({ address: s.email, mergeModel: s.mergeFields }));
+      .map((s) => ({ subscriptionId: s.id, address: s.email, mergeModel: s.mergeFields }));
   }
 
   private byKey(newsletterId: string, email: string): Subscription | null {

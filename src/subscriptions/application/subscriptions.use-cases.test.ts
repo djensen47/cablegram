@@ -17,13 +17,16 @@ import {
   Subscribe,
   ConfirmSubscription,
   Unsubscribe,
+  PublicUnsubscribe,
   ListSubscriptions,
   ResolveRecipients,
   SubscriptionNewsletterNotFoundError,
   SubscriptionNotFoundError,
   SubscriptionStateError,
   InvalidSubscriptionEmailError,
+  InvalidUnsubscribeTokenError,
 } from '../index.js';
+import { unsubscribeToken } from '../../shared/auth/index.js';
 
 const env = {
   DATABASE_URL: 'mongodb://localhost/cablegram',
@@ -32,6 +35,10 @@ const env = {
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
   POSTMARK_WEBHOOK_SECRET: 's',
 } as NodeJS.ProcessEnv;
+
+// The unsubscribe secret falls back to JWT_SECRET when unset (ADR-015), so
+// tokens minted with this value verify inside the container under test.
+const UNSUB_SECRET = env.JWT_SECRET as string;
 
 // Rebind the subscription repository and the email gateway to their in-memory
 // doubles (ADR-003); the newsletters repo is rebound too so the DAG dependency
@@ -183,7 +190,7 @@ describe('subscriptions use cases', () => {
   it('resolveRecipients returns only subscribed rows, projecting the merge model', async () => {
     const subscribe = container.get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe);
     // subscribed (single opt-in), with a merge model
-    await subscribe.execute({
+    const active = await subscribe.execute({
       newsletterId,
       email: 'active@dispatch.example',
       doubleOptIn: false,
@@ -204,8 +211,67 @@ describe('subscriptions use cases', () => {
       .execute(newsletterId);
 
     expect(recipients).toEqual([
-      { address: 'active@dispatch.example', mergeModel: { firstName: 'Ada' } },
+      { subscriptionId: active.id, address: 'active@dispatch.example', mergeModel: { firstName: 'Ada' } },
     ]);
+  });
+
+  describe('public token unsubscribe (ADR-015)', () => {
+    async function seedSubscribed(email = 'reader@dispatch.example'): Promise<string> {
+      const s = await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email, doubleOptIn: false });
+      return s.id;
+    }
+
+    it('unsubscribes with a valid token and is idempotent', async () => {
+      const id = await seedSubscribed();
+      const token = unsubscribeToken(UNSUB_SECRET, newsletterId, id);
+      const publicUnsub = container.get<PublicUnsubscribe>(SUBSCRIPTION_TYPES.PublicUnsubscribe);
+
+      const first = await publicUnsub.execute(newsletterId, id, token);
+      expect(first?.status).toBe('unsubscribed');
+
+      // Idempotent: a second call with the same (still valid) token is a no-op.
+      const second = await publicUnsub.execute(newsletterId, id, token);
+      expect(second?.status).toBe('unsubscribed');
+    });
+
+    it('rejects a forged / mismatched token', async () => {
+      const id = await seedSubscribed();
+      await expect(
+        container
+          .get<PublicUnsubscribe>(SUBSCRIPTION_TYPES.PublicUnsubscribe)
+          .execute(newsletterId, id, 'forged-token'),
+      ).rejects.toBeInstanceOf(InvalidUnsubscribeTokenError);
+    });
+
+    it('does not unsubscribe when the token is presented under the wrong newsletter (ADR-011)', async () => {
+      const id = await seedSubscribed();
+      // A token minted for this newsletter, replayed against another id, fails
+      // verification (the newsletter is bound into the signature).
+      const token = unsubscribeToken(UNSUB_SECRET, newsletterId, id);
+      await expect(
+        container
+          .get<PublicUnsubscribe>(SUBSCRIPTION_TYPES.PublicUnsubscribe)
+          .execute('another-newsletter', id, token),
+      ).rejects.toBeInstanceOf(InvalidUnsubscribeTokenError);
+
+      // The row is untouched.
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      expect(rows[0]?.status).toBe('subscribed');
+    });
+
+    it('succeeds quietly for a valid token whose subscription no longer exists', async () => {
+      // Never seeded: a legitimately-signed token for a since-deleted row.
+      const missingId = 'gone-subscription';
+      const token = unsubscribeToken(UNSUB_SECRET, newsletterId, missingId);
+      const result = await container
+        .get<PublicUnsubscribe>(SUBSCRIPTION_TYPES.PublicUnsubscribe)
+        .execute(newsletterId, missingId, token);
+      expect(result).toBeNull();
+    });
   });
 
   it('resolveRecipients honours a query-time tag segment (AND over tags)', async () => {
