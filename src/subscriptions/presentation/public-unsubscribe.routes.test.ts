@@ -61,6 +61,22 @@ describe('public unsubscribe routes (ADR-015)', () => {
     expect(await currentStatus()).toBe('subscribed');
   });
 
+  it('GET 302-redirects to the operator UNSUBSCRIBE_URL, forwarding the token params, without unsubscribing', async () => {
+    ({ app, container } = build({ UNSUBSCRIBE_URL: 'https://acme.example/goodbye' }));
+    ({ newsletterId, subscriptionId } = await seed(container));
+    token = unsubscribeToken(TEST_JWT_SECRET, newsletterId, subscriptionId);
+
+    const res = await app.request(unsubUrl(newsletterId, subscriptionId, token));
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get('location')!);
+    expect(location.origin + location.pathname).toBe('https://acme.example/goodbye');
+    expect(location.searchParams.get('token')).toBe(token);
+    expect(location.searchParams.get('subscriptionId')).toBe(subscriptionId);
+    expect(location.searchParams.get('email')).toBe('reader@dispatch.example');
+    // Redirecting the browser does not itself unsubscribe — the operator page POSTs.
+    expect(await currentStatus()).toBe('subscribed');
+  });
+
   it('POST one-click (List-Unsubscribe=One-Click) unsubscribes with no JWT and returns JSON', async () => {
     const res = await app.request(unsubUrl(newsletterId, subscriptionId, token), {
       method: 'POST',

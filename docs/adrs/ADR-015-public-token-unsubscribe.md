@@ -54,8 +54,9 @@ subscriptions router could not be exact-matched there.) Two methods, split so **
   `unsubscribed` (reusing the domain `subscription.unsubscribe(now)`; idempotent), returns
   `200 {"status":"unsubscribed","email":…}`. This is the target for the RFC 8058 one-click header, for
   the built-in page's script, and for an operator's own page.
-- **`GET`** — serves a small, self-contained HTML page (inlined CSS + vanilla JS) that POSTs back to the
-  same endpoint on a confirm button and swaps in the result. It **changes no state**.
+- **`GET`** — the browser landing. When an operator `UNSUBSCRIBE_URL` is configured it **302-redirects**
+  there, forwarding the token params; otherwise it serves a small, self-contained HTML page (inlined CSS
+  + vanilla JS) that POSTs back on a confirm button and swaps in the result. It **changes no state**.
 
 Putting the mutation on `POST` (not `GET`) is deliberate: email **link scanners pre-fetch URLs** with
 `GET`, so a state-changing `GET` would let a scanner unsubscribe recipients who never clicked. A `GET`
@@ -67,15 +68,20 @@ token whose row no longer exists succeeds quietly; an already-unsubscribed row i
 of these leak whether an address is subscribed. The operator JWT endpoint is **kept unchanged** — the
 two serve different callers.
 
-### Where the link points: operator page or built-in
+### The header always targets the API; the operator page is reached by redirect
 
-The per-recipient `List-Unsubscribe` link points at the operator's **own** page when `UNSUBSCRIBE_URL`
-is configured — carrying `newsletterId`, `subscriptionId`, `token` and `email` on the query string, so
-the operator's page can display the address and POST back to `/v1/unsubscribe`. When `UNSUBSCRIBE_URL`
-is unset, the link points at the **built-in** `GET /v1/unsubscribe` page (served from `BASE_URL`), which
-does the POST for the user. Either way the API's `POST /v1/unsubscribe` is the one authority that
-performs the unsubscribe and returns JSON. (There is no redirect: the email link points straight at
-whichever page is in play, so no `302` hop is needed.)
+The per-recipient `List-Unsubscribe` header **always** points at the API's own `POST /v1/unsubscribe`
+(built from `BASE_URL`) — that is the RFC 8058 one-click machine endpoint, and it must be the API so the
+one-click POST actually performs the unsubscribe. Crucially, the token can travel **only** in this
+per-recipient header: a campaign is one bulk send with a **shared** body (ADR-008), so a per-recipient
+unsubscribe URL cannot be embedded in the email body.
+
+That is why an operator's own page (`UNSUBSCRIBE_URL`) is reached by the API's **`GET` redirecting** to
+it (forwarding `newsletterId`, `subscriptionId`, `token`, `email`), rather than by pointing the header
+there: the header carries the token to the API, and the API hands it on. The operator's page then POSTs
+back to `/v1/unsubscribe`. When `UNSUBSCRIBE_URL` is unset, the `GET` instead serves the built-in page,
+which POSTs for the user. Either way, `POST /v1/unsubscribe` is the one authority that performs the
+unsubscribe and returns JSON. Requires `BASE_URL`; when it is unset the send omits the headers entirely.
 
 ### Per-recipient List-Unsubscribe headers on sends
 
@@ -111,8 +117,8 @@ Unsubscribing flips **per-newsletter status only**. It does **not** add the addr
   stop mail), so global rotation is a sufficient and simple kill switch.
 - The built-in `GET` page is a small HTML surface on an otherwise headless API ([ADR-004](ADR-004-headless-api-only.md)).
   It is unavoidable — a human clicked a link and a browser will render *something* — and is fully opt-out:
-  set `UNSUBSCRIBE_URL` and the email links to the operator's own page instead. It serves no application
-  data and consumes no API contract.
+  set `UNSUBSCRIBE_URL` and the `GET` redirects to the operator's own page instead. It serves no
+  application data and consumes no API contract.
 - Because the unsubscribe is on `POST` and the `GET` only renders, a link scanner that pre-fetches the
   URL cannot opt anyone out — the safety property that motivated the GET/POST split.
 

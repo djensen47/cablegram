@@ -1,5 +1,7 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import type { Container } from 'inversify';
+import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
+import type { AppConfig } from '../../shared/config/index.js';
 import { BadRequestError, errorResponse, throwOnInvalid, type AppEnv } from '../../shared/http/index.js';
 import { SUBSCRIPTION_TYPES } from '../types.js';
 import { InvalidUnsubscribeTokenError } from '../domain/errors.js';
@@ -33,15 +35,16 @@ const getUnsubscribeRoute = createRoute({
   method: 'get',
   path: '/',
   tags: ['subscriptions'],
-  summary: 'Built-in unsubscribe page (browser link)',
+  summary: 'Unsubscribe browser landing (page or redirect to operator page)',
   description:
-    'Open (ADR-015): serves a small self-contained HTML page that POSTs back to this same endpoint to ' +
-    'unsubscribe. **This GET does not change any state** — the mutation happens on the POST — so link ' +
-    'scanners that pre-fetch the URL cannot unsubscribe anyone. When an operator `UNSUBSCRIBE_URL` is ' +
-    'configured, the email links there instead and this page is just a fallback.',
+    'Open (ADR-015). When an operator `UNSUBSCRIBE_URL` is configured, this **302-redirects** there, ' +
+    'forwarding the token params so the operator’s page can POST the unsubscribe. Otherwise it serves a ' +
+    'small self-contained HTML page that POSTs back to this endpoint. **This GET changes no state** — ' +
+    'the mutation is on the POST — so link scanners that pre-fetch the URL cannot unsubscribe anyone.',
   request: { query: UnsubscribeQuerySchema },
   responses: {
-    200: { description: 'The self-contained unsubscribe confirmation page (text/html)' },
+    200: { description: 'The built-in self-contained unsubscribe page (text/html)' },
+    302: { description: 'Redirect to the configured operator UNSUBSCRIBE_URL (token params forwarded)' },
     400: badRequestResponse,
   },
 });
@@ -160,7 +163,18 @@ export function createPublicUnsubscribeRoutes(container: Container): OpenAPIHono
 
   app.openapi(getUnsubscribeRoute, (c) => {
     // Deliberately does NOT unsubscribe — a pre-fetching link scanner must not be
-    // able to opt someone out. The page's POST is the only mutation.
+    // able to opt someone out. The POST is the only mutation.
+    const config = container.get<AppConfig>(SHARED_TYPES.Config);
+    if (config.unsubscribe.url) {
+      // Hand the browser to the operator's own page, forwarding the token params
+      // (this is the only channel for them — the per-recipient token can't live
+      // in the shared campaign body). `URL` preserves any query on their base.
+      const target = new URL(config.unsubscribe.url);
+      for (const [key, value] of Object.entries(c.req.query())) {
+        target.searchParams.set(key, value);
+      }
+      return c.redirect(target.toString(), 302);
+    }
     return c.html(unsubscribePage(), 200);
   });
 

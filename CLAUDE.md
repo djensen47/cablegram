@@ -168,9 +168,13 @@ scope.
   `deliverability` suppression list** (that's hard-bounce/complaint territory; keep them separate). Every
   campaign send emits a **per-recipient** `List-Unsubscribe` + `List-Unsubscribe-Post` header — carried
   on the `email` port's per-recipient `EmailRecipient.headers`, mapped to the Postmark Bulk per-message
-  `Headers`. The link points at the operator's own `UNSUBSCRIBE_URL` when set (their page POSTs back),
-  else at the built-in `GET` page under `BASE_URL`; unset-both → headers omitted. The operator JWT
-  endpoint (`.../subscriptions/{id}/unsubscribe`) is kept as-is — different caller.
+  `Headers`. The header **always** points at the API (`${BASE_URL}/v1/unsubscribe`) — it's the one-click
+  machine endpoint, and the token can travel **only** in the per-recipient header (a campaign is one bulk
+  send with a **shared** body, ADR-008, so no per-recipient body link). An operator's own page
+  (`UNSUBSCRIBE_URL`) is therefore reached by the **`GET` 302-redirecting** to it (forwarding the token
+  params), not by pointing the header there; unset → `GET` serves the built-in page; no `BASE_URL` →
+  headers omitted. The operator JWT endpoint (`.../subscriptions/{id}/unsubscribe`) is kept as-is —
+  different caller.
 - **The email port carries a business `category`, not a Postmark stream.** `BulkMessage.category` is
   `'broadcast' | 'transactional'` (campaigns → broadcast; subscribe confirmations + account mail →
   transactional). The Postmark adapter maps it to both the message stream **and** the signing token:

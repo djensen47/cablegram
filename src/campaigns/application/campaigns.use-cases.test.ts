@@ -406,17 +406,15 @@ describe('campaigns — per-recipient List-Unsubscribe headers (ADR-015)', () =>
     expect(verifyUnsubscribeToken(UNSUB_SECRET, newsletterId, subscriptionId, token)).toBe(true);
   });
 
-  it('points the List-Unsubscribe link at the operator UNSUBSCRIBE_URL when configured', async () => {
+  it('keeps the List-Unsubscribe header on the API POST URL even when an operator UNSUBSCRIBE_URL is set', async () => {
+    // The RFC 8058 one-click header must target the API machine endpoint; the
+    // operator page is reached via the API GET redirect, not the header.
     const { container, gateway } = withHeadersEnv({ UNSUBSCRIBE_URL: 'https://acme.example/goodbye' });
-    const { newsletterId, recipient } = await sendOneCampaign(container, gateway);
+    const { recipient } = await sendOneCampaign(container, gateway);
 
     const listUnsub = (recipient.headers ?? []).find((h) => h.name === 'List-Unsubscribe')!.value;
     const url = new URL(listUnsub.slice(1, -1));
-    expect(url.origin + url.pathname).toBe('https://acme.example/goodbye');
-    // Still carries the token params the operator's page needs to POST back.
-    expect(url.searchParams.get('newsletterId')).toBe(newsletterId);
-    expect(url.searchParams.get('token')).toBeTruthy();
-    expect(url.searchParams.get('email')).toBe('reader@dispatch.example');
+    expect(url.origin + url.pathname).toBe('https://api.dispatch.test/v1/unsubscribe');
   });
 
   it('round-trips: the header URL’s token unsubscribes at the public use case', async () => {

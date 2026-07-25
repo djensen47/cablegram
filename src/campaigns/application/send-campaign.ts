@@ -140,27 +140,24 @@ export class SendCampaign {
   }
 
   /**
-   * Build a recipient's RFC 8058 `List-Unsubscribe` headers (ADR-015): an
-   * absolute, token-carrying URL plus the one-click marker. The URL points at
-   * the operator's own `unsubscribe.url` when configured, otherwise at the
-   * built-in `GET /v1/unsubscribe` page under `baseUrl`. Returns `undefined`
-   * when neither is set — there is nowhere to point, so the send omits the
-   * headers. The token is a stateless HMAC bound to `(newsletterId,
-   * subscriptionId)`; `email` rides along for the landing page to display.
+   * Build a recipient's RFC 8058 `List-Unsubscribe` headers (ADR-015). The URL
+   * **always** points at the API's own `POST /v1/unsubscribe` (built from
+   * `baseUrl`) — that is the machine one-click endpoint, and the token can only
+   * travel per-recipient in the header (a campaign is one bulk send with a shared
+   * body, ADR-008). Any operator `unsubscribe.url` page is reached by the API's
+   * `GET` forwarding this token, not by pointing the header there. Returns
+   * `undefined` when no `baseUrl` is set — nowhere to point, so headers are
+   * omitted. `email` rides along for the landing page to display.
    */
   private unsubscribeHeaders(
     newsletterId: string,
     subscriptionId: string,
     email: string,
   ): readonly EmailHeader[] | undefined {
-    const target =
-      this.config.unsubscribe.url ??
-      (this.config.baseUrl === null ? null : `${this.config.baseUrl}${PUBLIC_UNSUBSCRIBE_PATH}`);
-    if (target === null) return undefined;
+    if (this.config.baseUrl === null) return undefined;
 
     const token = unsubscribeToken(this.config.unsubscribe.tokenSecret, newsletterId, subscriptionId);
-    // The URL API preserves any query already on an operator-supplied url.
-    const url = new URL(target);
+    const url = new URL(`${this.config.baseUrl}${PUBLIC_UNSUBSCRIBE_PATH}`);
     url.searchParams.set('newsletterId', newsletterId);
     url.searchParams.set('subscriptionId', subscriptionId);
     url.searchParams.set('token', token);

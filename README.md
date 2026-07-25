@@ -130,10 +130,12 @@ users).
   newsletter. It is long-lived (a link in an old email still works) and idempotent, and it flips
   **per-newsletter status only** — it does *not* add the address to the global suppression list. The
   actual unsubscribe is a **`POST`** (returns JSON; also the RFC 8058 one-click target); the **`GET`**
-  only renders a page, so a link scanner that pre-fetches the URL can't opt anyone out. Every campaign
-  send emits a per-recipient `List-Unsubscribe` + `List-Unsubscribe-Post` header. The link points at your
-  own `UNSUBSCRIBE_URL` page when set (it POSTs back to the API), otherwise at a built-in page served
-  from `BASE_URL`. See [ADR-015](docs/adrs/ADR-015-public-token-unsubscribe.md).
+  changes no state, so a link scanner that pre-fetches the URL can't opt anyone out. Every campaign send
+  emits a per-recipient `List-Unsubscribe` + `List-Unsubscribe-Post` header that **always** points at the
+  API (`${BASE_URL}/v1/unsubscribe`) — the token can only ride per-recipient in the header. If you set
+  `UNSUBSCRIBE_URL`, the `GET` **redirects** the browser to your own page (forwarding the token params)
+  so it can POST back; otherwise `GET` serves a built-in page. See
+  [ADR-015](docs/adrs/ADR-015-public-token-unsubscribe.md).
 
 ```bash
 # First-run bootstrap (open, one-time):
@@ -238,7 +240,7 @@ always-current contract — this table is the map.
 | POST · GET | `/v1/newsletters/{id}/subscriptions` | Subscribe / list (`?status=&tag=`) |
 | POST | `/v1/newsletters/{id}/subscriptions/{subId}/confirm` | Confirm a pending (double opt-in) subscription |
 | POST | `/v1/newsletters/{id}/subscriptions/{subId}/unsubscribe` | Unsubscribe (operator; JWT) |
-| GET · POST | `/v1/unsubscribe?newsletterId=&subscriptionId=&token=&email=` | **Public** unsubscribe — no JWT, the HMAC `token` authenticates (ADR-015). `POST` performs it (returns JSON; RFC 8058 one-click target); `GET` only renders a page (no state change) |
+| GET · POST | `/v1/unsubscribe?newsletterId=&subscriptionId=&token=&email=` | **Public** unsubscribe — no JWT, the HMAC `token` authenticates (ADR-015). `POST` performs it (returns JSON; RFC 8058 one-click target); `GET` changes no state — it redirects to `UNSUBSCRIBE_URL` if set, else renders a built-in page |
 
 Statuses: `pending` · `subscribed` · `unsubscribed`.
 Public unsubscribe flips per-newsletter status only — it does **not** add to the global suppression list.
@@ -307,8 +309,8 @@ All configuration is environment variables (no config files on disk). See [`.env
 | `MAGIC_LINK_URL_BASE` | if links on | — | Front-end base for the magic-link; the token is appended as `?token=`. |
 | `PASSWORD_RESET_TTL_SECONDS` | no | `3600` | Password-reset token lifetime (1h). |
 | `MAGIC_LINK_TTL_SECONDS` | no | `900` | Magic-link token lifetime (15m). |
-| `UNSUBSCRIBE_URL` | no | — | Your **own** unsubscribe page. When set, `List-Unsubscribe` links point here (with `newsletterId`/`subscriptionId`/`token`/`email` on the query) and your page POSTs to `/v1/unsubscribe`. Unset → the link uses the built-in page under `BASE_URL`. |
-| `BASE_URL` | no | — | The API's **own** public origin (e.g. `https://api.example.com`). Builds the built-in unsubscribe page's link when `UNSUBSCRIBE_URL` is unset (ADR-015). If both are unset, sends omit the `List-Unsubscribe` headers. |
+| `BASE_URL` | no | — | The API's **own** public origin (e.g. `https://api.example.com`). The per-recipient `List-Unsubscribe` header always points at `${BASE_URL}/v1/unsubscribe` (ADR-015); unset → sends omit the headers. |
+| `UNSUBSCRIBE_URL` | no | — | Your **own** unsubscribe page. When set, `GET /v1/unsubscribe` redirects the browser here (forwarding `newsletterId`/`subscriptionId`/`token`/`email`) and your page POSTs back to `/v1/unsubscribe`. Unset → `GET` serves a built-in page. |
 | `UNSUBSCRIBE_TOKEN_SECRET` | no | *(= `JWT_SECRET`)* | HMAC secret for the stateless unsubscribe token. Falls back to `JWT_SECRET`; set separately to decouple link validity from JWT-secret rotation. |
 
 ## Gotchas worth knowing
