@@ -410,8 +410,10 @@ lint config *is* the encoded architecture). The full rationale is in the
 | `npm test` | Vitest (fast, in-memory repositories, no DB) |
 | `npm run test:integration` | Vitest repository contract tests against a real `mongod` |
 
-**Green gate before a PR:** `npm run typecheck && npm run lint && npm test` (add `test:integration`
-for persistence changes). See [`docs/testing.md`](docs/testing.md) for the two-suite split.
+**Green gate before a PR:** `npm run typecheck && npm run lint && npm test && npm run build` (add
+`test:integration` for persistence changes). `build` catches what `typecheck` cannot — it compiles
+`tsconfig.build.json`, which excludes tests, so it is the only check that proves no test-only code
+leaks into the shipped bundle. See [`docs/testing.md`](docs/testing.md) for the two-suite split.
 
 ## Testing
 

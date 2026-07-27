@@ -112,8 +112,12 @@ scope.
 - `npm test` — unit: use cases + routes, repositories rebound to `InMemory<X>Repository` (ADR-003). No DB.
 - `npm run test:integration` — repository contracts vs a standalone in-memory Mongo
   (`mongodb-memory-server`); excluded from the default gate.
-- Green gate before commit/PR: `npm run typecheck && npm run lint && npm test` (add `test:integration`
-  for persistence changes). No end-to-end suite yet — see `docs/testing.md`.
+- Green gate before commit/PR: `npm run typecheck && npm run lint && npm test && npm run build`
+  (add `test:integration` for persistence changes). No end-to-end suite yet — see `docs/testing.md`.
+  **`build` is part of the gate, not optional:** `typecheck` runs `tsconfig.json` (all of `src/`),
+  while `build` runs `tsconfig.build.json`, which *excludes* test files. A file that moves out of an
+  excluded path compiles fine under `typecheck` and breaks `build` — exactly how test-only code once
+  leaked into the production bundle.
 
 ## Gotchas
 

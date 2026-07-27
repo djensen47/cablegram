@@ -5,6 +5,7 @@
     "dist",
     "src/**/*.test.ts",
     "src/**/*.spec.ts",
-    "src/shared/testing/**"
+    "src/shared/testing/**",
+    "src/integration-setup.ts"
   ]
 }
