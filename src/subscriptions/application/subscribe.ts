@@ -60,7 +60,7 @@ export class Subscribe {
         return existing;
       }
       existing.resubscribe({
-        mergeFields: input.mergeFields,
+        customFields: input.customFields,
         tags: input.tags,
         doubleOptIn,
         evidence: input.evidence,
@@ -77,7 +77,7 @@ export class Subscribe {
       id: newId(),
       newsletterId: input.newsletterId,
       email: input.email,
-      mergeFields: input.mergeFields,
+      customFields: input.customFields,
       tags: input.tags,
       doubleOptIn,
       evidence: input.evidence,

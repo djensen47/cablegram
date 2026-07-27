@@ -200,14 +200,14 @@ describe('subscriptions use cases', () => {
     ).rejects.toBeInstanceOf(SubscriptionStateError);
   });
 
-  it('resolveRecipients returns only subscribed rows, projecting the merge model', async () => {
+  it('resolveRecipients returns only subscribed rows, projecting the custom-field model', async () => {
     const subscribe = container.get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe);
-    // subscribed (single opt-in), with a merge model
+    // subscribed (single opt-in), with a custom-field model
     const active = await subscribe.execute({
       newsletterId,
       email: 'active@dispatch.example',
       doubleOptIn: false,
-      mergeFields: { firstName: 'Ada' },
+      customFields: { firstName: 'Ada' },
     });
     // pending (double opt-in) — must be excluded
     await subscribe.execute({ newsletterId, email: 'pending@dispatch.example', doubleOptIn: true });
@@ -224,7 +224,7 @@ describe('subscriptions use cases', () => {
       .execute(newsletterId);
 
     expect(recipients).toEqual([
-      { subscriptionId: active.id, address: 'active@dispatch.example', mergeModel: { firstName: 'Ada' } },
+      { subscriptionId: active.id, address: 'active@dispatch.example', customFields: { firstName: 'Ada' } },
     ]);
   });
 
@@ -418,13 +418,13 @@ describe('subscriptions use cases', () => {
       expect(rows[0]?.createdAt).toEqual(subscribedAt);
     });
 
-    it('normalizes addresses and keeps merge fields and tags', async () => {
+    it('normalizes addresses and keeps custom fields and tags', async () => {
       await importer().execute({
         newsletterId,
         rows: [
           {
             email: 'Reader@Dispatch.Example',
-            mergeFields: { firstName: 'Ada' },
+            customFields: { firstName: 'Ada' },
             tags: ['vip', 'vip', ' beta '],
           },
         ],
@@ -434,7 +434,7 @@ describe('subscriptions use cases', () => {
         .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
         .execute({ newsletterId, limit: 10 });
       expect(rows[0]?.email).toBe('reader@dispatch.example');
-      expect(rows[0]?.mergeFields).toEqual({ firstName: 'Ada' });
+      expect(rows[0]?.customFields).toEqual({ firstName: 'Ada' });
       expect(rows[0]?.tags).toEqual(['vip', 'beta']);
     });
 
@@ -476,7 +476,7 @@ describe('subscriptions use cases', () => {
           {
             email: 'reader@dispatch.example',
             status: 'unsubscribed',
-            mergeFields: { firstName: 'Ada' },
+            customFields: { firstName: 'Ada' },
           },
         ],
       });

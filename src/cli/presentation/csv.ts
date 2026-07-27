@@ -72,7 +72,7 @@ export function parseLine(line: string, lineNumber: number): string[] {
  *
  * Header **casing is preserved**. It would be convenient to lowercase them so
  * `Email` and `email` both match, but every non-reserved column becomes a merge
- * field, and merge fields are referenced by name in templates — lowercasing
+ * field, and custom fields are referenced by name in templates — lowercasing
  * would turn a `firstName` column into `{{firstname}}` and silently break every
  * `{{firstName}}` placeholder. Callers match the reserved columns
  * case-insensitively instead (see `column`).
@@ -110,7 +110,7 @@ export function parseCsv(content: string): Record<string, string>[] {
 /**
  * Reads a reserved column (`email`, `tags`) case-insensitively, so a
  * spreadsheet's `Email` header works while merge-field names keep their casing.
- * Returns the matched key too, so the caller can exclude it from merge fields.
+ * Returns the matched key too, so the caller can exclude it from custom fields.
  */
 export function column(
   row: Record<string, string>,

@@ -1,12 +1,12 @@
-import type { MergeFields, Subscription, SubscriptionStatus } from '../domain/subscription.js';
+import type { CustomFields, Subscription, SubscriptionStatus } from '../domain/subscription.js';
 
-/** A resolved send target: an address plus the merge model to render for it. */
+/** A resolved send target: an address plus the custom-field model to render for it. */
 export interface RecipientProjection {
   /** The subscription's id — carried so the send path can mint a per-recipient
    * unsubscribe token (ADR-015). */
   readonly subscriptionId: string;
   readonly address: string;
-  readonly mergeModel: MergeFields;
+  readonly customFields: CustomFields;
 }
 
 /**
@@ -69,7 +69,7 @@ export interface SubscriptionRepository {
   list(options: ListSubscriptionsOptions): Promise<Subscription[]>;
   /**
    * Resolve the send targets for a newsletter: **only `subscribed`** rows,
-   * narrowed by the query-time `segment`, projected to `{ address, mergeModel }`.
+   * narrowed by the query-time `segment`, projected to `{ address, customFields }`.
    * This is the seam `campaigns` calls to build a recipient set.
    */
   resolveRecipients(

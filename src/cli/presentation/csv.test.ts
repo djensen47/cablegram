@@ -70,7 +70,7 @@ describe('toImportRow', () => {
     expect(row.tags).toEqual(['vip', 'beta']);
   });
 
-  it('maps every other column into mergeFields', () => {
+  it('maps every other column into customFields', () => {
     const { row } = toImportRow({
       email: 'a@example.com',
       firstname: 'Ada',
@@ -78,7 +78,7 @@ describe('toImportRow', () => {
     });
 
     // Empty cells are dropped rather than stored as empty strings.
-    expect(row.mergeFields).toEqual({ firstname: 'Ada' });
+    expect(row.customFields).toEqual({ firstname: 'Ada' });
   });
 
   it('preserves merge-field casing so {{firstName}} keeps working', () => {
@@ -87,7 +87,7 @@ describe('toImportRow', () => {
     // template — a failure that only shows up in already-sent mail.
     const { row } = toImportRow({ email: 'a@example.com', firstName: 'Ada' });
 
-    expect(row.mergeFields).toEqual({ firstName: 'Ada' });
+    expect(row.customFields).toEqual({ firstName: 'Ada' });
   });
 
   it('still matches the reserved columns case-insensitively', () => {
@@ -102,9 +102,9 @@ describe('toImportRow', () => {
     expect(row.tags).toEqual(['vip']);
     expect(row.status).toBe('unsubscribed');
     expect(row.subscribedAt).toBe('2019-04-02T00:00:00.000Z');
-    // The reserved columns must not leak into merge fields under their
+    // The reserved columns must not leak into custom fields under their
     // original casing either.
-    expect(row.mergeFields).toBeUndefined();
+    expect(row.customFields).toBeUndefined();
   });
 
   it('flags an invalid address instead of sending it', () => {
@@ -120,7 +120,7 @@ describe('toImportRow', () => {
       email: 'a@example.com',
       status: undefined,
       tags: undefined,
-      mergeFields: undefined,
+      customFields: undefined,
       source: undefined,
     });
   });
@@ -151,16 +151,16 @@ describe('toImportRow', () => {
     expect(toImportRow({ email: 'a@example.com', status: '  ' }).row.status).toBeUndefined();
   });
 
-  it('treats source as a reserved column, not a merge field', () => {
+  it('treats source as a reserved column, not a custom field', () => {
     // A `{{source}}` placeholder that renders into a campaign is not what an
     // operator means by a `source` column — it is metadata about the record.
     const { row } = toImportRow({ email: 'a@example.com', source: 'mailchimp-2026' });
 
     expect(row.source).toBe('mailchimp-2026');
-    expect(row.mergeFields).toBeUndefined();
+    expect(row.customFields).toBeUndefined();
   });
 
-  it('reserves the consent-trail columns so an opt-in IP is never a merge field', () => {
+  it('reserves the consent-trail columns so an opt-in IP is never a custom field', () => {
     // Letting these fall through would both lose the record and make a
     // subscriber's IP renderable into a campaign body.
     const { row } = toImportRow({
@@ -177,7 +177,7 @@ describe('toImportRow', () => {
     expect(row.confirmedIp).toBe('203.0.113.1');
     expect(row.unsubscribedAt).toBe('2021-01-05T00:00:00.000Z');
     expect(row.unsubscribedUserAgent).toBe('Thunderbird/115');
-    expect(row.mergeFields).toBeUndefined();
+    expect(row.customFields).toBeUndefined();
   });
 
   it('names which date column is bad so an 18k-row file is fixable', () => {

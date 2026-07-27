@@ -3,7 +3,7 @@ import type { CampaignContentRef } from '../domain/campaign.js';
 /**
  * A consumer-owned port over the `templates` context (ADR-001). Resolves a
  * campaign's content — a template reference **or** inline bodies — and renders
- * it to a send-ready message against a merge model (ADR-008: rendering happens
+ * it to a send-ready message against a custom-field model (ADR-008: rendering happens
  * in-app before the one provider call). The adapter reaches the `templates`
  * facade along the DAG edge `campaigns → templates`; a missing template or
  * unrenderable source surfaces as a `CampaignContentError`.

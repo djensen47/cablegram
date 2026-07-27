@@ -22,7 +22,7 @@ export class FacadeRecipientResolver implements RecipientResolver {
     return recipients.map((r) => ({
       subscriptionId: r.subscriptionId,
       address: r.address,
-      mergeModel: r.mergeModel,
+      customFields: r.customFields,
     }));
   }
 }

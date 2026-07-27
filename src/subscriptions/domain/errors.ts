@@ -18,7 +18,7 @@ export class InvalidSubscriptionEmailError extends SubscriptionError {
   }
 }
 
-/** A subscription field violates an invariant (empty tag, malformed merge field, …). */
+/** A subscription field violates an invariant (empty tag, malformed custom field, …). */
 export class InvalidSubscriptionError extends SubscriptionError {
   constructor(
     readonly field: string,

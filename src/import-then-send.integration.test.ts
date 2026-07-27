@@ -134,7 +134,7 @@ describe('import then send (ADR-022)', () => {
         source: string | null;
         signupIp: string | null;
         confirmedAt: string | null;
-        mergeFields: Record<string, unknown>;
+        customFields: Record<string, unknown>;
       }[];
     };
     expect(
@@ -147,21 +147,21 @@ describe('import then send (ADR-022)', () => {
       'angry@dispatch.example': 'complained',
     });
 
-    // The consent record and the merge model came across intact — and every row
+    // The consent record and the custom-field model came across intact — and every row
     // is marked as second-hand, so an inherited consent claim never masquerades
     // as one cablegram witnessed itself.
     const active = stored.data.find((s) => s.email === 'active@dispatch.example');
     expect(active?.createdAt).toBe('2019-04-02T09:15:00.000Z');
-    expect(active?.mergeFields).toEqual({ firstName: 'Ada' });
+    expect(active?.customFields).toEqual({ firstName: 'Ada' });
     expect(stored.data.every((s) => s.source === 'mailchimp-export-2026-07')).toBe(true);
-    // And provenance is not a merge field — it must not be renderable.
-    expect(active?.mergeFields).not.toHaveProperty('source');
+    // And provenance is not a custom field — it must not be renderable.
+    expect(active?.customFields).not.toHaveProperty('source');
 
     // The consent trail survived the round trip through Mongo, which is the
     // only way to prove the mapping actually persists it (ADR-023).
     expect(active?.signupIp).toBe('203.0.113.1');
     expect(active?.confirmedAt).toBe('2019-04-02T09:20:00.000Z');
-    expect(active?.mergeFields).not.toHaveProperty('signupIp');
+    expect(active?.customFields).not.toHaveProperty('signupIp');
     // A row that never confirmed says so, rather than borrowing createdAt.
     expect(stored.data.find((s) => s.email === 'dead@dispatch.example')?.confirmedAt).toBeNull();
 

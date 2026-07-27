@@ -9,7 +9,7 @@ import type {
 /**
  * Resolve the send targets for a newsletter (the seam `campaigns` calls at send
  * time, ADR-008): **only `subscribed`** rows, narrowed by an optional
- * query-time segment, projected to `{ address, mergeModel }`. Suppression is a
+ * query-time segment, projected to `{ address, customFields }`. Suppression is a
  * *separate* gate applied downstream in `campaigns` (never here) — this returns
  * the subscribed set, nothing more.
  */

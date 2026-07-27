@@ -12,7 +12,7 @@ import type {
  * The stored document shape (ADR-012): the app string id is the `_id`;
  * `newsletterId`/`templateId` are plain id references (no embedded documents);
  * `segmentTags` is a scalar array and `stats` a nested BSON object (an opaque
- * snapshot, like `subscriptions.mergeFields`).
+ * snapshot, like `subscriptions.customFields`).
  */
 interface CampaignDoc {
   _id: string;

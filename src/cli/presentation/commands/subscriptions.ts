@@ -96,7 +96,7 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
     .description('Subscribe an address')
     .option('--email <email>', 'address to subscribe')
     .option('--tag <tag>', 'tag (repeatable)', collect, [])
-    .option('--field <key=value>', 'merge field (repeatable)', collect, [])
+    .option('--field <key=value>', 'custom field (repeatable)', collect, [])
     .option('--no-double-opt-in', 'subscribe immediately without a confirmation email')
     .option('--signup-ip <ip>', 'the subscriber’s IP, as your signup form observed it')
     .option('--signup-user-agent <ua>', 'the subscriber’s user agent at signup')
@@ -128,7 +128,7 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
       const subscription = await api.post<SubscriptionDto>(basePath(newsletterId), {
         email,
         tags: flags.tag.length > 0 ? flags.tag : undefined,
-        mergeFields: parseKeyValue(flags.field),
+        customFields: parseKeyValue(flags.field),
         doubleOptIn: flags.doubleOptIn,
         signupIp: flags.signupIp,
         signupUserAgent: flags.signupUserAgent,
@@ -348,7 +348,7 @@ interface ImportRowBody {
   email: string;
   status?: SubscriptionStatus;
   tags?: string[];
-  mergeFields?: Record<string, unknown>;
+  customFields?: Record<string, unknown>;
   subscribedAt?: string;
   source?: string;
   signupIp?: string;
@@ -364,7 +364,7 @@ interface ImportRowBody {
 /**
  * The consent-trail columns an export may carry (ADR-023). Reserved for the
  * same reason as `source`: silently turning an opt-in IP into a renderable
- * merge field would be both a lost record and a leak waiting to happen.
+ * custom field would be both a lost record and a leak waiting to happen.
  */
 const CONSENT_DATE_COLUMNS = ['confirmedAt', 'unsubscribedAt'] as const;
 const CONSENT_TEXT_COLUMNS = [
@@ -381,8 +381,8 @@ const CONSENT_TEXT_COLUMNS = [
  * membership's lifecycle state and `subscribedAt` its original opt-in date;
  * `tags` is a semicolon-separated list (a comma would collide with the CSV
  * delimiter, which is exactly the kind of paper cut that makes an import
- * silently wrong); every remaining column becomes a merge field, so `firstName`
- * in the header lands in `mergeFields.firstName` and is available to templates.
+ * silently wrong); every remaining column becomes a custom field, so `firstName`
+ * in the header lands in `customFields.firstName` and is available to templates.
  *
  * An unknown `status` fails the row rather than defaulting. Guessing here would
  * mean quietly turning someone's `unsubscribed` into a `subscribed`, which is
@@ -391,12 +391,12 @@ const CONSENT_TEXT_COLUMNS = [
 export function toImportRow(row: Record<string, string>): ParsedRow {
   // The reserved columns are matched case-insensitively (`Email` from a
   // spreadsheet is still the email column); every other header keeps its exact
-  // casing, because it becomes a merge field a template refers to by name.
+  // casing, because it becomes a custom field a template refers to by name.
   const emailColumn = column(row, 'email');
   const tagsColumn = column(row, 'tags');
   const statusColumn = column(row, 'status');
   const subscribedAtColumn = column(row, 'subscribedAt');
-  // Reserved rather than left to fall through to merge fields: provenance is
+  // Reserved rather than left to fall through to custom fields: provenance is
   // metadata about the record, and a `{{source}}` placeholder that renders into
   // a campaign is not what an operator means by a `source` column.
   const sourceColumn = column(row, 'source');
@@ -452,10 +452,10 @@ export function toImportRow(row: Record<string, string>): ParsedRow {
     ...CONSENT_DATE_COLUMNS.map((name) => column(row, name)?.key),
     ...CONSENT_TEXT_COLUMNS.map((name) => column(row, name)?.key),
   ]);
-  const mergeFields: Record<string, unknown> = {};
+  const customFields: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(row)) {
     if (reserved.has(key) || value === '') continue;
-    mergeFields[key] = value;
+    customFields[key] = value;
   }
 
   return {
@@ -463,7 +463,7 @@ export function toImportRow(row: Record<string, string>): ParsedRow {
       email: parsedEmail.data,
       status,
       tags: tags.length > 0 ? tags : undefined,
-      mergeFields: Object.keys(mergeFields).length > 0 ? mergeFields : undefined,
+      customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
       ...dates,
       ...consent,
       source: sourceColumn?.value.trim() || undefined,

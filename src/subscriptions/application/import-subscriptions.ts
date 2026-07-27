@@ -133,7 +133,7 @@ export class ImportSubscriptions {
         }
         found.overwriteFromImport({
           status,
-          mergeFields: row.mergeFields,
+          customFields: row.customFields,
           tags: row.tags,
           subscribedAt: row.subscribedAt,
           source,
@@ -152,7 +152,7 @@ export class ImportSubscriptions {
           newsletterId: input.newsletterId,
           email,
           status,
-          mergeFields: row.mergeFields,
+          customFields: row.customFields,
           tags: row.tags,
           subscribedAt: row.subscribedAt,
           source,

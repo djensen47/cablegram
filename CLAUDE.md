@@ -305,7 +305,7 @@ scope.
   whole vocabulary and preserve **both halves of the consent record**: the source system's opt-in date
   as `createdAt`, and a `source` provenance note (batch-level, per-row `source` column overrides,
   defaults to `import` so an imported row is *always* identifiable). `source` is a **field, NOT a merge
-  field** — merge fields are the template rendering model and a `{{source}}` must never render into a
+  field** — custom fields are the template rendering model and a `{{source}}` must never render into a
   campaign; it's a reserved CSV column for the same reason. It's historical: later transitions leave it
   alone (a re-subscribe says "re-opted in" via status + `updatedAt`), only `overwrite` re-stamps it.
   **An import sends no mail, ever** — not even for `pending` rows; the use case has **no
@@ -321,7 +321,7 @@ scope.
   **`complained` never does**. That write is why the DAG gained `subscriptions → deliverability`
   (consumer-owned `SuppressionGateway`, reason pinned to `hard-bounce` in the adapter so a complaint
   can't be routed onto the global list). CSV reserved columns are now `email`/`tags`/`status`/
-  `subscribedAt`/`source` (case-insensitive); everything else is still a merge field with casing
+  `subscribedAt`/`source` (case-insensitive); everything else is still a custom field with casing
   preserved. An unknown `status` **fails the row** — never defaulted. `--no-double-opt-in` is gone
   from `import`.
 - **The consent record is three moments, and `updatedAt` is none of them**
@@ -342,6 +342,21 @@ scope.
   all eight. All eight are importable + **reserved CSV columns** (an unreserved `signupIp` would become a
   renderable custom field). `optionalJsonBody` (`shared/http`) exists because Hono 500s on an empty body
   when content-type is JSON — `required: false` does not help; don't remove it from confirm/unsubscribe.
+- **They are `customFields`, not `mergeFields` — and two things about them are UNDECIDED, not settled**
+  ([ADR-024](docs/adrs/ADR-024-custom-fields.md)). Renamed everywhere at once (domain type
+  `CustomFields`, the aggregate property, the **stored Mongo field**, the wire DTO, request bodies, the
+  CLI DTO, and `RecipientProjection.mergeModel` → `customFields`); no alias, no deprecation window,
+  because there are no consumers yet. Named for **whose data it is** — subscriber-supplied, renderable
+  — as opposed to record metadata (`source`, `signupIp`, `confirmedAt`) which has a fixed vocabulary and
+  must **never** be renderable; that's the line ADR-022/023 kept drawing by hand. The CSV surface is
+  unchanged: a custom field is *any non-reserved column*, so reserving a name is what keeps metadata out
+  of the bag. **Still open, deliberately:** (1) it's untyped (`z.record(z.unknown())`) where every other
+  vocabulary is a closed set, and nothing verifies a template's `{{firstName}}` against what's stored;
+  (2) **nothing renders it** — `send-campaign.ts` renders ONCE against an empty model because a campaign
+  is one Bulk call with a shared body (ADR-008), so the per-recipient projection is resolved and then
+  dropped and `Hi {{firstName}}` sends "Hi " to everyone. Typing is theoretical until rendering exists,
+  so **rendering is the decision that comes first** — and it's an ADR-008 change. Don't "fix" either by
+  accident.
 - **Postmark wire format** (request/response, webhook schema) is implemented in
   `src/shared/email/postmark-delivery-gateway.ts` and `src/campaigns/presentation/webhook-routes.ts` —
   treat that code (or live docs) as the source of truth, not memory, before restating a Postmark fact

@@ -25,7 +25,7 @@ export {
   isSubscriptionStatus,
   type SubscriptionId,
   type SubscriptionStatus,
-  type MergeFields,
+  type CustomFields,
   type ConsentEvidence,
   type ImportedConsentRecord,
 } from './domain/subscription.js';
