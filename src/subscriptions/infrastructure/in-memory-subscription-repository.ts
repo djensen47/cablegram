@@ -35,6 +35,21 @@ export class InMemorySubscriptionRepository implements SubscriptionRepository {
     this.store.set(subscription.id, subscription);
   }
 
+  async saveMany(subscriptions: readonly Subscription[]): Promise<void> {
+    for (const subscription of subscriptions) {
+      // Mirrors the Mongo bulk write: insert-or-replace by id, and the compound
+      // key still holds — a batch that would collide with a *different* row's
+      // (newsletterId, email) is a duplicate, exactly as the unique index says.
+      const clash = this.byKey(subscription.newsletterId, subscription.email);
+      if (clash !== null && clash.id !== subscription.id) {
+        throw new Error(
+          `Duplicate subscription for (${subscription.newsletterId}, ${subscription.email})`,
+        );
+      }
+      this.store.set(subscription.id, subscription);
+    }
+  }
+
   async findById(id: string): Promise<Subscription | null> {
     return this.store.get(id) ?? null;
   }
@@ -44,6 +59,16 @@ export class InMemorySubscriptionRepository implements SubscriptionRepository {
     email: string,
   ): Promise<Subscription | null> {
     return this.byKey(newsletterId, email);
+  }
+
+  async findByNewsletterAndEmails(
+    newsletterId: string,
+    emails: readonly string[],
+  ): Promise<Subscription[]> {
+    const wanted = new Set(emails);
+    return [...this.store.values()].filter(
+      (s) => s.newsletterId === newsletterId && wanted.has(s.email),
+    );
   }
 
   async list(options: ListSubscriptionsOptions): Promise<Subscription[]> {

@@ -98,6 +98,41 @@ export interface ReviveSubscriptionProps {
   now: Date;
 }
 
+/**
+ * Fields accepted when **importing** a membership (ADR-022).
+ *
+ * The difference from `CreateSubscriptionProps` is the whole point of the
+ * distinction: an import is handed a `status` outright, where a subscribe
+ * *derives* one from `doubleOptIn`. Migrating a list off another ESP means
+ * restoring state that already exists — including people who unsubscribed,
+ * bounced or complained — and no opt-in toggle can express those.
+ */
+export interface ImportSubscriptionProps {
+  id: SubscriptionId;
+  newsletterId: string;
+  email: string;
+  /** The restored lifecycle state, verbatim — never derived. */
+  status: SubscriptionStatus;
+  mergeFields?: MergeFields;
+  tags?: string[];
+  /**
+   * The **original** opt-in date from the source system, when it is known. It
+   * becomes `createdAt`, because that timestamp *is* the consent record — the
+   * thing you most need if consent is ever challenged. Absent → `now`.
+   */
+  subscribedAt?: Date;
+  now: Date;
+}
+
+/** Fields an import overwrites on an existing row (`--on-conflict overwrite`). */
+export interface OverwriteSubscriptionProps {
+  status: SubscriptionStatus;
+  mergeFields?: MergeFields;
+  tags?: string[];
+  subscribedAt?: Date;
+  now: Date;
+}
+
 // Tags are trimmed, de-duplicated (order preserved) and stripped of empties so
 // query-time segment matching is exact and stable.
 function normalizeTags(tags: readonly string[] | undefined): string[] {
@@ -150,6 +185,61 @@ export class Subscription {
       createdAt: input.now,
       updatedAt: input.now,
     });
+  }
+
+  /**
+   * Restore a membership from another system (ADR-022) — **not** a subscribe.
+   *
+   * `create` can only ever produce `pending` or `subscribed`, because it derives
+   * the status from an opt-in toggle. That makes it structurally incapable of
+   * expressing a migration, where the incoming data already contains people who
+   * unsubscribed, hard-bounced or filed a spam complaint; importing those as
+   * `subscribed` would mail people who explicitly opted out.
+   *
+   * So the status is supplied, not derived, and the original opt-in date is
+   * preserved as `createdAt`. This factory deliberately has **no** notion of
+   * double opt-in: an import must never trigger a confirmation email (the
+   * caller has no new consent to confirm — it is restoring old consent).
+   */
+  static import(input: ImportSubscriptionProps): Subscription {
+    const createdAt = input.subscribedAt ?? input.now;
+    return new Subscription({
+      id: input.id,
+      newsletterId: input.newsletterId,
+      email: validEmail(input.email),
+      status: input.status,
+      mergeFields: input.mergeFields ?? {},
+      tags: normalizeTags(input.tags),
+      consecutiveSoftBounces: 0,
+      createdAt,
+      updatedAt: input.now,
+    });
+  }
+
+  /**
+   * Replace this membership with the imported one (`--on-conflict overwrite`,
+   * ADR-022): the file is the source of truth, so every field it describes wins
+   * — status included, opt-outs included.
+   *
+   * There is deliberately no partial/merge variant. A mode that is neither
+   * "leave the row alone" nor "the file is the truth" has no one-sentence
+   * description, which means nobody can predict afterwards what an import did
+   * to their data. The conservative choice is the *default* (`skip`), not a
+   * third blended behaviour.
+   *
+   * The soft-bounce streak resets: it is evidence gathered against the status
+   * being replaced, so it cannot outlive it (same reasoning as `resubscribe`).
+   */
+  overwriteFromImport(input: OverwriteSubscriptionProps): void {
+    this.props = {
+      ...this.props,
+      status: input.status,
+      mergeFields: input.mergeFields ?? this.props.mergeFields,
+      tags: input.tags === undefined ? this.props.tags : normalizeTags(input.tags),
+      consecutiveSoftBounces: 0,
+      createdAt: input.subscribedAt ?? this.props.createdAt,
+      updatedAt: input.now,
+    };
   }
 
   /** Rebuild an aggregate from persisted state without re-validating. */

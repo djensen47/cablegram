@@ -56,6 +56,25 @@ export class MongoSubscriptionRepository implements SubscriptionRepository {
     await this.collection.replaceOne({ _id: subscription.id }, toDoc(subscription));
   }
 
+  async saveMany(subscriptions: readonly Subscription[]): Promise<void> {
+    if (subscriptions.length === 0) return;
+    // A batch of independent single-document replaces — NOT a transaction
+    // (ADR-012: nothing here needs a replica set). `ordered: false` lets the
+    // whole batch attempt even if one document fails, and upserting by `_id` is
+    // safe because the caller resolved existing ids by `(newsletterId, email)`
+    // first: a new row carries a fresh id, an overwrite carries the stored one.
+    await this.collection.bulkWrite(
+      subscriptions.map((subscription) => ({
+        replaceOne: {
+          filter: { _id: subscription.id },
+          replacement: toDoc(subscription),
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    );
+  }
+
   async findById(id: string): Promise<Subscription | null> {
     const doc = await this.collection.findOne({ _id: id });
     return doc === null ? null : toDomain(doc);
@@ -67,6 +86,19 @@ export class MongoSubscriptionRepository implements SubscriptionRepository {
   ): Promise<Subscription | null> {
     const doc = await this.collection.findOne({ newsletterId, email });
     return doc === null ? null : toDomain(doc);
+  }
+
+  async findByNewsletterAndEmails(
+    newsletterId: string,
+    emails: readonly string[],
+  ): Promise<Subscription[]> {
+    if (emails.length === 0) return [];
+    // Served by the `(newsletterId, email)` unique index — the same key the
+    // single-address lookup uses, so one batched read replaces N point reads.
+    const docs = await this.collection
+      .find({ newsletterId, email: { $in: [...emails] } })
+      .toArray();
+    return docs.map(toDomain);
   }
 
   async list(options: ListSubscriptionsOptions): Promise<Subscription[]> {

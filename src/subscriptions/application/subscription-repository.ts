@@ -40,9 +40,31 @@ export interface ListSubscriptionsOptions {
 export interface SubscriptionRepository {
   create(subscription: Subscription): Promise<void>;
   update(subscription: Subscription): Promise<void>;
+  /**
+   * Write a batch of subscriptions, inserting or replacing each by id — the
+   * import path's write (ADR-022).
+   *
+   * Still **one document per write** and still no transaction (ADR-012): this
+   * is a batch of independent single-document operations sent in one round trip,
+   * not an atomic unit. A failure part-way leaves the earlier documents written,
+   * which is exactly what a resumable import wants.
+   */
+  saveMany(subscriptions: readonly Subscription[]): Promise<void>;
   findById(id: string): Promise<Subscription | null>;
   /** The one membership for an address in a newsletter, or `null` (the compound key). */
   findByNewsletterAndEmail(newsletterId: string, email: string): Promise<Subscription | null>;
+  /**
+   * The batch form of `findByNewsletterAndEmail`, for the import path (ADR-022):
+   * the memberships in `newsletterId` matching any of `emails`, in unspecified
+   * order. Addresses with no membership are simply absent from the result.
+   *
+   * It exists so importing a batch of 500 rows costs **one** read rather than
+   * 500 — the difference between a 15-minute migration and a 30-second one.
+   */
+  findByNewsletterAndEmails(
+    newsletterId: string,
+    emails: readonly string[],
+  ): Promise<Subscription[]>;
   /** Subscriptions in a newsletter, id-ordered, `id > cursor`, capped at `limit`. */
   list(options: ListSubscriptionsOptions): Promise<Subscription[]>;
   /**

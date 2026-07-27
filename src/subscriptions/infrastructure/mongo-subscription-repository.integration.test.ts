@@ -62,6 +62,65 @@ describe('MongoSubscriptionRepository (contract)', () => {
     await expect(repo.create(make('reader@dispatch.example', { nlId: 'nl-2' }))).resolves.toBeUndefined();
   });
 
+  it('finds a whole batch by (newsletterId, emails) — the import path’s single read', async () => {
+    await repo.create(make('a@dispatch.example'));
+    await repo.create(make('b@dispatch.example'));
+    await repo.create(make('other@dispatch.example', { nlId: 'nl-2' }));
+
+    const found = await repo.findByNewsletterAndEmails(newsletterId, [
+      'a@dispatch.example',
+      'b@dispatch.example',
+      'missing@dispatch.example',
+      // Same address, different newsletter: must not leak across (ADR-011).
+      'other@dispatch.example',
+    ]);
+
+    expect(found.map((s) => s.email).sort()).toEqual(['a@dispatch.example', 'b@dispatch.example']);
+    expect(await repo.findByNewsletterAndEmails(newsletterId, [])).toEqual([]);
+  });
+
+  it('saves a batch, inserting new rows and replacing existing ones by id', async () => {
+    const existing = make('a@dispatch.example');
+    await repo.create(existing);
+    existing.overwriteFromImport({ status: 'unsubscribed', now: new Date('2026-03-01T00:00:00Z') });
+    const fresh = make('b@dispatch.example');
+
+    await repo.saveMany([existing, fresh]);
+
+    expect((await repo.findById(existing.id))?.status).toBe('unsubscribed');
+    expect((await repo.findById(fresh.id))?.email).toBe('b@dispatch.example');
+    // Replaced, not duplicated — the compound key still holds one row.
+    const all = await repo.list({ newsletterId, limit: 10 });
+    expect(all).toHaveLength(2);
+    expect(await repo.saveMany([])).toBeUndefined();
+  });
+
+  it('rejects a batch that would violate the (newsletterId, email) unique index', async () => {
+    // A concurrent import racing on the same address must fail loudly rather
+    // than silently producing two memberships for one person.
+    await repo.create(make('a@dispatch.example'));
+
+    await expect(repo.saveMany([make('a@dispatch.example')])).rejects.toThrow();
+  });
+
+  it('preserves an imported opt-in date through a round trip', async () => {
+    const subscribedAt = new Date('2019-04-02T09:15:00.000Z');
+    const imported = Subscription.import({
+      id: newId(),
+      newsletterId,
+      email: 'legacy@dispatch.example',
+      status: 'unsubscribed',
+      subscribedAt,
+      now: new Date('2026-01-01T00:00:00Z'),
+    });
+
+    await repo.saveMany([imported]);
+
+    const stored = await repo.findById(imported.id);
+    expect(stored?.createdAt).toEqual(subscribedAt);
+    expect(stored?.status).toBe('unsubscribed');
+  });
+
   it('updates in place', async () => {
     const sub = make('reader@dispatch.example');
     await repo.create(sub);
