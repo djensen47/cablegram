@@ -14,6 +14,7 @@ import { registerSubscriptionCommands } from './commands/subscriptions.js';
 import { registerSuppressionCommands } from './commands/suppressions.js';
 import { registerTemplateCommands } from './commands/templates.js';
 import { registerUserCommands } from './commands/users.js';
+import { registerWebhookCommands } from './commands/webhooks.js';
 
 /**
  * Exit codes, so scripts can branch on the *kind* of failure rather than
@@ -79,6 +80,7 @@ export function buildProgram(deps: CliDeps): Command {
   registerTemplateCommands(program, ctx);
   registerSuppressionCommands(program, ctx);
   registerUserCommands(program, ctx);
+  registerWebhookCommands(program, ctx);
 
   program.addHelpText(
     'after',
@@ -89,6 +91,7 @@ Examples:
   $ cablegram subscriptions import <newsletter-id> subscribers.csv --no-double-opt-in
   $ cablegram campaigns send <campaign-id> --dry-run
   $ cablegram campaigns list --json | jq '.data[] | select(.status == "sent")'
+  $ cablegram webhooks unhandled
 
 Environment:
   CABLEGRAM_URL       base URL, overriding the stored config

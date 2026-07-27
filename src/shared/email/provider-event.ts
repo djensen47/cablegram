@@ -15,9 +15,13 @@
  * `Email` for bounce/complaint. Every type carries `Tag`, which is the campaign
  * id echoed back from the send — the only correlation handle we get.
  *
- * Any unrecognized payload yields an empty array rather than throwing, so an
+ * Any unrecognized payload yields no event rather than throwing, so an
  * unexpected or newly-added Postmark event never fails the receiver (a non-200
- * makes Postmark retry for hours).
+ * makes Postmark retry for hours). It is, however, **reported** rather than
+ * dropped in silence: the parser returns the buckets it could not claim
+ * alongside the events it could, and `campaigns` records them. Classification
+ * stays here — one place decides what cablegram handles — while the writing
+ * stays out, because this is a `shared/*` leaf with no repository.
  */
 
 /** The provider-agnostic event kinds cablegram acts on. */
@@ -47,6 +51,48 @@ export interface DeliveryEvent {
    */
   readonly firstEngagement: boolean | null;
 }
+
+/**
+ * A payload the parser could not turn into an event, reduced to a bucket key.
+ *
+ * The key is the *class* of payload, never the payload itself: one row per
+ * distinct key keeps the record bounded no matter how many events arrive.
+ */
+export interface UnhandledProviderEvent {
+  /**
+   * The bucket: a bare `RecordType` for a type cablegram does not handle, a
+   * `RecordType:Detail` pair when the type is handled but a sub-case is not
+   * (`Bounce:NewBounceType`), or a sentinel for a body with no usable type.
+   */
+  readonly key: string;
+  /** The payload as first seen, JSON-serialized and truncated. */
+  readonly sample: string;
+}
+
+/** What one webhook body yielded: the events to apply, and what was dropped. */
+export interface ParsedProviderEvents {
+  readonly events: DeliveryEvent[];
+  readonly unhandled: UnhandledProviderEvent[];
+}
+
+/** Bucket for a body that is not an object, or carries no usable `RecordType`. */
+export const UNPARSEABLE_EVENT_KEY = '__unparseable';
+
+/**
+ * Bounce `Type` values that are dropped **on purpose**, and so must never be
+ * reported as unhandled. Neither is a delivery failure: `AutoResponder` is an
+ * out-of-office reply (the mail arrived, ADR-020) and `Subscribe` is a
+ * subscription-management notice. Recording them would fill the report with
+ * rows that mean "working as designed", which is exactly the noise that trains
+ * people to stop reading it.
+ */
+const IGNORED_BOUNCE_TYPES = new Set(['AutoResponder', 'Subscribe']);
+
+/** Keys are bounded so a hostile or malformed `RecordType` cannot bloat a row. */
+const MAX_KEY_LENGTH = 100;
+
+/** Enough of the payload to see its shape; not enough to be a copy of it. */
+const MAX_SAMPLE_LENGTH = 1000;
 
 /**
  * Postmark bounce `Type` values that are **permanent** — the address will never
@@ -141,43 +187,109 @@ function build(
   };
 }
 
-function normalizeOne(payload: unknown): DeliveryEvent | null {
-  if (!isRecord(payload)) return null;
+/**
+ * The three outcomes for one payload. `ignored` is distinct from `unhandled` on
+ * purpose: both produce no event, but only one of them is a surprise.
+ */
+type Classification =
+  | { kind: 'event'; event: DeliveryEvent }
+  | { kind: 'ignored' }
+  | { kind: 'unhandled'; key: string };
 
-  switch (payload.RecordType) {
-    case 'Delivery':
-      return build('delivered', payload.Recipient, payload);
-    case 'Bounce': {
-      // Permanence, not a single literal — see PERMANENT_BOUNCE_TYPES.
-      const type = str(payload.Type);
-      if (type === null) return null;
-      if (PERMANENT_BOUNCE_TYPES.has(type)) return build('hard-bounce', payload.Email, payload);
-      if (TRANSIENT_BOUNCE_TYPES.has(type)) return build('soft-bounce', payload.Email, payload);
-      // Anything unclassified (incl. AutoResponder, Subscribe) changes nothing.
-      return null;
-    }
-    case 'SpamComplaint':
-      return build('spam-complaint', payload.Email, payload);
-    case 'Open':
-      return build('open', payload.Recipient, payload);
-    case 'Click':
-      return build('click', payload.Recipient, payload);
-    default:
-      return null;
-  }
+const ignored: Classification = { kind: 'ignored' };
+
+function unhandled(key: string): Classification {
+  return { kind: 'unhandled', key: key.slice(0, MAX_KEY_LENGTH) };
 }
 
 /**
- * Normalize a raw Postmark webhook body into provider-agnostic events. Postmark
- * sends a single object per request; an array is also accepted defensively.
- * Unrecognized or malformed payloads contribute nothing (no throw).
+ * A type cablegram claims to handle, but this particular payload carried no
+ * address — so there is nobody to apply it to. Reported rather than dropped:
+ * "we handle Delivery" and "we applied this Delivery" are different claims, and
+ * the gap between them is precisely what goes unnoticed otherwise.
  */
-export function parseProviderEvent(rawWebhookPayload: unknown): DeliveryEvent[] {
+function addressed(
+  type: DeliveryEventType,
+  recordType: string,
+  email: unknown,
+  payload: Record<string, unknown>,
+): Classification {
+  const event = build(type, email, payload);
+  return event === null
+    ? unhandled(`${recordType}:__no-address`)
+    : { kind: 'event', event };
+}
+
+function classifyOne(payload: unknown): Classification {
+  if (!isRecord(payload)) return unhandled(UNPARSEABLE_EVENT_KEY);
+
+  const recordType = str(payload.RecordType);
+  if (recordType === null) return unhandled(UNPARSEABLE_EVENT_KEY);
+
+  switch (recordType) {
+    case 'Delivery':
+      return addressed('delivered', recordType, payload.Recipient, payload);
+    case 'Bounce': {
+      // Permanence, not a single literal — see PERMANENT_BOUNCE_TYPES.
+      const type = str(payload.Type);
+      if (type === null) return unhandled('Bounce:__no-type');
+      if (PERMANENT_BOUNCE_TYPES.has(type)) {
+        return addressed('hard-bounce', recordType, payload.Email, payload);
+      }
+      if (TRANSIENT_BOUNCE_TYPES.has(type)) {
+        return addressed('soft-bounce', recordType, payload.Email, payload);
+      }
+      if (IGNORED_BOUNCE_TYPES.has(type)) return ignored;
+      // A bounce type in neither table is the exact case worth catching: both
+      // sets are pinned to Postmark's published table, so a new entry here
+      // means the table moved and we are silently discarding real failures.
+      return unhandled(`Bounce:${type}`);
+    }
+    case 'SpamComplaint':
+      return addressed('spam-complaint', recordType, payload.Email, payload);
+    case 'Open':
+      return addressed('open', recordType, payload.Recipient, payload);
+    case 'Click':
+      return addressed('click', recordType, payload.Recipient, payload);
+    default:
+      return unhandled(recordType);
+  }
+}
+
+/** A bounded, JSON-ish rendering of a payload, safe to store on a document. */
+function sampleOf(payload: unknown): string {
+  let json: string;
+  try {
+    json = JSON.stringify(payload) ?? String(payload);
+  } catch {
+    // A body that cannot be serialized (circular, a BigInt) is itself the
+    // finding; the type name is enough to act on.
+    json = `[unserializable ${typeof payload}]`;
+  }
+  return json.length <= MAX_SAMPLE_LENGTH ? json : `${json.slice(0, MAX_SAMPLE_LENGTH - 1)}…`;
+}
+
+/**
+ * Normalize a raw Postmark webhook body into provider-agnostic events, and
+ * report whatever could not be normalized. Postmark sends a single object per
+ * request; an array is also accepted defensively.
+ *
+ * Nothing here throws — the receiver must always 200 (ADR-008) — but nothing
+ * vanishes either: a payload that yields no event either lands in `unhandled`
+ * or is on the deliberate ignore list.
+ */
+export function parseProviderEvent(rawWebhookPayload: unknown): ParsedProviderEvents {
   const items = Array.isArray(rawWebhookPayload) ? rawWebhookPayload : [rawWebhookPayload];
   const events: DeliveryEvent[] = [];
+  const unclaimed: UnhandledProviderEvent[] = [];
+
   for (const item of items) {
-    const event = normalizeOne(item);
-    if (event !== null) events.push(event);
+    const result = classifyOne(item);
+    if (result.kind === 'event') events.push(result.event);
+    else if (result.kind === 'unhandled') {
+      unclaimed.push({ key: result.key, sample: sampleOf(item) });
+    }
   }
-  return events;
+
+  return { events, unhandled: unclaimed };
 }

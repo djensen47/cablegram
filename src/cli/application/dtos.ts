@@ -119,6 +119,19 @@ export interface SendDto {
   updatedAt: string;
 }
 
+/**
+ * One kind of provider event the receiver took but did not act on. Not wrapped
+ * in `ListEnvelope`: the endpoint is unpaginated because the collection is
+ * bounded by the provider's record-type table rather than by traffic.
+ */
+export interface UnhandledEventDto {
+  key: string;
+  count: number;
+  sample: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+}
+
 export type SuppressionReason = string;
 
 export interface SuppressionDto {

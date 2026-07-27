@@ -3,6 +3,7 @@ import { listResponseSchema, paginationQuerySchema } from '../../shared/http/ind
 import { CAMPAIGN_STATUSES, type Campaign, type CampaignStats } from '../domain/campaign.js';
 import type { Send } from '../domain/send.js';
 import { OUTCOME_STATUSES, type RecipientOutcome } from '../domain/recipient-outcome.js';
+import type { UnhandledEventRecord } from '../application/unhandled-event-repository.js';
 
 /**
  * zod-OpenAPI schemas for the campaigns API. These are the single source of
@@ -135,6 +136,39 @@ export const ListRecipientOutcomesQuerySchema = paginationQuerySchema.extend({
 
 export const WebhookAckSchema = z.object({ status: z.string() }).openapi('WebhookAck');
 
+/**
+ * One kind of provider event the receiver took but did not act on (issue #29).
+ * A non-empty list is the signal that Postmark is sending something cablegram
+ * drops — the question a log line on an ephemeral function cannot answer.
+ */
+const UnhandledEventSchema = z
+  .object({
+    key: z.string().openapi({
+      description:
+        'The bucket: a Postmark RecordType, a RecordType:Detail pair when the type is handled ' +
+        'but a sub-case is not (e.g. Bounce:NewType), or `__unparseable` for a body with no ' +
+        'usable RecordType.',
+      example: 'SubscriptionChange',
+    }),
+    count: z.number().int().openapi({ example: 4203 }),
+    sample: z.string().openapi({
+      description: 'The first payload seen for this key, JSON-serialized and truncated.',
+      example: '{"RecordType":"SubscriptionChange","Recipient":"reader@example.com"}',
+    }),
+    firstSeenAt: z.string().datetime(),
+    lastSeenAt: z.string().datetime(),
+  })
+  .openapi('UnhandledEvent');
+
+/**
+ * Not the paginated list envelope: the collection is one row per *kind* of
+ * event, bounded by Postmark's record-type table rather than by traffic, so
+ * there is never a second page to fetch.
+ */
+export const UnhandledEventListSchema = z
+  .object({ data: z.array(UnhandledEventSchema) })
+  .openapi('UnhandledEventList');
+
 /** Permissive Postmark webhook body: an event object with a `RecordType`. */
 export const PostmarkWebhookSchema = z
   .record(z.unknown())
@@ -143,6 +177,7 @@ export const PostmarkWebhookSchema = z
 export type CampaignResponse = z.infer<typeof CampaignSchema>;
 export type SendResponse = z.infer<typeof SendSchema>;
 export type RecipientOutcomeResponse = z.infer<typeof RecipientOutcomeSchema>;
+export type UnhandledEventResponse = z.infer<typeof UnhandledEventSchema>;
 
 /** Maps a domain aggregate to its wire DTO — entities are never serialized directly (ADR-004). */
 export function toCampaignResponse(campaign: Campaign): CampaignResponse {
@@ -175,6 +210,17 @@ export function toSendResponse(send: Send, stats: CampaignStats): SendResponse {
     stats,
     createdAt: send.createdAt.toISOString(),
     updatedAt: send.updatedAt.toISOString(),
+  };
+}
+
+/** Maps one unhandled-event bucket to its wire DTO. */
+export function toUnhandledEventResponse(record: UnhandledEventRecord): UnhandledEventResponse {
+  return {
+    key: record.key,
+    count: record.count,
+    sample: record.sample,
+    firstSeenAt: record.firstSeenAt.toISOString(),
+    lastSeenAt: record.lastSeenAt.toISOString(),
   };
 }
 

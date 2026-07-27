@@ -20,7 +20,11 @@ import {
 } from './subscriptions/index.js';
 import { createDeliverabilityRoutes } from './deliverability/index.js';
 import { createTemplateRoutes } from './templates/index.js';
-import { createCampaignRoutes, createPostmarkWebhookRoutes } from './campaigns/index.js';
+import {
+  createCampaignRoutes,
+  createPostmarkWebhookRoutes,
+  createUnhandledEventRoutes,
+} from './campaigns/index.js';
 
 /**
  * The open `/v1` endpoints that do **not** require a JWT (ADR-013/014): first-run
@@ -99,6 +103,10 @@ export function createApp(container: Container): OpenAPIHono<AppEnv> {
   v1.route('/suppressions', createDeliverabilityRoutes(container));
   v1.route('/templates', createTemplateRoutes(container));
   v1.route('/campaigns', createCampaignRoutes(container));
+  // The operator's view of the webhook receiver (GET /v1/webhooks/unhandled).
+  // JWT-gated like every other /v1 route — only the *receiver* itself sits
+  // outside, at the top level, with its own Basic-Auth (ADR-008).
+  v1.route('/webhooks', createUnhandledEventRoutes(container));
   // Admin-only user management (the router self-guards with requireRole('admin')).
   v1.route('/users', createUserRoutes(container));
   app.route('/v1', v1);
@@ -128,7 +136,7 @@ export function createApp(container: Container): OpenAPIHono<AppEnv> {
       { name: 'suppressions', description: 'The global, address-keyed deny-list (ADR-011).' },
       { name: 'templates', description: 'Reusable, renderable message shapes.' },
       { name: 'campaigns', description: 'The send integrator: campaign lifecycle, send-now.' },
-      { name: 'webhooks', description: 'Provider event receivers, mounted outside the `/v1` JWT surface.' },
+      { name: 'webhooks', description: 'The provider event receiver (outside the `/v1` JWT surface, Basic-Auth’d) and the operator’s read-side view of what it could not act on.' },
     ],
   });
 

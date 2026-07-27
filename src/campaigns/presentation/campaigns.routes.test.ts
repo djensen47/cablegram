@@ -16,7 +16,8 @@ import { SUBSCRIPTION_TYPES, InMemorySubscriptionRepository, Subscribe } from '.
 import { DELIVERABILITY_TYPES, InMemorySuppressionRepository } from '../../deliverability/index.js';
 import { TEMPLATE_TYPES, InMemoryTemplateRepository, CreateTemplate } from '../../templates/index.js';
 import { CAMPAIGN_TYPES, InMemoryCampaignRepository, InMemorySendRepository,
-  InMemoryRecipientOutcomeRepository } from '../index.js';
+  InMemoryRecipientOutcomeRepository,
+  InMemoryUnhandledEventRepository } from '../index.js';
 import { TEST_ENV, bearerHeaders } from '../../shared/testing/index.js';
 
 function build() {
@@ -26,6 +27,9 @@ function build() {
   container
     .rebind(CAMPAIGN_TYPES.RecipientOutcomeRepository)
     .to(InMemoryRecipientOutcomeRepository);
+  container
+    .rebind(CAMPAIGN_TYPES.UnhandledEventRepository)
+    .to(InMemoryUnhandledEventRepository);
   container.rebind(NEWSLETTER_TYPES.NewsletterRepository).to(InMemoryNewsletterRepository);
   container.rebind(SUBSCRIPTION_TYPES.SubscriptionRepository).to(InMemorySubscriptionRepository);
   container.rebind(DELIVERABILITY_TYPES.SuppressionRepository).to(InMemorySuppressionRepository);

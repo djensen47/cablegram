@@ -19,6 +19,11 @@ export const CAMPAIGN_COLLECTIONS = {
   sends: 'campaign_sends',
   /** One document per recipient per send (ADR-019). */
   recipientOutcomes: 'campaign_recipient_outcomes',
+  /**
+   * One document per *kind* of provider event we received and did not act on
+   * (issue #29) — not one per event, so this stays a handful of rows forever.
+   */
+  unhandledEvents: 'campaign_unhandled_events',
 } as const;
 
 export const campaignIndexes: CollectionIndexes[] = [
@@ -39,4 +44,9 @@ export const campaignIndexes: CollectionIndexes[] = [
       { key: { sendId: 1, _id: 1 } },
     ],
   },
+  // The bucket key *is* the `_id`, and the whole collection is a handful of
+  // rows read by a human — so `_id` alone suffices and there is nothing to
+  // index. It is still declared, because the registry (and `indexes.test.ts`)
+  // is the record of which component owns which collection (ADR-017).
+  { collection: CAMPAIGN_COLLECTIONS.unhandledEvents, indexes: [] },
 ];

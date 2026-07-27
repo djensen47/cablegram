@@ -471,6 +471,59 @@ describe('suppressions', () => {
   });
 });
 
+describe('webhooks', () => {
+  const rows = {
+    data: [
+      {
+        key: 'SubscriptionChange',
+        count: 4203,
+        sample: '{"RecordType":"SubscriptionChange"}',
+        firstSeenAt: '2026-08-01T09:12:00.000Z',
+        lastSeenAt: '2026-09-14T16:40:00.000Z',
+      },
+    ],
+  };
+
+  it('renders the unhandled-event report as a table', async () => {
+    const { api, deps } = harness();
+    api.responses.set('/v1/webhooks/unhandled', rows);
+
+    const code = await run(deps, ['webhooks', 'unhandled']);
+
+    expect(code).toBe(EXIT.ok);
+    expect(api.calls).toEqual([
+      { method: 'GET', path: '/v1/webhooks/unhandled', query: undefined, body: undefined },
+    ]);
+    expect(stdout).toContain('SubscriptionChange');
+    expect(stdout).toContain('4203');
+    // Anything the operator did not ask for goes to stderr, so `--json >` stays
+    // a clean document — but a non-empty report is worth saying out loud.
+    expect(stderr).toContain('unhandled event type(s)');
+  });
+
+  it('prints the stored sample only when asked', async () => {
+    const { api, deps } = harness();
+    api.responses.set('/v1/webhooks/unhandled', rows);
+
+    await run(deps, ['webhooks', 'unhandled']);
+    expect(stdout).not.toContain('"RecordType"');
+
+    stdout = '';
+    await run(deps, ['webhooks', 'unhandled', '--samples']);
+    expect(stdout).toContain('"RecordType":"SubscriptionChange"');
+  });
+
+  it('emits the raw API body under --json', async () => {
+    const { api, deps } = harness();
+    api.responses.set('/v1/webhooks/unhandled', rows);
+
+    const code = await run(deps, ['webhooks', 'unhandled', '--json']);
+
+    expect(code).toBe(EXIT.ok);
+    expect(JSON.parse(stdout)).toEqual(rows);
+  });
+});
+
 describe('CABLEGRAM_TOKEN', () => {
   it('uses an explicit token from the environment and leaves the config untouched', async () => {
     const { api, deps, credentials } = harness(null);

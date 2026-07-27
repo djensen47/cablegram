@@ -10,12 +10,16 @@ export { CAMPAIGN_TYPES } from './types.js';
 
 // HTTP routers: the /v1 API surface, and the top-level Postmark webhook receiver.
 export { createCampaignRoutes } from './presentation/routes.js';
-export { createPostmarkWebhookRoutes } from './presentation/webhook-routes.js';
+export {
+  createPostmarkWebhookRoutes,
+  createUnhandledEventRoutes,
+} from './presentation/webhook-routes.js';
 
 // In-memory repositories: the DI-rebind test doubles (ADR-003).
 export { InMemoryCampaignRepository } from './infrastructure/in-memory-campaign-repository.js';
 export { InMemorySendRepository } from './infrastructure/in-memory-send-repository.js';
 export { InMemoryRecipientOutcomeRepository } from './infrastructure/in-memory-recipient-outcome-repository.js';
+export { InMemoryUnhandledEventRepository } from './infrastructure/in-memory-unhandled-event-repository.js';
 
 // Domain + application contracts consumers may need to type against.
 export {
@@ -49,6 +53,10 @@ export {
 export type { CampaignRepository, ListCampaignsOptions } from './application/campaign-repository.js';
 export type { SendRepository } from './application/send-repository.js';
 export type { RecipientOutcomeRepository } from './application/recipient-outcome-repository.js';
+export type {
+  UnhandledEventRepository,
+  UnhandledEventRecord,
+} from './application/unhandled-event-repository.js';
 export type { NewsletterGateway, CampaignSender } from './application/newsletter-gateway.js';
 export type { RecipientResolver, CampaignRecipient } from './application/recipient-resolver.js';
 export type { SuppressionGateway } from './application/suppression-gateway.js';
@@ -68,6 +76,7 @@ export { DeleteCampaign } from './application/delete-campaign.js';
 export { SendCampaign } from './application/send-campaign.js';
 export { GetSend } from './application/get-send.js';
 export { ListRecipientOutcomes } from './application/list-recipient-outcomes.js';
+export { ListUnhandledEvents } from './application/list-unhandled-events.js';
 export { RecordDeliveryEvents } from './application/record-delivery-events.js';
 
 // The collections this component owns + the indexes they need (ADR-017).

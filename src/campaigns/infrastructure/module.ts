@@ -3,6 +3,7 @@ import { CAMPAIGN_TYPES } from '../types.js';
 import type { CampaignRepository } from '../application/campaign-repository.js';
 import type { SendRepository } from '../application/send-repository.js';
 import type { RecipientOutcomeRepository } from '../application/recipient-outcome-repository.js';
+import type { UnhandledEventRepository } from '../application/unhandled-event-repository.js';
 import type { NewsletterGateway } from '../application/newsletter-gateway.js';
 import type { RecipientResolver } from '../application/recipient-resolver.js';
 import type { SuppressionGateway } from '../application/suppression-gateway.js';
@@ -16,10 +17,12 @@ import { DeleteCampaign } from '../application/delete-campaign.js';
 import { SendCampaign } from '../application/send-campaign.js';
 import { GetSend } from '../application/get-send.js';
 import { ListRecipientOutcomes } from '../application/list-recipient-outcomes.js';
+import { ListUnhandledEvents } from '../application/list-unhandled-events.js';
 import { RecordDeliveryEvents } from '../application/record-delivery-events.js';
 import { MongoCampaignRepository } from './mongo-campaign-repository.js';
 import { MongoSendRepository } from './mongo-send-repository.js';
 import { MongoRecipientOutcomeRepository } from './mongo-recipient-outcome-repository.js';
+import { MongoUnhandledEventRepository } from './mongo-unhandled-event-repository.js';
 import { FacadeNewsletterGateway } from './facade-newsletter-gateway.js';
 import { FacadeRecipientResolver } from './facade-recipient-resolver.js';
 import { FacadeSuppressionGateway } from './facade-suppression-gateway.js';
@@ -42,6 +45,9 @@ export const campaignModule = new ContainerModule((bind) => {
   bind<RecipientOutcomeRepository>(CAMPAIGN_TYPES.RecipientOutcomeRepository).to(
     MongoRecipientOutcomeRepository,
   );
+  bind<UnhandledEventRepository>(CAMPAIGN_TYPES.UnhandledEventRepository).to(
+    MongoUnhandledEventRepository,
+  );
 
   bind<NewsletterGateway>(CAMPAIGN_TYPES.NewsletterGateway).to(FacadeNewsletterGateway);
   bind<RecipientResolver>(CAMPAIGN_TYPES.RecipientResolver).to(FacadeRecipientResolver);
@@ -57,5 +63,6 @@ export const campaignModule = new ContainerModule((bind) => {
   bind<SendCampaign>(CAMPAIGN_TYPES.SendCampaign).to(SendCampaign);
   bind<GetSend>(CAMPAIGN_TYPES.GetSend).to(GetSend);
   bind<ListRecipientOutcomes>(CAMPAIGN_TYPES.ListRecipientOutcomes).to(ListRecipientOutcomes);
+  bind<ListUnhandledEvents>(CAMPAIGN_TYPES.ListUnhandledEvents).to(ListUnhandledEvents);
   bind<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents).to(RecordDeliveryEvents);
 });
