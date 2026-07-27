@@ -62,6 +62,16 @@ export interface SubscriptionDto {
   tags: string[];
   /** Provenance when the record was imported; `null` when cablegram collected it. */
   source: string | null;
+  /** The consent record (ADR-023) — all nullable; absence means never observed. */
+  signupIp: string | null;
+  signupUserAgent: string | null;
+  /** When double opt-in completed; `null` on a single-opt-in row. */
+  confirmedAt: string | null;
+  confirmedIp: string | null;
+  confirmedUserAgent: string | null;
+  unsubscribedAt: string | null;
+  unsubscribedIp: string | null;
+  unsubscribedUserAgent: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -3,6 +3,8 @@ export type { AppEnv, AuthContext } from './app-env.js';
 export { jwtAuth, requireRole } from './auth.js';
 export { requestId, requestLogging, logLine } from './request-id.js';
 export { onError } from './on-error.js';
+export { requestEvidence, type RequestEvidence } from './request-evidence.js';
+export { optionalJsonBody } from './optional-json-body.js';
 export { idempotencyKey } from './idempotency.js';
 export {
   InMemoryIdempotencyStore,

@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Container } from 'inversify';
 import { buildContainer } from '../../shared/di/index.js';
-import { TEST_ENV, bearerHeaders } from '../../shared/testing/index.js';
+import { TEST_ENV, TEST_JWT_SECRET, bearerHeaders } from '../../shared/testing/index.js';
+import { unsubscribeToken } from '../../shared/auth/index.js';
 import { createApp } from '../../app.js';
 import {
   EMAIL_TYPES,
@@ -164,6 +165,96 @@ describe('subscriptions routes', () => {
       '/v1/newsletters/{newsletterId}/subscriptions/{id}/confirm',
     );
     expect(doc.paths).toHaveProperty('/v1/newsletters/{newsletterId}/subscriptions/import');
+  });
+
+  describe('consent record (ADR-023)', () => {
+    async function subscribed(body: Record<string, unknown> = {}): Promise<string> {
+      const res = await subscribe({
+        email: 'reader@dispatch.example',
+        doubleOptIn: true,
+        ...body,
+      });
+      return ((await res.json()) as { id: string }).id;
+    }
+
+    it('still accepts a confirm with no body at all', async () => {
+      // The pre-existing contract. Hono rejects an empty body whenever a JSON
+      // content-type is set, so this asserts the tolerance is really there.
+      const id = await subscribed();
+
+      const res = await app.request(
+        `/v1/newsletters/${newsletterId}/subscriptions/${id}/confirm`,
+        { method: 'POST', headers: auth },
+      );
+
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as { status: string; confirmedAt: string | null };
+      expect(json.status).toBe('subscribed');
+      expect(json.confirmedAt).not.toBeNull();
+    });
+
+    it('takes the subscriber’s IP from the body, never from the request', async () => {
+      // cablegram is headless: the caller here is the operator's backend, so
+      // reading the request would record the wrong party as having consented.
+      const id = await subscribed({ signupIp: '198.51.100.7' });
+
+      const res = await app.request(
+        `/v1/newsletters/${newsletterId}/subscriptions/${id}/confirm`,
+        {
+          method: 'POST',
+          headers: { ...auth, 'x-forwarded-for': '10.9.9.9' },
+          body: JSON.stringify({ ip: '203.0.113.42' }),
+        },
+      );
+
+      const json = (await res.json()) as { signupIp: string; confirmedIp: string };
+      expect(json.signupIp).toBe('198.51.100.7');
+      // The forwarded header is ignored on /v1 — the body is the only source.
+      expect(json.confirmedIp).toBe('203.0.113.42');
+    });
+
+    it('rejects an IP that is not an address', async () => {
+      const res = await subscribe({ email: 'a@dispatch.example', signupIp: 'not-an-ip' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('auto-captures the forwarded IP on the public unsubscribe only', async () => {
+      const id = await subscribed();
+      const token = unsubscribeToken(TEST_JWT_SECRET, newsletterId, id);
+
+      const res = await app.request(
+        `/v1/unsubscribe?newsletterId=${newsletterId}&subscriptionId=${id}&token=${token}`,
+        { method: 'POST', headers: { 'x-forwarded-for': '203.0.113.7, 70.41.3.18' } },
+      );
+      expect(res.status).toBe(200);
+
+      const list = await app.request(`/v1/newsletters/${newsletterId}/subscriptions?limit=10`, {
+        headers: auth,
+      });
+      const page = (await list.json()) as {
+        data: { unsubscribedIp: string | null; unsubscribedAt: string | null }[];
+      };
+      // Leftmost entry: the original client, not the proxy that appended itself.
+      expect(page.data[0]?.unsubscribedIp).toBe('203.0.113.7');
+      expect(page.data[0]?.unsubscribedAt).not.toBeNull();
+    });
+
+    it('drops a forwarded value that is not a valid IP rather than storing junk', async () => {
+      const id = await subscribed();
+      const token = unsubscribeToken(TEST_JWT_SECRET, newsletterId, id);
+
+      await app.request(
+        `/v1/unsubscribe?newsletterId=${newsletterId}&subscriptionId=${id}&token=${token}`,
+        { method: 'POST', headers: { 'x-forwarded-for': 'unknown' } },
+      );
+
+      const list = await app.request(`/v1/newsletters/${newsletterId}/subscriptions?limit=10`, {
+        headers: auth,
+      });
+      const page = (await list.json()) as { data: { unsubscribedIp: string | null }[] };
+      expect(page.data[0]?.unsubscribedIp).toBeNull();
+    });
   });
 
   describe('import (ADR-022)', () => {

@@ -11,7 +11,16 @@ import {
   type SubscriptionStatus,
 } from '../../application/dtos.js';
 import type { CommandContext } from '../context.js';
-import { collect, emailFlag, FlagError, paginationFlags, parseFlags, parseKeyValue } from '../flags.js';
+import {
+  collect,
+  emailFlag,
+  FlagError,
+  ipFlag,
+  paginationFlags,
+  parseFlags,
+  parseKeyValue,
+  userAgentFlag,
+} from '../flags.js';
 import { column, parseCsv } from '../csv.js';
 import { shortDate, type Column } from '../output.js';
 import { confirmAction, promptText } from '../prompts.js';
@@ -89,6 +98,8 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
     .option('--tag <tag>', 'tag (repeatable)', collect, [])
     .option('--field <key=value>', 'merge field (repeatable)', collect, [])
     .option('--no-double-opt-in', 'subscribe immediately without a confirmation email')
+    .option('--signup-ip <ip>', 'the subscriber’s IP, as your signup form observed it')
+    .option('--signup-user-agent <ua>', 'the subscriber’s user agent at signup')
     .action(async (newsletterId: string, raw) => {
       const c = ctx();
       const flags = parseFlags(
@@ -98,6 +109,11 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
           field: z.array(z.string()).default([]),
           // commander maps `--no-double-opt-in` to `doubleOptIn: false`.
           doubleOptIn: z.boolean().default(true),
+          // Consent evidence (ADR-023). Passed in rather than observed: even
+          // here the request reaching the API comes from this machine, not from
+          // the subscriber — this is for relaying what a form or forum recorded.
+          signupIp: ipFlag.optional(),
+          signupUserAgent: z.string().trim().min(1).max(500).optional(),
         }),
         raw,
       );
@@ -114,6 +130,8 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
         tags: flags.tag.length > 0 ? flags.tag : undefined,
         mergeFields: parseKeyValue(flags.field),
         doubleOptIn: flags.doubleOptIn,
+        signupIp: flags.signupIp,
+        signupUserAgent: flags.signupUserAgent,
       });
 
       c.printer.data(subscription);
@@ -127,11 +145,18 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
   subs
     .command('confirm <newsletterId> <id>')
     .description('Confirm a pending (double opt-in) subscription')
-    .action(async (newsletterId: string, id: string) => {
+    .option('--ip <ip>', 'the subscriber’s IP at the moment they confirmed')
+    .option('--user-agent <ua>', 'the subscriber’s user agent at the moment they confirmed')
+    .action(async (newsletterId: string, id: string, raw) => {
       const c = ctx();
+      const flags = parseFlags(
+        z.object({ ip: ipFlag.optional(), userAgent: userAgentFlag.optional() }),
+        raw,
+      );
       const api = await c.api();
       const subscription = await api.post<SubscriptionDto>(
         `${basePath(newsletterId)}/${encodeURIComponent(id)}/confirm`,
+        { ip: flags.ip, userAgent: flags.userAgent },
       );
       c.printer.data(subscription);
       c.printer.success(`Confirmed ${subscription.email}`);
@@ -140,12 +165,19 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
   subs
     .command('unsubscribe <newsletterId> <id>')
     .description('Unsubscribe a subscription (this newsletter only)')
-    .action(async (newsletterId: string, id: string) => {
+    .option('--ip <ip>', 'the subscriber’s IP, if they asked through a form you host')
+    .option('--user-agent <ua>', 'the subscriber’s user agent, if you observed it')
+    .action(async (newsletterId: string, id: string, raw) => {
       const c = ctx();
+      const flags = parseFlags(
+        z.object({ ip: ipFlag.optional(), userAgent: userAgentFlag.optional() }),
+        raw,
+      );
       await confirmAction(`Unsubscribe ${id} from ${newsletterId}?`, c.assumeYes);
       const api = await c.api();
       const subscription = await api.post<SubscriptionDto>(
         `${basePath(newsletterId)}/${encodeURIComponent(id)}/unsubscribe`,
+        { ip: flags.ip, userAgent: flags.userAgent },
       );
       c.printer.data(subscription);
       // Worth stating plainly: this is per-newsletter status, not the global
@@ -319,7 +351,30 @@ interface ImportRowBody {
   mergeFields?: Record<string, unknown>;
   subscribedAt?: string;
   source?: string;
+  signupIp?: string;
+  signupUserAgent?: string;
+  confirmedAt?: string;
+  confirmedIp?: string;
+  confirmedUserAgent?: string;
+  unsubscribedAt?: string;
+  unsubscribedIp?: string;
+  unsubscribedUserAgent?: string;
 }
+
+/**
+ * The consent-trail columns an export may carry (ADR-023). Reserved for the
+ * same reason as `source`: silently turning an opt-in IP into a renderable
+ * merge field would be both a lost record and a leak waiting to happen.
+ */
+const CONSENT_DATE_COLUMNS = ['confirmedAt', 'unsubscribedAt'] as const;
+const CONSENT_TEXT_COLUMNS = [
+  'signupIp',
+  'signupUserAgent',
+  'confirmedIp',
+  'confirmedUserAgent',
+  'unsubscribedIp',
+  'unsubscribedUserAgent',
+] as const;
 
 /**
  * Maps a CSV row to an import row. `email` is required; `status` restores the
@@ -365,17 +420,22 @@ export function toImportRow(row: Record<string, string>): ParsedRow {
     status = parsedStatus.data;
   }
 
-  let subscribedAt: string | undefined;
-  const rawSubscribedAt = subscribedAtColumn?.value.trim() ?? '';
-  if (rawSubscribedAt.length > 0) {
-    const parsedDate = Date.parse(rawSubscribedAt);
+  const dateColumns = ['subscribedAt', ...CONSENT_DATE_COLUMNS] as const;
+  const dates: Partial<Record<(typeof dateColumns)[number], string>> = {};
+  for (const name of dateColumns) {
+    const raw = column(row, name)?.value.trim() ?? '';
+    if (raw.length === 0) continue;
+    const parsedDate = Date.parse(raw);
     if (Number.isNaN(parsedDate)) {
-      return {
-        row: { email: parsedEmail.data },
-        error: `"${rawSubscribedAt}" is not a valid date`,
-      };
+      return { row: { email: parsedEmail.data }, error: `"${raw}" is not a valid date (${name})` };
     }
-    subscribedAt = new Date(parsedDate).toISOString();
+    dates[name] = new Date(parsedDate).toISOString();
+  }
+
+  const consent: Partial<Record<(typeof CONSENT_TEXT_COLUMNS)[number], string>> = {};
+  for (const name of CONSENT_TEXT_COLUMNS) {
+    const raw = column(row, name)?.value.trim() ?? '';
+    if (raw.length > 0) consent[name] = raw;
   }
 
   const tags = (tagsColumn?.value ?? '')
@@ -389,6 +449,8 @@ export function toImportRow(row: Record<string, string>): ParsedRow {
     statusColumn?.key,
     subscribedAtColumn?.key,
     sourceColumn?.key,
+    ...CONSENT_DATE_COLUMNS.map((name) => column(row, name)?.key),
+    ...CONSENT_TEXT_COLUMNS.map((name) => column(row, name)?.key),
   ]);
   const mergeFields: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(row)) {
@@ -402,7 +464,8 @@ export function toImportRow(row: Record<string, string>): ParsedRow {
       status,
       tags: tags.length > 0 ? tags : undefined,
       mergeFields: Object.keys(mergeFields).length > 0 ? mergeFields : undefined,
-      subscribedAt,
+      ...dates,
+      ...consent,
       source: sourceColumn?.value.trim() || undefined,
     },
   };

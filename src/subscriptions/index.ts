@@ -26,6 +26,8 @@ export {
   type SubscriptionId,
   type SubscriptionStatus,
   type MergeFields,
+  type ConsentEvidence,
+  type ImportedConsentRecord,
 } from './domain/subscription.js';
 export type { SuppressionGateway } from './application/suppression-gateway.js';
 export {

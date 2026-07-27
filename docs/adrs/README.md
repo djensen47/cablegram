@@ -38,6 +38,7 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [020](ADR-020-soft-bounce-streak.md) | Soft-Bounce Streaks — counting transient failures without over-reacting | Accepted — implemented |
 | [021](ADR-021-unhandled-webhook-events.md) | Unhandled Webhook Events — recording what the receiver cannot act on | Accepted — implemented |
 | [022](ADR-022-subscriber-import.md) | Subscriber Import — restoring state, not creating consent | Accepted — implemented |
+| [023](ADR-023-consent-record.md) | The Consent Record — timestamps and evidence for each consent moment | Accepted — implemented |
 
 ## How to read these
 

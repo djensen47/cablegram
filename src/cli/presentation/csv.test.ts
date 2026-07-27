@@ -121,7 +121,6 @@ describe('toImportRow', () => {
       status: undefined,
       tags: undefined,
       mergeFields: undefined,
-      subscribedAt: undefined,
       source: undefined,
     });
   });
@@ -159,6 +158,32 @@ describe('toImportRow', () => {
 
     expect(row.source).toBe('mailchimp-2026');
     expect(row.mergeFields).toBeUndefined();
+  });
+
+  it('reserves the consent-trail columns so an opt-in IP is never a merge field', () => {
+    // Letting these fall through would both lose the record and make a
+    // subscriber's IP renderable into a campaign body.
+    const { row } = toImportRow({
+      email: 'a@example.com',
+      signupIp: '203.0.113.1',
+      confirmedAt: '2019-04-02T09:20:00Z',
+      confirmedIp: '203.0.113.1',
+      unsubscribedAt: '2021-01-05',
+      unsubscribedUserAgent: 'Thunderbird/115',
+    });
+
+    expect(row.signupIp).toBe('203.0.113.1');
+    expect(row.confirmedAt).toBe('2019-04-02T09:20:00.000Z');
+    expect(row.confirmedIp).toBe('203.0.113.1');
+    expect(row.unsubscribedAt).toBe('2021-01-05T00:00:00.000Z');
+    expect(row.unsubscribedUserAgent).toBe('Thunderbird/115');
+    expect(row.mergeFields).toBeUndefined();
+  });
+
+  it('names which date column is bad so an 18k-row file is fixable', () => {
+    const parsed = toImportRow({ email: 'a@example.com', confirmedAt: 'whenever' });
+
+    expect(parsed.error).toMatch(/not a valid date \(confirmedAt\)/);
   });
 
   it('fails a row whose subscribedAt is not a date', () => {

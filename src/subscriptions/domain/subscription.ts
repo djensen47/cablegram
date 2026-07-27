@@ -54,6 +54,23 @@ export function isSubscriptionStatus(value: string): value is SubscriptionStatus
  */
 export type MergeFields = Record<string, unknown>;
 
+/**
+ * Who did a consent-changing thing, as far as the operator could observe it
+ * (ADR-023). Attached to the three moments that change consent: signing up,
+ * confirming, and opting out.
+ *
+ * Both parts are optional and **both are unverified**. An IP is whatever the
+ * operator's front end reported, or — on the public unsubscribe only — whatever
+ * an `X-Forwarded-For` header claimed. Neither is proof; they are the
+ * corroborating detail a consent challenge asks for alongside the timestamp,
+ * and their value is that they are recorded at all.
+ */
+export interface ConsentEvidence {
+  /** The subscriber's IP, as observed by whoever fronted the request. */
+  ip?: string;
+  userAgent?: string;
+}
+
 /** Fully-resolved subscription state; the shape a repository reconstitutes from. */
 export interface SubscriptionProps {
   id: SubscriptionId;
@@ -90,6 +107,30 @@ export interface SubscriptionProps {
    * happen. An opaque operator-supplied note; the domain never interprets it.
    */
   source?: string;
+  /**
+   * The consent record (ADR-023). Three moments, each with its own timestamp
+   * and evidence, because each answers a different question and `updatedAt`
+   * answers none of them — it means "when did this row last change", so the
+   * first soft bounce after a confirmation used to erase when the confirmation
+   * happened.
+   *
+   * `createdAt` is the signup moment's timestamp, so there is no `signupAt`;
+   * duplicating it would give two fields that must agree forever.
+   */
+  signupIp?: string;
+  signupUserAgent?: string;
+  /**
+   * When double opt-in was completed. Under GDPR this — not `createdAt` — is
+   * the consent act: the signup is an assertion, the confirmation is the proof.
+   * Absent on a single-opt-in row, because no confirmation ever happened.
+   */
+  confirmedAt?: Date;
+  confirmedIp?: string;
+  confirmedUserAgent?: string;
+  /** When they opted out. CAN-SPAM gives 10 days to honour it; this proves you did. */
+  unsubscribedAt?: Date;
+  unsubscribedIp?: string;
+  unsubscribedUserAgent?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -103,6 +144,8 @@ export interface CreateSubscriptionProps {
   tags?: string[];
   /** Double opt-in → the subscription starts `pending`; single opt-in → `subscribed`. */
   doubleOptIn: boolean;
+  /** Who submitted the signup, if the caller observed it (ADR-023). */
+  evidence?: ConsentEvidence;
   now: Date;
 }
 
@@ -111,6 +154,7 @@ export interface ReviveSubscriptionProps {
   mergeFields?: MergeFields;
   tags?: string[];
   doubleOptIn: boolean;
+  evidence?: ConsentEvidence;
   now: Date;
 }
 
@@ -139,7 +183,26 @@ export interface ImportSubscriptionProps {
   subscribedAt?: Date;
   /** Provenance note — where this record came from. Required for an import. */
   source: string;
+  /**
+   * The consent record as the source system recorded it (ADR-023). An ESP
+   * export that carries opt-in IPs is carrying the most valuable thing in the
+   * file after the addresses themselves; dropping it on import destroys
+   * evidence that cannot be reconstructed afterwards.
+   */
+  consent?: ImportedConsentRecord;
   now: Date;
+}
+
+/** The consent trail an import may restore, all optional and all as-supplied. */
+export interface ImportedConsentRecord {
+  signupIp?: string;
+  signupUserAgent?: string;
+  confirmedAt?: Date;
+  confirmedIp?: string;
+  confirmedUserAgent?: string;
+  unsubscribedAt?: Date;
+  unsubscribedIp?: string;
+  unsubscribedUserAgent?: string;
 }
 
 /** Fields an import overwrites on an existing row (`--on-conflict overwrite`). */
@@ -149,6 +212,7 @@ export interface OverwriteSubscriptionProps {
   tags?: string[];
   subscribedAt?: Date;
   source: string;
+  consent?: ImportedConsentRecord;
   now: Date;
 }
 
@@ -201,6 +265,8 @@ export class Subscription {
       mergeFields: input.mergeFields ?? {},
       tags: normalizeTags(input.tags),
       consecutiveSoftBounces: 0,
+      signupIp: input.evidence?.ip,
+      signupUserAgent: input.evidence?.userAgent,
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -231,6 +297,7 @@ export class Subscription {
       tags: normalizeTags(input.tags),
       consecutiveSoftBounces: 0,
       source: input.source,
+      ...input.consent,
       createdAt,
       updatedAt: input.now,
     });
@@ -258,6 +325,19 @@ export class Subscription {
       tags: input.tags === undefined ? this.props.tags : normalizeTags(input.tags),
       consecutiveSoftBounces: 0,
       source: input.source,
+      // The whole consent trail is replaced, not merged: under `overwrite` the
+      // file is the record, and a half-kept trail (this file's signup IP beside
+      // the previous import's confirmation) would describe an event sequence
+      // that never happened.
+      signupIp: undefined,
+      signupUserAgent: undefined,
+      confirmedAt: undefined,
+      confirmedIp: undefined,
+      confirmedUserAgent: undefined,
+      unsubscribedAt: undefined,
+      unsubscribedIp: undefined,
+      unsubscribedUserAgent: undefined,
+      ...input.consent,
       createdAt: input.subscribedAt ?? this.props.createdAt,
       updatedAt: input.now,
     };
@@ -278,12 +358,22 @@ export class Subscription {
    * `subscribed` row; refuses to confirm any lapsed one (that path is a
    * re-subscribe, not a confirm).
    */
-  confirm(now: Date): void {
+  confirm(now: Date, evidence?: ConsentEvidence): void {
     if (this.props.status === 'subscribed') return;
     if (this.props.status !== 'pending') {
       throw new SubscriptionStateError(`cannot confirm a ${this.props.status} subscription`);
     }
-    this.props = { ...this.props, status: 'subscribed', updatedAt: now };
+    this.props = {
+      ...this.props,
+      status: 'subscribed',
+      // Recorded separately from `updatedAt` because this is the consent act
+      // itself (ADR-023) — `updatedAt` moves again on the next soft bounce and
+      // would take the answer with it.
+      confirmedAt: now,
+      confirmedIp: evidence?.ip,
+      confirmedUserAgent: evidence?.userAgent,
+      updatedAt: now,
+    };
   }
 
   /**
@@ -353,10 +443,21 @@ export class Subscription {
     this.props = { ...this.props, status: 'complained', updatedAt: now };
   }
 
-  /** Opt the subscriber out. Idempotent: unsubscribing twice is a no-op. */
-  unsubscribe(now: Date): void {
+  /**
+   * Opt the subscriber out. Idempotent: unsubscribing twice is a no-op — and
+   * that includes the evidence, so a repeated one-click POST cannot overwrite
+   * when the opt-out actually happened. The first one is the one that counts.
+   */
+  unsubscribe(now: Date, evidence?: ConsentEvidence): void {
     if (this.props.status === 'unsubscribed') return;
-    this.props = { ...this.props, status: 'unsubscribed', updatedAt: now };
+    this.props = {
+      ...this.props,
+      status: 'unsubscribed',
+      unsubscribedAt: now,
+      unsubscribedIp: evidence?.ip,
+      unsubscribedUserAgent: evidence?.userAgent,
+      updatedAt: now,
+    };
   }
 
   /**
@@ -378,6 +479,20 @@ export class Subscription {
       // A fresh start: whatever was wrong with the mailbox before is not
       // evidence against the revived membership.
       consecutiveSoftBounces: 0,
+      // A new signup, so a new consent record (ADR-023). The old trail is
+      // cleared rather than kept: leaving a stale `unsubscribedAt` on an active
+      // membership, or a `confirmedAt` from a confirmation that predates this
+      // opt-in, would state something false. Under double opt-in `confirmedAt`
+      // is filled in again by the confirm that follows; under single opt-in it
+      // stays empty, because no confirmation ever happened.
+      signupIp: input.evidence?.ip,
+      signupUserAgent: input.evidence?.userAgent,
+      confirmedAt: undefined,
+      confirmedIp: undefined,
+      confirmedUserAgent: undefined,
+      unsubscribedAt: undefined,
+      unsubscribedIp: undefined,
+      unsubscribedUserAgent: undefined,
       updatedAt: input.now,
     };
   }
@@ -412,6 +527,30 @@ export class Subscription {
    */
   get source(): string | undefined {
     return this.props.source;
+  }
+  get signupIp(): string | undefined {
+    return this.props.signupIp;
+  }
+  get signupUserAgent(): string | undefined {
+    return this.props.signupUserAgent;
+  }
+  get confirmedAt(): Date | undefined {
+    return this.props.confirmedAt;
+  }
+  get confirmedIp(): string | undefined {
+    return this.props.confirmedIp;
+  }
+  get confirmedUserAgent(): string | undefined {
+    return this.props.confirmedUserAgent;
+  }
+  get unsubscribedAt(): Date | undefined {
+    return this.props.unsubscribedAt;
+  }
+  get unsubscribedIp(): string | undefined {
+    return this.props.unsubscribedIp;
+  }
+  get unsubscribedUserAgent(): string | undefined {
+    return this.props.unsubscribedUserAgent;
   }
   get createdAt(): Date {
     return this.props.createdAt;

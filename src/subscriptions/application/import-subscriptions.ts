@@ -137,6 +137,7 @@ export class ImportSubscriptions {
           tags: row.tags,
           subscribedAt: row.subscribedAt,
           source,
+          consent: row.consent,
           now,
         });
         toWrite.push(found);
@@ -155,6 +156,7 @@ export class ImportSubscriptions {
           tags: row.tags,
           subscribedAt: row.subscribedAt,
           source,
+          consent: row.consent,
           now,
         }),
       );

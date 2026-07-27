@@ -56,6 +56,15 @@ export const tagsFlag = z.array(z.string().trim().min(1).max(64)).optional();
 export const emailFlag = z.string().trim().email().max(320);
 
 /**
+ * Consent evidence flags (ADR-023). The IP is validated as a real address here,
+ * at the CLI edge, for the same reason the API validates it: it is evidence, and
+ * a field that sometimes holds an address and sometimes holds a typo proves
+ * nothing. Catching it here also saves a round trip.
+ */
+export const ipFlag = z.string().trim().ip();
+export const userAgentFlag = z.string().trim().min(1).max(500);
+
+/**
  * Parses a `key=value` pair collected from a repeatable flag (`--field`).
  * Values are passed through `JSON.parse` when they look like JSON so numbers
  * and booleans survive as their own types in `mergeFields`, since the API

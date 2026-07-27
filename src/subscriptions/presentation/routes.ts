@@ -4,6 +4,7 @@ import {
   BadRequestError,
   NotFoundError,
   errorResponse,
+  optionalJsonBody,
   throwOnInvalid,
   toPage,
   type AppEnv,
@@ -20,6 +21,7 @@ import type { Unsubscribe } from '../application/unsubscribe.js';
 import type { ListSubscriptions } from '../application/list-subscriptions.js';
 import type { ImportSubscriptions } from '../application/import-subscriptions.js';
 import {
+  ConsentActionSchema,
   ImportResultSchema,
   ImportSubscriptionsSchema,
   ListSubscriptionsQuerySchema,
@@ -125,8 +127,15 @@ const confirmRoute = createRoute({
   path: '/{newsletterId}/subscriptions/{id}/confirm',
   tags: ['subscriptions'],
   summary: 'Confirm a pending subscription (double opt-in)',
+  description:
+    'Records `confirmedAt` — the consent act itself, kept separately from `updatedAt` so a later ' +
+    'bounce cannot erase when consent was given (ADR-023). Optionally send the subscriber’s `ip` ' +
+    'and `userAgent`; cablegram cannot observe them, since the caller here is your backend.',
   security,
-  request: { params: SubscriptionParamsSchema },
+  request: {
+    params: SubscriptionParamsSchema,
+    body: { content: { 'application/json': { schema: ConsentActionSchema } }, required: false },
+  },
   responses: {
     200: {
       content: { 'application/json': { schema: SubscriptionSchema } },
@@ -143,12 +152,16 @@ const unsubscribeRoute = createRoute({
   tags: ['subscriptions'],
   summary: 'Unsubscribe a subscription',
   security,
-  request: { params: SubscriptionParamsSchema },
+  request: {
+    params: SubscriptionParamsSchema,
+    body: { content: { 'application/json': { schema: ConsentActionSchema } }, required: false },
+  },
   responses: {
     200: {
       content: { 'application/json': { schema: SubscriptionSchema } },
       description: 'The unsubscribed subscription',
     },
+    400: badRequestResponse,
     404: notFoundResponse,
   },
 });
@@ -162,6 +175,12 @@ const unsubscribeRoute = createRoute({
 export function createSubscriptionRoutes(container: Container): OpenAPIHono<AppEnv> {
   const app = new OpenAPIHono<AppEnv>({ defaultHook: throwOnInvalid });
 
+  // Confirm and unsubscribe gained an optional evidence body (ADR-023) but are
+  // called with none today; without this a bodyless POST that still sets a JSON
+  // content-type would 500 in Hono's validator.
+  app.use('/:newsletterId/subscriptions/:id/confirm', optionalJsonBody);
+  app.use('/:newsletterId/subscriptions/:id/unsubscribe', optionalJsonBody);
+
   app.openapi(listRoute, async (c) => {
     const { newsletterId } = c.req.valid('param');
     const { limit, cursor, status, tag } = c.req.valid('query');
@@ -174,11 +193,15 @@ export function createSubscriptionRoutes(container: Container): OpenAPIHono<AppE
 
   app.openapi(subscribeRoute, async (c) => {
     const { newsletterId } = c.req.valid('param');
-    const body = c.req.valid('json');
+    const { signupIp, signupUserAgent, ...body } = c.req.valid('json');
     try {
       const subscription = await container
         .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
-        .execute({ newsletterId, ...body });
+        .execute({
+          newsletterId,
+          ...body,
+          evidence: { ip: signupIp, userAgent: signupUserAgent },
+        });
       return c.json(toSubscriptionResponse(subscription), 201);
     } catch (err) {
       rethrowDomainError(err);
@@ -198,9 +221,21 @@ export function createSubscriptionRoutes(container: Container): OpenAPIHono<AppE
           source: body.source,
           // The wire carries an ISO string; the use case takes a `Date` —
           // parsing belongs at the edge, like every other input conversion.
-          rows: body.rows.map((row) => ({
+          rows: body.rows.map(({ subscribedAt, confirmedAt, unsubscribedAt, ...row }) => ({
             ...row,
-            subscribedAt: row.subscribedAt === undefined ? undefined : new Date(row.subscribedAt),
+            subscribedAt: subscribedAt === undefined ? undefined : new Date(subscribedAt),
+            // The restored consent trail travels as its own object so the use
+            // case hands it to the aggregate whole (ADR-023).
+            consent: {
+              signupIp: row.signupIp,
+              signupUserAgent: row.signupUserAgent,
+              confirmedAt: confirmedAt === undefined ? undefined : new Date(confirmedAt),
+              confirmedIp: row.confirmedIp,
+              confirmedUserAgent: row.confirmedUserAgent,
+              unsubscribedAt: unsubscribedAt === undefined ? undefined : new Date(unsubscribedAt),
+              unsubscribedIp: row.unsubscribedIp,
+              unsubscribedUserAgent: row.unsubscribedUserAgent,
+            },
           })),
         });
       return c.json(result, 200);
@@ -211,10 +246,11 @@ export function createSubscriptionRoutes(container: Container): OpenAPIHono<AppE
 
   app.openapi(confirmRoute, async (c) => {
     const { newsletterId, id } = c.req.valid('param');
+    const evidence = c.req.valid('json');
     try {
       const subscription = await container
         .get<ConfirmSubscription>(SUBSCRIPTION_TYPES.ConfirmSubscription)
-        .execute(newsletterId, id);
+        .execute(newsletterId, id, evidence);
       return c.json(toSubscriptionResponse(subscription), 200);
     } catch (err) {
       rethrowDomainError(err);
@@ -223,10 +259,11 @@ export function createSubscriptionRoutes(container: Container): OpenAPIHono<AppE
 
   app.openapi(unsubscribeRoute, async (c) => {
     const { newsletterId, id } = c.req.valid('param');
+    const evidence = c.req.valid('json');
     try {
       const subscription = await container
         .get<Unsubscribe>(SUBSCRIPTION_TYPES.Unsubscribe)
-        .execute(newsletterId, id);
+        .execute(newsletterId, id, evidence);
       return c.json(toSubscriptionResponse(subscription), 200);
     } catch (err) {
       rethrowDomainError(err);

@@ -63,6 +63,7 @@ export class Subscribe {
         mergeFields: input.mergeFields,
         tags: input.tags,
         doubleOptIn,
+        evidence: input.evidence,
         now: this.clock.now(),
       });
       await this.repository.update(existing);
@@ -79,6 +80,7 @@ export class Subscribe {
       mergeFields: input.mergeFields,
       tags: input.tags,
       doubleOptIn,
+      evidence: input.evidence,
       now: this.clock.now(),
     });
     await this.repository.create(subscription);

@@ -18,6 +18,25 @@ const tagsField = z.array(z.string().trim().min(1).max(64)).openapi({ example: [
 // An opaque operator note, bounded so it stays a label rather than a payload.
 const sourceField = z.string().trim().min(1).max(200);
 
+/**
+ * Consent evidence (ADR-023). The IP is validated as an actual address: this is
+ * evidence, and a field that sometimes holds an address and sometimes holds junk
+ * proves nothing. Supplied by the operator's front end — cablegram is headless,
+ * so the IP of the request reaching `/v1` is the operator's own backend.
+ */
+const ipField = z.string().trim().ip().openapi({ example: '203.0.113.42' });
+const userAgentField = z
+  .string()
+  .trim()
+  .min(1)
+  .max(500)
+  .openapi({ example: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' });
+
+/** The `{ ip, userAgent }` pair accepted on the consent-changing routes. */
+export const ConsentEvidenceSchema = z
+  .object({ ip: ipField.optional(), userAgent: userAgentField.optional() })
+  .openapi('ConsentEvidence');
+
 export const SubscriptionSchema = z
   .object({
     id: z.string().openapi({ example: '4a7f2c1e-6b1a-4c9d-9f21-2b0e5d8a1c33' }),
@@ -35,7 +54,26 @@ export const SubscriptionSchema = z
           'cablegram collected the consent itself — the subscribe/confirm path.',
         example: 'mailchimp-export-2026-07',
       }),
-    createdAt: z.string().datetime(),
+    signupIp: z.string().nullable().openapi({ example: '203.0.113.42' }),
+    signupUserAgent: z.string().nullable(),
+    confirmedAt: z
+      .string()
+      .datetime()
+      .nullable()
+      .openapi({
+        description:
+          'When double opt-in was completed — the consent act itself (ADR-023). `null` on a ' +
+          'single-opt-in row, where no confirmation ever happened.',
+      }),
+    confirmedIp: z.string().nullable(),
+    confirmedUserAgent: z.string().nullable(),
+    unsubscribedAt: z.string().datetime().nullable(),
+    unsubscribedIp: z.string().nullable(),
+    unsubscribedUserAgent: z.string().nullable(),
+    createdAt: z
+      .string()
+      .datetime()
+      .openapi({ description: 'The signup moment. Under double opt-in, see `confirmedAt`.' }),
     updatedAt: z.string().datetime(),
   })
   .openapi('Subscription');
@@ -49,8 +87,22 @@ export const SubscribeSchema = z
       .boolean()
       .optional()
       .openapi({ description: 'Per-newsletter opt-in toggle; defaults to true (double opt-in).' }),
+    signupIp: ipField.optional().openapi({
+      description:
+        'The **subscriber’s** IP, as your signup form observed it (ADR-023). cablegram cannot ' +
+        'read it from this request: it is headless, so the caller here is your backend. Omit it ' +
+        'rather than send your own server’s address — blank means “unknown”, a wrong value is a ' +
+        'false consent record.',
+    }),
+    signupUserAgent: userAgentField.optional(),
   })
   .openapi('Subscribe');
+
+/**
+ * Body for the confirm / operator-unsubscribe routes: evidence only, and
+ * optional in full, so an existing caller sending no body is unaffected.
+ */
+export const ConsentActionSchema = ConsentEvidenceSchema.openapi('ConsentAction');
 
 export const SubscriptionListSchema = listResponseSchema(SubscriptionSchema, 'SubscriptionList');
 
@@ -82,6 +134,16 @@ const ImportRowSchema = z
     source: sourceField
       .optional()
       .openapi({ description: 'Per-row provenance override. Absent → the batch’s `source`.' }),
+    // The consent trail as the old provider recorded it. Restored verbatim —
+    // an export carrying opt-in IPs carries evidence that cannot be rebuilt.
+    signupIp: ipField.optional(),
+    signupUserAgent: userAgentField.optional(),
+    confirmedAt: z.string().datetime().optional(),
+    confirmedIp: ipField.optional(),
+    confirmedUserAgent: userAgentField.optional(),
+    unsubscribedAt: z.string().datetime().optional(),
+    unsubscribedIp: ipField.optional(),
+    unsubscribedUserAgent: userAgentField.optional(),
   })
   .openapi('ImportSubscriptionRow');
 
@@ -177,6 +239,14 @@ export function toSubscriptionResponse(subscription: Subscription): Subscription
     mergeFields: subscription.mergeFields,
     tags: [...subscription.tags],
     source: subscription.source ?? null,
+    signupIp: subscription.signupIp ?? null,
+    signupUserAgent: subscription.signupUserAgent ?? null,
+    confirmedAt: subscription.confirmedAt?.toISOString() ?? null,
+    confirmedIp: subscription.confirmedIp ?? null,
+    confirmedUserAgent: subscription.confirmedUserAgent ?? null,
+    unsubscribedAt: subscription.unsubscribedAt?.toISOString() ?? null,
+    unsubscribedIp: subscription.unsubscribedIp ?? null,
+    unsubscribedUserAgent: subscription.unsubscribedUserAgent ?? null,
     createdAt: subscription.createdAt.toISOString(),
     updatedAt: subscription.updatedAt.toISOString(),
   };
