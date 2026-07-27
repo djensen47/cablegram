@@ -23,6 +23,12 @@ export class InMemorySuppressionRepository implements SuppressionRepository {
     return entry;
   }
 
+  async addMany(entries: readonly SuppressionEntry[]): Promise<void> {
+    for (const entry of entries) {
+      if (!this.store.has(entry.address)) this.store.set(entry.address, entry);
+    }
+  }
+
   async findByAddress(address: string): Promise<SuppressionEntry | null> {
     return this.store.get(address) ?? null;
   }

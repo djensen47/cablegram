@@ -26,7 +26,10 @@ export {
   type SubscriptionId,
   type SubscriptionStatus,
   type MergeFields,
+  type ConsentEvidence,
+  type ImportedConsentRecord,
 } from './domain/subscription.js';
+export type { SuppressionGateway } from './application/suppression-gateway.js';
 export {
   SubscriptionError,
   InvalidSubscriptionEmailError,
@@ -43,10 +46,18 @@ export type {
   SubscriptionSegment,
 } from './application/subscription-repository.js';
 export type { NewsletterDirectory, NewsletterInfo } from './application/newsletter-directory.js';
-export type { SubscribeInput, ListSubscriptionsInput } from './application/dtos.js';
+export type {
+  SubscribeInput,
+  ListSubscriptionsInput,
+  ImportConflictMode,
+  ImportSubscriptionRow,
+  ImportSubscriptionsInput,
+  ImportSubscriptionsResult,
+} from './application/dtos.js';
 
 // Use case classes (resolved from the container by token; typed here for tests).
 export { Subscribe } from './application/subscribe.js';
+export { ImportSubscriptions } from './application/import-subscriptions.js';
 export { ConfirmSubscription } from './application/confirm-subscription.js';
 export { Unsubscribe } from './application/unsubscribe.js';
 export {

@@ -2,7 +2,13 @@ import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import type { Container } from 'inversify';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
 import type { AppConfig } from '../../shared/config/index.js';
-import { BadRequestError, errorResponse, throwOnInvalid, type AppEnv } from '../../shared/http/index.js';
+import {
+  BadRequestError,
+  errorResponse,
+  requestEvidence,
+  throwOnInvalid,
+  type AppEnv,
+} from '../../shared/http/index.js';
 import { SUBSCRIPTION_TYPES } from '../types.js';
 import { InvalidUnsubscribeTokenError } from '../domain/errors.js';
 import type { PublicUnsubscribe } from '../application/public-unsubscribe.js';
@@ -181,9 +187,13 @@ export function createPublicUnsubscribeRoutes(container: Container): OpenAPIHono
   app.openapi(postUnsubscribeRoute, async (c) => {
     const { newsletterId, subscriptionId, token } = c.req.valid('query');
     try {
+      // The one route where reading the request is right (ADR-023): this caller
+      // is the recipient or their mail client, not the operator's backend. Note
+      // an RFC 8058 one-click POST comes from the mail provider's servers, so
+      // what lands here is "who submitted the opt-out", not always "who read it".
       const subscription = await container
         .get<PublicUnsubscribe>(SUBSCRIPTION_TYPES.PublicUnsubscribe)
-        .execute(newsletterId, subscriptionId, token);
+        .execute(newsletterId, subscriptionId, token, requestEvidence(c));
       return c.json({ status: 'unsubscribed', email: subscription?.email ?? null } as const, 200);
     } catch (err) {
       rethrow(err);

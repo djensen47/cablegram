@@ -127,7 +127,14 @@ export default tseslint.config(
                 ['infrastructure', { component: 'subscriptions' }],
                 ['presentation', { component: 'subscriptions' }],
               ],
-              allow: [['component', { component: 'newsletters' }]],
+              allow: [
+                ['component', { component: 'newsletters' }],
+                // ADR-022: an import carries hard bounces from the old provider,
+                // and a dead mailbox is a fact about the address rather than
+                // about this newsletter — so it belongs on `deliverability`'s
+                // global list. Acyclic: `deliverability` imports no component.
+                ['component', { component: 'deliverability' }],
+              ],
             },
             {
               from: [

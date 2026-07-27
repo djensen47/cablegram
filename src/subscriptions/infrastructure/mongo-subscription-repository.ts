@@ -27,8 +27,30 @@ interface SubscriptionDoc {
   mergeFields: MergeFields;
   tags: string[];
   consecutiveSoftBounces?: number;
+  /** Absent on natively-collected rows (ADR-022) — not every row has a source. */
+  source?: string;
+  // The consent record (ADR-023). All optional: a row may have signed up
+  // without observed evidence, may never have confirmed, and may never have
+  // opted out.
+  signupIp?: string;
+  signupUserAgent?: string;
+  confirmedAt?: Date;
+  confirmedIp?: string;
+  confirmedUserAgent?: string;
+  unsubscribedAt?: Date;
+  unsubscribedIp?: string;
+  unsubscribedUserAgent?: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+// Optional scalars are omitted rather than written as null: absence is the
+// statement ("we never observed this"), and a document full of nulls says the
+// same thing less clearly while costing more to store 18k times over.
+function defined<T extends Record<string, unknown>>(fields: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(fields).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
 }
 
 /**
@@ -56,6 +78,25 @@ export class MongoSubscriptionRepository implements SubscriptionRepository {
     await this.collection.replaceOne({ _id: subscription.id }, toDoc(subscription));
   }
 
+  async saveMany(subscriptions: readonly Subscription[]): Promise<void> {
+    if (subscriptions.length === 0) return;
+    // A batch of independent single-document replaces — NOT a transaction
+    // (ADR-012: nothing here needs a replica set). `ordered: false` lets the
+    // whole batch attempt even if one document fails, and upserting by `_id` is
+    // safe because the caller resolved existing ids by `(newsletterId, email)`
+    // first: a new row carries a fresh id, an overwrite carries the stored one.
+    await this.collection.bulkWrite(
+      subscriptions.map((subscription) => ({
+        replaceOne: {
+          filter: { _id: subscription.id },
+          replacement: toDoc(subscription),
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    );
+  }
+
   async findById(id: string): Promise<Subscription | null> {
     const doc = await this.collection.findOne({ _id: id });
     return doc === null ? null : toDomain(doc);
@@ -67,6 +108,19 @@ export class MongoSubscriptionRepository implements SubscriptionRepository {
   ): Promise<Subscription | null> {
     const doc = await this.collection.findOne({ newsletterId, email });
     return doc === null ? null : toDomain(doc);
+  }
+
+  async findByNewsletterAndEmails(
+    newsletterId: string,
+    emails: readonly string[],
+  ): Promise<Subscription[]> {
+    if (emails.length === 0) return [];
+    // Served by the `(newsletterId, email)` unique index — the same key the
+    // single-address lookup uses, so one batched read replaces N point reads.
+    const docs = await this.collection
+      .find({ newsletterId, email: { $in: [...emails] } })
+      .toArray();
+    return docs.map(toDomain);
   }
 
   async list(options: ListSubscriptionsOptions): Promise<Subscription[]> {
@@ -113,6 +167,17 @@ function toDoc(subscription: Subscription): SubscriptionDoc {
     mergeFields: subscription.mergeFields,
     tags: [...subscription.tags],
     consecutiveSoftBounces: subscription.consecutiveSoftBounces,
+    ...defined({
+      source: subscription.source,
+      signupIp: subscription.signupIp,
+      signupUserAgent: subscription.signupUserAgent,
+      confirmedAt: subscription.confirmedAt,
+      confirmedIp: subscription.confirmedIp,
+      confirmedUserAgent: subscription.confirmedUserAgent,
+      unsubscribedAt: subscription.unsubscribedAt,
+      unsubscribedIp: subscription.unsubscribedIp,
+      unsubscribedUserAgent: subscription.unsubscribedUserAgent,
+    }),
     createdAt: subscription.createdAt,
     updatedAt: subscription.updatedAt,
   };
@@ -131,6 +196,15 @@ function toDomain(doc: SubscriptionDoc): Subscription {
     // Absent on rows written before the counter existed — treat as no streak.
     tags: doc.tags,
     consecutiveSoftBounces: doc.consecutiveSoftBounces ?? 0,
+    source: doc.source,
+    signupIp: doc.signupIp,
+    signupUserAgent: doc.signupUserAgent,
+    confirmedAt: doc.confirmedAt,
+    confirmedIp: doc.confirmedIp,
+    confirmedUserAgent: doc.confirmedUserAgent,
+    unsubscribedAt: doc.unsubscribedAt,
+    unsubscribedIp: doc.unsubscribedIp,
+    unsubscribedUserAgent: doc.unsubscribedUserAgent,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });

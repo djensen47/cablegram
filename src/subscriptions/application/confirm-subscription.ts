@@ -2,7 +2,7 @@ import { inject, injectable } from 'inversify';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
 import type { Clock } from '../../shared/clock/index.js';
 import { SUBSCRIPTION_TYPES } from '../types.js';
-import type { Subscription } from '../domain/subscription.js';
+import type { ConsentEvidence, Subscription } from '../domain/subscription.js';
 import { SubscriptionNotFoundError } from '../domain/errors.js';
 import type { SubscriptionRepository } from './subscription-repository.js';
 
@@ -21,13 +21,22 @@ export class ConfirmSubscription {
     @inject(SHARED_TYPES.Clock) private readonly clock: Clock,
   ) {}
 
-  async execute(newsletterId: string, id: string): Promise<Subscription> {
+  async execute(
+    newsletterId: string,
+    id: string,
+    /**
+     * Who completed the confirmation, supplied by the operator's front end
+     * (ADR-023). Not read off this request: the caller is the operator's
+     * backend, so its IP is the operator's, not the subscriber's.
+     */
+    evidence?: ConsentEvidence,
+  ): Promise<Subscription> {
     const subscription = await this.repository.findById(id);
     if (subscription === null || subscription.newsletterId !== newsletterId) {
       throw new SubscriptionNotFoundError(id);
     }
 
-    subscription.confirm(this.clock.now());
+    subscription.confirm(this.clock.now(), evidence);
     await this.repository.update(subscription);
     return subscription;
   }

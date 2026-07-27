@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import type { ApiClient, ApiRequest } from '../application/api-client.js';
 import { ApiError } from '../application/api-error.js';
@@ -29,6 +32,7 @@ interface Recorded {
   path: string;
   query?: ApiRequest['query'];
   body?: unknown;
+  options?: Partial<ApiRequest>;
 }
 
 class StubApiClient implements ApiClient {
@@ -38,8 +42,14 @@ class StubApiClient implements ApiClient {
 
   constructor(private readonly base = 'https://api.example.com') {}
 
-  private record<T>(method: string, path: string, query?: ApiRequest['query'], body?: unknown): T {
-    this.calls.push({ method, path, query, body });
+  private record<T>(
+    method: string,
+    path: string,
+    query?: ApiRequest['query'],
+    body?: unknown,
+    options?: Partial<ApiRequest>,
+  ): T {
+    this.calls.push({ method, path, query, body, options });
     if (this.failWith !== null) throw this.failWith;
     return (this.responses.get(`${method} ${path}`) ?? this.responses.get(path) ?? {}) as T;
   }
@@ -47,8 +57,8 @@ class StubApiClient implements ApiClient {
   async get<T>(path: string, query?: ApiRequest['query']): Promise<T> {
     return this.record<T>('GET', path, query);
   }
-  async post<T>(path: string, body?: unknown): Promise<T> {
-    return this.record<T>('POST', path, undefined, body);
+  async post<T>(path: string, body?: unknown, options?: Partial<ApiRequest>): Promise<T> {
+    return this.record<T>('POST', path, undefined, body, options);
   }
   async patch<T>(path: string, body?: unknown): Promise<T> {
     return this.record<T>('PATCH', path, undefined, body);
@@ -468,6 +478,289 @@ describe('suppressions', () => {
 
     expect(code).toBe(EXIT.usage);
     expect(api.calls).toHaveLength(0);
+  });
+});
+
+describe('subscriptions consent evidence', () => {
+  it('relays a signup IP the operator observed elsewhere', async () => {
+    // The "copied an address off the forum" case: cablegram cannot observe the
+    // subscriber, so the operator relays what their own system recorded.
+    const { api, deps } = harness();
+    api.responses.set('POST /v1/newsletters/n1/subscriptions', { id: 's1', status: 'subscribed' });
+
+    const code = await run(deps, [
+      'subscriptions',
+      'add',
+      'n1',
+      '--email',
+      'a@example.com',
+      '--signup-ip',
+      '203.0.113.1',
+      '--no-double-opt-in',
+    ]);
+
+    expect(code).toBe(EXIT.ok);
+    expect(api.calls[0]?.body).toMatchObject({ signupIp: '203.0.113.1' });
+  });
+
+  it('rejects a malformed IP at the CLI edge, before the round trip', async () => {
+    const { api, deps } = harness();
+
+    const code = await run(deps, [
+      'subscriptions',
+      'add',
+      'n1',
+      '--email',
+      'a@example.com',
+      '--signup-ip',
+      '10.0.0',
+    ]);
+
+    expect(code).toBe(EXIT.usage);
+    expect(api.calls).toHaveLength(0);
+  });
+
+  it('sends confirmation evidence on confirm', async () => {
+    const { api, deps } = harness();
+    api.responses.set('POST /v1/newsletters/n1/subscriptions/s1/confirm', { id: 's1' });
+
+    await run(deps, ['subscriptions', 'confirm', 'n1', 's1', '--ip', '203.0.113.9']);
+
+    expect(api.calls[0]?.body).toMatchObject({ ip: '203.0.113.9' });
+  });
+});
+
+describe('subscriptions import', () => {
+  const IMPORT_PATH = '/v1/newsletters/n1/subscriptions/import';
+
+  // A file per test, cleaned up after — the command reads a real path, and
+  // stubbing `readFile` would stop testing the thing that actually breaks.
+  const written: string[] = [];
+  async function csvFile(content: string, name = 'list.csv'): Promise<string> {
+    const path = join(await mkdtemp(join(tmpdir(), 'cablegram-import-')), name);
+    await writeFile(path, content);
+    written.push(path);
+    return path;
+  }
+
+  afterEach(async () => {
+    await Promise.all(written.splice(0).map((path) => rm(path, { force: true })));
+  });
+
+  function result(over: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
+    return {
+      received: 0,
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      suppressed: 0,
+      byStatus: {},
+      ...over,
+    };
+  }
+
+  it('sends each row’s status verbatim instead of subscribing everyone', async () => {
+    // The whole point of the command: a migrated list keeps the people who
+    // unsubscribed, bounced or complained.
+    const { api, deps } = harness();
+    api.responses.set(`POST ${IMPORT_PATH}`, result({ received: 5, created: 5 }));
+    const file = await csvFile(
+      'email,status\n' +
+        'a@example.com,subscribed\n' +
+        'b@example.com,unsubscribed\n' +
+        'c@example.com,bounced\n' +
+        'd@example.com,complained\n' +
+        'e@example.com,pending\n',
+    );
+
+    const code = await run(deps, ['subscriptions', 'import', 'n1', file, '--yes']);
+
+    expect(code).toBe(EXIT.ok);
+    const body = api.calls[0]?.body as { rows: { email: string; status?: string }[] };
+    expect(body.rows.map((r) => r.status)).toEqual([
+      'subscribed',
+      'unsubscribed',
+      'bounced',
+      'complained',
+      'pending',
+    ]);
+  });
+
+  it('defaults --on-conflict to skip, so a re-run never overwrites by accident', async () => {
+    const { api, deps } = harness();
+    api.responses.set(`POST ${IMPORT_PATH}`, result({ received: 1, skipped: 1 }));
+    const file = await csvFile('email\na@example.com\n');
+
+    await run(deps, ['subscriptions', 'import', 'n1', file, '--yes']);
+
+    expect(api.calls[0]?.body).toMatchObject({ onConflict: 'skip', defaultStatus: 'subscribed' });
+  });
+
+  it('passes --on-conflict overwrite and --default-status through', async () => {
+    const { api, deps } = harness();
+    api.responses.set(`POST ${IMPORT_PATH}`, result({ received: 1, updated: 1 }));
+    const file = await csvFile('email\na@example.com\n');
+
+    await run(deps, [
+      'subscriptions',
+      'import',
+      'n1',
+      file,
+      '--on-conflict',
+      'overwrite',
+      '--default-status',
+      'unsubscribed',
+      '--yes',
+    ]);
+
+    expect(api.calls[0]?.body).toMatchObject({
+      onConflict: 'overwrite',
+      defaultStatus: 'unsubscribed',
+    });
+  });
+
+  it('rejects an unknown --on-conflict mode at the edge (there is no merge)', async () => {
+    const { api, deps } = harness();
+    const file = await csvFile('email\na@example.com\n');
+
+    const code = await run(deps, [
+      'subscriptions',
+      'import',
+      'n1',
+      file,
+      '--on-conflict',
+      'merge',
+      '--yes',
+    ]);
+
+    expect(code).toBe(EXIT.usage);
+    expect(api.calls).toHaveLength(0);
+  });
+
+  it('splits the file into batches and keys each one for safe retry', async () => {
+    const { api, deps } = harness();
+    api.responses.set(`POST ${IMPORT_PATH}`, result({ received: 2, created: 2 }));
+    const rows = Array.from({ length: 5 }, (_, i) => `r${i}@example.com`).join('\n');
+    const file = await csvFile(`email\n${rows}\n`, 'big.csv');
+
+    await run(deps, ['subscriptions', 'import', 'n1', file, '--batch-size', '2', '--yes']);
+
+    expect(api.calls).toHaveLength(3);
+    expect(api.calls.map((c) => (c.body as { rows: unknown[] }).rows.length)).toEqual([2, 2, 1]);
+    // Derived from the file + batch index, so resuming reuses the same keys.
+    expect(api.calls.map((c) => c.options?.idempotencyKey)).toEqual([
+      'import:n1:big.csv:0',
+      'import:n1:big.csv:1',
+      'import:n1:big.csv:2',
+    ]);
+  });
+
+  it('reports the status breakdown and writes nothing under --dry-run', async () => {
+    const { api, deps } = harness();
+    const file = await csvFile(
+      'email,status\na@example.com,subscribed\nb@example.com,unsubscribed\nc@example.com,unsubscribed\n',
+    );
+
+    const code = await run(deps, ['--json', 'subscriptions', 'import', 'n1', file, '--dry-run']);
+
+    expect(code).toBe(EXIT.ok);
+    expect(api.calls).toHaveLength(0);
+    expect(JSON.parse(stdout)).toMatchObject({
+      rows: 3,
+      valid: 3,
+      invalid: 0,
+      byStatus: { subscribed: 1, unsubscribed: 2 },
+    });
+  });
+
+  it('refuses the whole file when a row has an unknown status', async () => {
+    const { api, deps } = harness();
+    const file = await csvFile('email,status\na@example.com,cleaned\n');
+
+    const code = await run(deps, ['subscriptions', 'import', 'n1', file, '--yes']);
+
+    expect(code).toBe(EXIT.usage);
+    expect(stderr).toContain('not a valid status');
+    expect(api.calls).toHaveLength(0);
+  });
+
+  it('sends the original opt-in date so the consent record survives', async () => {
+    const { api, deps } = harness();
+    api.responses.set(`POST ${IMPORT_PATH}`, result({ received: 1, created: 1 }));
+    const file = await csvFile('email,subscribedAt\na@example.com,2019-04-02T09:15:00Z\n');
+
+    await run(deps, ['subscriptions', 'import', 'n1', file, '--yes']);
+
+    const body = api.calls[0]?.body as { rows: { subscribedAt?: string }[] };
+    expect(body.rows[0]?.subscribedAt).toBe('2019-04-02T09:15:00.000Z');
+  });
+
+  it('passes --source through as the batch provenance note', async () => {
+    const { api, deps } = harness();
+    api.responses.set(`POST ${IMPORT_PATH}`, result({ received: 1, created: 1 }));
+    const file = await csvFile('email\na@example.com\n');
+
+    await run(deps, [
+      'subscriptions',
+      'import',
+      'n1',
+      file,
+      '--source',
+      'mailchimp-export-2026-07',
+      '--yes',
+    ]);
+
+    expect(api.calls[0]?.body).toMatchObject({ source: 'mailchimp-export-2026-07' });
+  });
+
+  it('shows the source the rows would be stamped with under --dry-run', async () => {
+    const { deps } = harness();
+    const file = await csvFile('email\na@example.com\n');
+
+    await run(deps, ['--json', 'subscriptions', 'import', 'n1', file, '--dry-run']);
+
+    // Defaulted, so the operator sees what will be recorded either way.
+    expect(JSON.parse(stdout)).toMatchObject({ source: 'import' });
+  });
+
+  it('carries the consent trail from the CSV into the request', async () => {
+    const { api, deps } = harness();
+    api.responses.set(`POST ${IMPORT_PATH}`, result({ received: 1, created: 1 }));
+    const file = await csvFile(
+      'email,signupIp,confirmedAt,confirmedIp\n' +
+        'a@example.com,203.0.113.1,2019-04-02T09:20:00Z,203.0.113.1\n',
+    );
+
+    await run(deps, ['subscriptions', 'import', 'n1', file, '--yes']);
+
+    const body = api.calls[0]?.body as { rows: Record<string, unknown>[] };
+    expect(body.rows[0]).toMatchObject({
+      signupIp: '203.0.113.1',
+      confirmedAt: '2019-04-02T09:20:00.000Z',
+      confirmedIp: '203.0.113.1',
+    });
+  });
+
+  it('says out loud when imported bounces reached the global suppression list', async () => {
+    // The one part of an import that escapes this newsletter (ADR-018).
+    const { api, deps } = harness();
+    api.responses.set(`POST ${IMPORT_PATH}`, result({ received: 1, created: 1, suppressed: 1 }));
+    const file = await csvFile('email,status\ndead@example.com,bounced\n');
+
+    await run(deps, ['subscriptions', 'import', 'n1', file, '--yes']);
+
+    expect(stderr).toContain('GLOBAL suppression list');
+  });
+
+  it('stops on a failed batch and says a re-run is safe', async () => {
+    const { api, deps } = harness();
+    api.failWith = new ApiError('Bad gateway', 502, 'upstream');
+    const file = await csvFile('email\na@example.com\n');
+
+    const code = await run(deps, ['subscriptions', 'import', 'n1', file, '--yes']);
+
+    expect(code).toBe(EXIT.failed);
+    expect(stderr).toContain('Re-running is safe');
   });
 });
 

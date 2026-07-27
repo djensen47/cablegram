@@ -4,7 +4,7 @@ import type { AppConfig } from '../../shared/config/index.js';
 import type { Clock } from '../../shared/clock/index.js';
 import { verifyUnsubscribeToken } from '../../shared/auth/index.js';
 import { SUBSCRIPTION_TYPES } from '../types.js';
-import type { Subscription } from '../domain/subscription.js';
+import type { ConsentEvidence, Subscription } from '../domain/subscription.js';
 import { InvalidUnsubscribeTokenError } from '../domain/errors.js';
 import type { SubscriptionRepository } from './subscription-repository.js';
 
@@ -34,7 +34,18 @@ export class PublicUnsubscribe {
    * when the token is valid but the row no longer exists. Throws
    * `InvalidUnsubscribeTokenError` when the token does not verify.
    */
-  async execute(newsletterId: string, subscriptionId: string, token: string): Promise<Subscription | null> {
+  async execute(
+    newsletterId: string,
+    subscriptionId: string,
+    token: string,
+    /**
+     * Who clicked, as the request reported it (ADR-023). This is the **one**
+     * place cablegram reads it off the request rather than out of the body: the
+     * caller here really is the recipient or their mail client, not the
+     * operator's backend.
+     */
+    evidence?: ConsentEvidence,
+  ): Promise<Subscription | null> {
     if (
       !verifyUnsubscribeToken(this.config.unsubscribe.tokenSecret, newsletterId, subscriptionId, token)
     ) {
@@ -49,7 +60,7 @@ export class PublicUnsubscribe {
       return null;
     }
 
-    subscription.unsubscribe(this.clock.now()); // idempotent on an already-unsubscribed row
+    subscription.unsubscribe(this.clock.now(), evidence); // idempotent on an already-unsubscribed row
     await this.repository.update(subscription);
     return subscription;
   }

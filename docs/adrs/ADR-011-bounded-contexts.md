@@ -98,12 +98,18 @@ the adapter is a leaf). Result is a DAG:
 
 ```
 campaigns     → { newsletters, subscriptions, deliverability, templates, email }
-subscriptions → { newsletters }          (validate the newsletter a subscription targets)
+subscriptions → { newsletters, deliverability }
+                                         (newsletters: validate the newsletter a subscription
+                                          targets. deliverability: an imported hard bounce is a
+                                          mailbox fact and belongs on the global list — ADR-022)
 newsletters   → { templates }            (only if it names a default template)
 deliverability, templates, email, auth, shared/* → leaves
 ```
 
 This is the shape ADR-005's boundary rules enforce.
+
+> **Amended by [ADR-022](ADR-022-subscriber-import.md):** `subscriptions → deliverability` was added
+> when bulk import landed. Still acyclic — `deliverability` imports no component and remains a leaf.
 
 ### Deliberately coarse / not yet
 

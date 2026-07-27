@@ -27,6 +27,12 @@ import {
   InvalidSubscriptionEmailError,
   InvalidUnsubscribeTokenError,
 } from '../index.js';
+import {
+  DELIVERABILITY_TYPES,
+  InMemorySuppressionRepository,
+  CheckSuppression,
+} from '../../deliverability/index.js';
+import { ImportSubscriptions } from '../index.js';
 import { unsubscribeToken } from '../../shared/auth/index.js';
 
 const env = {
@@ -48,6 +54,12 @@ function testContainer(): { container: Container; gateway: InMemoryDeliveryGatew
   const container = buildContainer(env);
   container.rebind(SUBSCRIPTION_TYPES.SubscriptionRepository).to(InMemorySubscriptionRepository);
   container.rebind(NEWSLETTER_TYPES.NewsletterRepository).to(InMemoryNewsletterRepository);
+  // The import path writes imported hard bounces to the global list along the
+  // `subscriptions → deliverability` edge (ADR-022), so that repository needs
+  // its in-memory double too.
+  container
+    .rebind(DELIVERABILITY_TYPES.SuppressionRepository)
+    .to(InMemorySuppressionRepository);
   const gateway = new InMemoryDeliveryGateway();
   container.rebind<DeliveryGateway>(EMAIL_TYPES.DeliveryGateway).toConstantValue(gateway);
   return { container, gateway };
@@ -325,6 +337,536 @@ describe('subscriptions use cases', () => {
 
   // ADR-018: bounces and complaints are per-newsletter statuses in their own
   // right, not just a side effect of the global suppression list.
+  describe('import (ADR-022)', () => {
+    function importer(): ImportSubscriptions {
+      return container.get<ImportSubscriptions>(SUBSCRIPTION_TYPES.ImportSubscriptions);
+    }
+
+    async function statusOf(email: string): Promise<string | undefined> {
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 100 });
+      return rows.find((s) => s.email === email)?.status;
+    }
+
+    async function suppressed(address: string): Promise<boolean> {
+      const entry = await container
+        .get<CheckSuppression>(DELIVERABILITY_TYPES.CheckSuppression)
+        .execute(address);
+      return entry !== null;
+    }
+
+    it('restores every status in the vocabulary verbatim', async () => {
+      // The reason this use case exists: `Subscribe` derives a status from an
+      // opt-in toggle and so can only ever produce pending/subscribed, which
+      // makes it incapable of carrying a migration.
+      await importer().execute({
+        newsletterId,
+        rows: [
+          { email: 'a@dispatch.example', status: 'subscribed' },
+          { email: 'b@dispatch.example', status: 'pending' },
+          { email: 'c@dispatch.example', status: 'unsubscribed' },
+          { email: 'd@dispatch.example', status: 'bounced' },
+          { email: 'e@dispatch.example', status: 'complained' },
+        ],
+      });
+
+      expect(await statusOf('a@dispatch.example')).toBe('subscribed');
+      expect(await statusOf('b@dispatch.example')).toBe('pending');
+      expect(await statusOf('c@dispatch.example')).toBe('unsubscribed');
+      expect(await statusOf('d@dispatch.example')).toBe('bounced');
+      expect(await statusOf('e@dispatch.example')).toBe('complained');
+    });
+
+    it('sends no email at all — not even for pending rows', async () => {
+      // Importing must never mail the list. A `pending` row here is restored
+      // consent, not a new opt-in awaiting confirmation.
+      await importer().execute({
+        newsletterId,
+        rows: [
+          { email: 'a@dispatch.example', status: 'pending' },
+          { email: 'b@dispatch.example', status: 'subscribed' },
+        ],
+      });
+
+      expect(gateway.sent).toHaveLength(0);
+    });
+
+    it('defaults a row with no status to subscribed, or to defaultStatus', async () => {
+      await importer().execute({ newsletterId, rows: [{ email: 'a@dispatch.example' }] });
+      await importer().execute({
+        newsletterId,
+        rows: [{ email: 'b@dispatch.example' }],
+        defaultStatus: 'unsubscribed',
+      });
+
+      expect(await statusOf('a@dispatch.example')).toBe('subscribed');
+      expect(await statusOf('b@dispatch.example')).toBe('unsubscribed');
+    });
+
+    it('preserves the original opt-in date as the consent record', async () => {
+      const subscribedAt = new Date('2019-04-02T09:15:00.000Z');
+
+      await importer().execute({
+        newsletterId,
+        rows: [{ email: 'a@dispatch.example', subscribedAt }],
+      });
+
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      expect(rows[0]?.createdAt).toEqual(subscribedAt);
+    });
+
+    it('normalizes addresses and keeps merge fields and tags', async () => {
+      await importer().execute({
+        newsletterId,
+        rows: [
+          {
+            email: 'Reader@Dispatch.Example',
+            mergeFields: { firstName: 'Ada' },
+            tags: ['vip', 'vip', ' beta '],
+          },
+        ],
+      });
+
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      expect(rows[0]?.email).toBe('reader@dispatch.example');
+      expect(rows[0]?.mergeFields).toEqual({ firstName: 'Ada' });
+      expect(rows[0]?.tags).toEqual(['vip', 'beta']);
+    });
+
+    it('skips an existing membership by default, leaving it untouched', async () => {
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+      await container
+        .get<Unsubscribe>(SUBSCRIPTION_TYPES.Unsubscribe)
+        .execute(
+          newsletterId,
+          (
+            await container
+              .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+              .execute({ newsletterId, limit: 10 })
+          )[0]!.id,
+        );
+
+      const result = await importer().execute({
+        newsletterId,
+        rows: [{ email: 'reader@dispatch.example', status: 'subscribed' }],
+      });
+
+      // Someone who opted out in cablegram after the export was taken stays out.
+      expect(result.skipped).toBe(1);
+      expect(result.updated).toBe(0);
+      expect(await statusOf('reader@dispatch.example')).toBe('unsubscribed');
+    });
+
+    it('replaces an existing membership under overwrite — the file is the truth', async () => {
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+
+      const result = await importer().execute({
+        newsletterId,
+        onConflict: 'overwrite',
+        rows: [
+          {
+            email: 'reader@dispatch.example',
+            status: 'unsubscribed',
+            mergeFields: { firstName: 'Ada' },
+          },
+        ],
+      });
+
+      expect(result.updated).toBe(1);
+      expect(result.created).toBe(0);
+      expect(await statusOf('reader@dispatch.example')).toBe('unsubscribed');
+    });
+
+    it('is re-runnable: importing the same file twice creates no duplicates', async () => {
+      const rows = [
+        { email: 'a@dispatch.example', status: 'subscribed' as const },
+        { email: 'b@dispatch.example', status: 'unsubscribed' as const },
+      ];
+
+      const first = await importer().execute({ newsletterId, rows });
+      const second = await importer().execute({ newsletterId, rows });
+
+      expect(first.created).toBe(2);
+      expect(second.created).toBe(0);
+      expect(second.skipped).toBe(2);
+      const all = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 100 });
+      expect(all).toHaveLength(2);
+    });
+
+    it('keeps the first occurrence when one address repeats inside a batch', async () => {
+      const result = await importer().execute({
+        newsletterId,
+        rows: [
+          { email: 'a@dispatch.example', status: 'subscribed' },
+          { email: 'A@Dispatch.Example', status: 'unsubscribed' },
+        ],
+      });
+
+      expect(result.created).toBe(1);
+      expect(result.skipped).toBe(1);
+      expect(await statusOf('a@dispatch.example')).toBe('subscribed');
+    });
+
+    it('puts an imported hard bounce on the GLOBAL suppression list', async () => {
+      // Second-hand but still a mailbox fact: the address is dead for every
+      // newsletter, and all of them share one sending domain (ADR-018).
+      const result = await importer().execute({
+        newsletterId,
+        rows: [{ email: 'dead@dispatch.example', status: 'bounced' }],
+      });
+
+      expect(result.suppressed).toBe(1);
+      expect(await suppressed('dead@dispatch.example')).toBe(true);
+    });
+
+    it('NEVER puts an imported complaint on the global suppression list', async () => {
+      // Settled by ADR-018: a complaint about one publication says nothing
+      // about the others.
+      await importer().execute({
+        newsletterId,
+        rows: [
+          { email: 'angry@dispatch.example', status: 'complained' },
+          { email: 'gone@dispatch.example', status: 'unsubscribed' },
+        ],
+      });
+
+      expect(await suppressed('angry@dispatch.example')).toBe(false);
+      expect(await suppressed('gone@dispatch.example')).toBe(false);
+    });
+
+    it('suppresses a bounced address even when its membership row is skipped', async () => {
+      // `onConflict` governs this newsletter's row; skipping it does not make
+      // the mailbox any less dead.
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'dead@dispatch.example', doubleOptIn: false });
+
+      const result = await importer().execute({
+        newsletterId,
+        rows: [{ email: 'dead@dispatch.example', status: 'bounced' }],
+      });
+
+      expect(result.skipped).toBe(1);
+      expect(result.suppressed).toBe(1);
+      expect(await suppressed('dead@dispatch.example')).toBe(true);
+    });
+
+    it('excludes everything but subscribed rows from the resolved recipients', async () => {
+      await importer().execute({
+        newsletterId,
+        rows: [
+          { email: 'a@dispatch.example', status: 'subscribed' },
+          { email: 'b@dispatch.example', status: 'pending' },
+          { email: 'c@dispatch.example', status: 'unsubscribed' },
+          { email: 'd@dispatch.example', status: 'bounced' },
+          { email: 'e@dispatch.example', status: 'complained' },
+        ],
+      });
+
+      const recipients = await container
+        .get<ResolveRecipients>(SUBSCRIPTION_TYPES.ResolveRecipients)
+        .execute(newsletterId);
+
+      expect(recipients.map((r) => r.address)).toEqual(['a@dispatch.example']);
+    });
+
+    it('records where an imported row came from', async () => {
+      // Without this, an inherited consent claim and one cablegram witnessed
+      // itself are indistinguishable in the data — which is the half of the
+      // consent record `subscribedAt` alone does not cover.
+      await importer().execute({
+        newsletterId,
+        source: 'mailchimp-export-2026-07',
+        rows: [
+          { email: 'a@dispatch.example' },
+          { email: 'b@dispatch.example', source: 'campaign-monitor-2021' },
+        ],
+      });
+
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      expect(rows.find((s) => s.email === 'a@dispatch.example')?.source).toBe(
+        'mailchimp-export-2026-07',
+      );
+      // A per-row column beats the batch note.
+      expect(rows.find((s) => s.email === 'b@dispatch.example')?.source).toBe(
+        'campaign-monitor-2021',
+      );
+    });
+
+    it('marks a row as imported even when no source was named', async () => {
+      // The property has to hold unconditionally: one that only holds when the
+      // operator remembers a flag is not a property you can audit against.
+      await importer().execute({ newsletterId, rows: [{ email: 'a@dispatch.example' }] });
+
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      expect(rows[0]?.source).toBe('import');
+    });
+
+    it('leaves a natively-collected subscription with no source at all', async () => {
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      expect(rows[0]?.source).toBeUndefined();
+    });
+
+    it('keeps the source as a historical fact when the row is later re-subscribed', async () => {
+      // A re-subscribe records "they since re-opted in" in the status and
+      // `updatedAt`; it does not rewrite where the row came from.
+      await importer().execute({
+        newsletterId,
+        source: 'mailchimp-export-2026-07',
+        rows: [{ email: 'reader@dispatch.example', status: 'unsubscribed' }],
+      });
+
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      expect(rows[0]?.status).toBe('subscribed');
+      expect(rows[0]?.source).toBe('mailchimp-export-2026-07');
+    });
+
+    it('re-stamps the source when overwrite replaces an existing row', async () => {
+      await importer().execute({
+        newsletterId,
+        source: 'first-pass',
+        rows: [{ email: 'a@dispatch.example' }],
+      });
+
+      await importer().execute({
+        newsletterId,
+        onConflict: 'overwrite',
+        source: 'second-pass',
+        rows: [{ email: 'a@dispatch.example' }],
+      });
+
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      expect(rows[0]?.source).toBe('second-pass');
+    });
+
+    it('reports what the batch did, for progress and the dry-run summary', async () => {
+      const result = await importer().execute({
+        newsletterId,
+        rows: [
+          { email: 'a@dispatch.example', status: 'subscribed' },
+          { email: 'b@dispatch.example', status: 'unsubscribed' },
+        ],
+      });
+
+      expect(result).toMatchObject({
+        received: 2,
+        created: 2,
+        updated: 0,
+        skipped: 0,
+        suppressed: 0,
+      });
+      expect(result.byStatus).toMatchObject({ subscribed: 1, unsubscribed: 1, bounced: 0 });
+    });
+
+    it('rejects an import into a newsletter that does not exist', async () => {
+      await expect(
+        importer().execute({ newsletterId: 'missing', rows: [{ email: 'a@dispatch.example' }] }),
+      ).rejects.toBeInstanceOf(SubscriptionNewsletterNotFoundError);
+    });
+
+    it('rejects a malformed address rather than storing it', async () => {
+      await expect(
+        importer().execute({ newsletterId, rows: [{ email: 'not-an-email' }] }),
+      ).rejects.toBeInstanceOf(InvalidSubscriptionEmailError);
+    });
+  });
+
+  describe('consent record (ADR-023)', () => {
+    async function only(): Promise<{
+      status: string;
+      confirmedAt?: Date;
+      confirmedIp?: string;
+      unsubscribedAt?: Date;
+      unsubscribedIp?: string;
+      signupIp?: string;
+      createdAt: Date;
+      updatedAt: Date;
+    }> {
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      return rows[0]!;
+    }
+
+    async function idOf(): Promise<string> {
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      return rows[0]!.id;
+    }
+
+    it('records confirmedAt separately, so a later bounce cannot erase it', async () => {
+      // The regression this field exists for: `updatedAt` means "when did this
+      // row last change", and the first soft bounce after a confirmation used
+      // to take the answer to "when did they consent" with it.
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: true });
+      await container
+        .get<ConfirmSubscription>(SUBSCRIPTION_TYPES.ConfirmSubscription)
+        .execute(newsletterId, await idOf(), { ip: '203.0.113.42', userAgent: 'Firefox/128' });
+      const confirmedAt = (await only()).confirmedAt;
+
+      await container
+        .get<MarkSubscriptionOutcome>(SUBSCRIPTION_TYPES.MarkSubscriptionOutcome)
+        .execute(newsletterId, 'reader@dispatch.example', 'soft-bounce');
+
+      const after = await only();
+      expect(after.confirmedAt).toEqual(confirmedAt);
+      expect(after.confirmedIp).toBe('203.0.113.42');
+      // updatedAt moved on; confirmedAt did not.
+      expect(after.updatedAt.getTime()).toBeGreaterThanOrEqual(confirmedAt!.getTime());
+    });
+
+    it('leaves confirmedAt empty on a single-opt-in row — no confirmation happened', async () => {
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+
+      const row = await only();
+      expect(row.status).toBe('subscribed');
+      expect(row.confirmedAt).toBeUndefined();
+    });
+
+    it('records the signup evidence the caller supplied', async () => {
+      await container.get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe).execute({
+        newsletterId,
+        email: 'reader@dispatch.example',
+        doubleOptIn: false,
+        evidence: { ip: '198.51.100.7', userAgent: 'Safari/17' },
+      });
+
+      expect((await only()).signupIp).toBe('198.51.100.7');
+    });
+
+    it('records unsubscribedAt, and a repeat opt-out does not overwrite it', async () => {
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+      const id = await idOf();
+      await container
+        .get<Unsubscribe>(SUBSCRIPTION_TYPES.Unsubscribe)
+        .execute(newsletterId, id, { ip: '203.0.113.9' });
+      const first = await only();
+
+      await container
+        .get<Unsubscribe>(SUBSCRIPTION_TYPES.Unsubscribe)
+        .execute(newsletterId, id, { ip: '203.0.113.99' });
+
+      // The first opt-out is the one that counts — a repeated one-click POST
+      // must not rewrite when it happened.
+      const second = await only();
+      expect(second.unsubscribedAt).toEqual(first.unsubscribedAt);
+      expect(second.unsubscribedIp).toBe('203.0.113.9');
+    });
+
+    it('clears the old consent trail when a lapsed row is re-subscribed', async () => {
+      // A stale `unsubscribedAt` on an active membership, or a `confirmedAt`
+      // predating this opt-in, would describe something that never happened.
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: true });
+      const id = await idOf();
+      await container
+        .get<ConfirmSubscription>(SUBSCRIPTION_TYPES.ConfirmSubscription)
+        .execute(newsletterId, id);
+      await container.get<Unsubscribe>(SUBSCRIPTION_TYPES.Unsubscribe).execute(newsletterId, id);
+
+      await container.get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe).execute({
+        newsletterId,
+        email: 'reader@dispatch.example',
+        doubleOptIn: false,
+        evidence: { ip: '192.0.2.5' },
+      });
+
+      const revived = await only();
+      expect(revived.status).toBe('subscribed');
+      expect(revived.unsubscribedAt).toBeUndefined();
+      expect(revived.confirmedAt).toBeUndefined();
+      expect(revived.signupIp).toBe('192.0.2.5');
+    });
+
+    it('restores an imported consent trail verbatim', async () => {
+      // The reason the fields had to exist before the migration runs: an export
+      // carrying opt-in IPs carries evidence nothing can rebuild afterwards.
+      await container.get<ImportSubscriptions>(SUBSCRIPTION_TYPES.ImportSubscriptions).execute({
+        newsletterId,
+        source: 'mailchimp-export-2026-07',
+        rows: [
+          {
+            email: 'reader@dispatch.example',
+            status: 'subscribed',
+            subscribedAt: new Date('2019-04-02T09:15:00.000Z'),
+            consent: {
+              signupIp: '203.0.113.1',
+              confirmedAt: new Date('2019-04-02T09:20:00.000Z'),
+              confirmedIp: '203.0.113.1',
+            },
+          },
+        ],
+      });
+
+      const row = await only();
+      expect(row.createdAt).toEqual(new Date('2019-04-02T09:15:00.000Z'));
+      expect(row.confirmedAt).toEqual(new Date('2019-04-02T09:20:00.000Z'));
+      expect(row.signupIp).toBe('203.0.113.1');
+    });
+
+    it('replaces the whole trail on an overwrite rather than half-keeping it', async () => {
+      const importer = container.get<ImportSubscriptions>(SUBSCRIPTION_TYPES.ImportSubscriptions);
+      await importer.execute({
+        newsletterId,
+        rows: [
+          {
+            email: 'reader@dispatch.example',
+            consent: { confirmedAt: new Date('2019-04-02T09:20:00.000Z'), signupIp: '203.0.113.1' },
+          },
+        ],
+      });
+
+      await importer.execute({
+        newsletterId,
+        onConflict: 'overwrite',
+        rows: [{ email: 'reader@dispatch.example', consent: { signupIp: '198.51.100.2' } }],
+      });
+
+      // Keeping the first file's confirmation beside the second file's signup
+      // would state an event sequence that never occurred.
+      const row = await only();
+      expect(row.signupIp).toBe('198.51.100.2');
+      expect(row.confirmedAt).toBeUndefined();
+    });
+  });
+
   describe('provider-driven outcomes (ADR-018)', () => {
     it('marks a membership bounced by address, quietly ignoring unknown ones', async () => {
       const { id } = await container

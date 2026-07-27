@@ -26,6 +26,27 @@ describe('MongoSuppressionRepository (contract)', () => {
     await client.close();
   });
 
+  it('adds many at once, keeping the original entry for an address already listed', async () => {
+    // The import path's write (ADR-022): idempotent per address, so a re-run of
+    // a migration cannot rewrite when or why a mailbox was suppressed.
+    const at = (iso: string, address: string) =>
+      SuppressionEntry.create({ address, reason: 'hard-bounce', now: new Date(iso) });
+    await repo.add(at('2026-01-01T00:00:00Z', 'old@dispatch.example'));
+
+    await repo.addMany([
+      at('2026-06-01T00:00:00Z', 'old@dispatch.example'),
+      at('2026-06-01T00:00:00Z', 'new@dispatch.example'),
+    ]);
+
+    expect((await repo.findByAddress('old@dispatch.example'))?.createdAt).toEqual(
+      new Date('2026-01-01T00:00:00Z'),
+    );
+    expect((await repo.findByAddress('new@dispatch.example'))?.createdAt).toEqual(
+      new Date('2026-06-01T00:00:00Z'),
+    );
+    expect(await repo.addMany([])).toBeUndefined();
+  });
+
   it('adds and finds by address (the address IS the id, ADR-011)', async () => {
     const entry = SuppressionEntry.create({
       address: 'bounced@dispatch.example',

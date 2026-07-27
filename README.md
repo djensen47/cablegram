@@ -228,7 +228,8 @@ NL=$(cablegram --json newsletters create \
       --name "The Weekly Dispatch" --from-name "Dispatch Editors" \
       --from-email editors@dispatch.example | jq -r .id)
 
-cablegram subscriptions import "$NL" subscribers.csv --no-double-opt-in
+cablegram subscriptions import "$NL" subscribers.csv --dry-run   # status breakdown, writes nothing
+cablegram subscriptions import "$NL" subscribers.csv             # preserves each row's status
 cablegram templates create --name "Weekly digest" --subject "Your {{weekOf}} digest" --html body.html
 cablegram campaigns send <campaign-id> --dry-run    # recipient count, sends nothing
 cablegram campaigns send <campaign-id>              # confirms first; --yes to skip
@@ -292,12 +293,63 @@ always-current contract — this table is the map.
 | Method | Path | Notes |
 |---|---|---|
 | POST · GET | `/v1/newsletters/{id}/subscriptions` | Subscribe / list (`?status=&tag=`) |
+| POST | `/v1/newsletters/{id}/subscriptions/import` | **Import** up to 1000 rows, each with its own `status` — restoring a list from another provider, not subscribing it. Sends no email ([ADR-022](docs/adrs/ADR-022-subscriber-import.md)) |
 | POST | `/v1/newsletters/{id}/subscriptions/{subId}/confirm` | Confirm a pending (double opt-in) subscription |
 | POST | `/v1/newsletters/{id}/subscriptions/{subId}/unsubscribe` | Unsubscribe (operator; JWT) |
 | GET · POST | `/v1/unsubscribe?newsletterId=&subscriptionId=&token=&email=` | **Public** unsubscribe — no JWT, the HMAC `token` authenticates (ADR-015). `POST` performs it (returns JSON; RFC 8058 one-click target); `GET` changes no state — it redirects to `UNSUBSCRIBE_URL` if set, else renders a built-in page |
 
-Statuses: `pending` · `subscribed` · `unsubscribed`.
-Public unsubscribe flips per-newsletter status only — it does **not** add to the global suppression list.
+Statuses: `pending` · `subscribed` · `unsubscribed` · `bounced` · `complained`. Only `subscribed` is
+sendable. Public unsubscribe flips per-newsletter status only — it does **not** add to the global
+suppression list.
+
+**The consent record** ([ADR-023](docs/adrs/ADR-023-consent-record.md)). Three moments, each with its
+own timestamp and evidence: signup (`createdAt`, `signupIp`), confirmation (`confirmedAt`,
+`confirmedIp`), opt-out (`unsubscribedAt`, `unsubscribedIp`), plus matching user agents. `confirmedAt`
+is separate from `updatedAt` because `updatedAt` means "row last changed" and the next bounce would
+otherwise erase when consent was given — and under GDPR the confirmation, not the signup, is the
+consent act. It is `null` on a single-opt-in row, where no confirmation happened.
+
+**You must supply the IP; cablegram cannot observe it.** Being headless means every `/v1` call comes
+from *your* backend, so the request's IP is yours, not the subscriber's — recording it would be a
+false consent record. Send `signupIp` on subscribe and `{ ip, userAgent }` on confirm/unsubscribe. The
+sole exception is the public `POST /v1/unsubscribe`, where the caller really is the recipient's client:
+there the leftmost `X-Forwarded-For` entry is captured automatically, validated as an IP, and treated
+as corroboration rather than proof.
+
+**Importing is not subscribing.** `Subscribe` derives its status from the opt-in toggle, so it can
+only ever produce `pending` or `subscribed` — useless for migrating a list that already contains
+people who left. The import endpoint takes each row's `status` verbatim across the full vocabulary,
+preserves the source system's `subscribedAt` as the consent record, and **never sends mail**. A row
+imported as `bounced` is also added to the global suppression list (a dead mailbox is a fact about the
+address); one imported as `complained` is **not** ([ADR-018](docs/adrs/ADR-018-suppression-scope.md)).
+Re-running is safe: `--on-conflict skip` is the default and leaves existing memberships alone;
+`--on-conflict overwrite` makes the file the source of truth. There is no merge mode.
+
+```csv
+email,status,subscribedAt,firstName,tags
+ada@example.com,subscribed,2019-04-02T09:15:00Z,Ada,vip;beta
+alan@example.com,unsubscribed,2018-06-01T00:00:00Z,Alan,
+```
+
+```bash
+cablegram subscriptions import "$NL" subscribers.csv --source mailchimp-export-2026-07
+```
+
+`email` · `tags` · `status` · `subscribedAt` · `source` are matched case-insensitively; **every other
+column becomes a merge field with its casing preserved**, so a `firstName` column feeds
+`{{firstName}}`. `tags` is semicolon-separated (a comma would collide with the delimiter). An unknown
+`status` fails the row rather than being defaulted.
+
+The consent trail travels too: `signupIp` · `confirmedAt` · `confirmedIp` · `unsubscribedAt` ·
+`unsubscribedIp` (plus the matching `…UserAgent` columns) are all reserved and restored verbatim
+([ADR-023](docs/adrs/ADR-023-consent-record.md)). An export carrying opt-in IPs carries evidence
+nothing can rebuild afterwards, so import it the first time or lose it.
+
+`source` records where a record came from and is surfaced on the subscription DTO — it is the other
+half of the consent record, since `subscribedAt` alone cannot say whether a consent claim is one
+cablegram witnessed or one inherited from another provider. It is metadata, deliberately **not** a
+merge field, so it can never render into a campaign. An import with no `--source` still records
+`import`, so an imported row is always identifiable as one.
 
 ### Templates
 | Method | Path | Notes |

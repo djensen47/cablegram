@@ -12,6 +12,12 @@ export interface AddSuppressionInput {
   reason: SuppressionReason;
 }
 
+export interface AddSuppressionsInput {
+  /** Addresses to suppress; malformed ones are dropped, not rejected. */
+  addresses: readonly string[];
+  reason: SuppressionReason;
+}
+
 export interface ListSuppressionsInput {
   /** Page size requested by the caller. */
   limit: number;

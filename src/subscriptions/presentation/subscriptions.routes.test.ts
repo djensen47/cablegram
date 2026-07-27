@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Container } from 'inversify';
 import { buildContainer } from '../../shared/di/index.js';
-import { TEST_ENV, bearerHeaders } from '../../shared/testing/index.js';
+import { TEST_ENV, TEST_JWT_SECRET, bearerHeaders } from '../../shared/testing/index.js';
+import { unsubscribeToken } from '../../shared/auth/index.js';
 import { createApp } from '../../app.js';
 import {
   EMAIL_TYPES,
@@ -13,12 +14,18 @@ import {
   InMemoryNewsletterRepository,
   CreateNewsletter,
 } from '../../newsletters/index.js';
+import {
+  DELIVERABILITY_TYPES,
+  InMemorySuppressionRepository,
+} from '../../deliverability/index.js';
 import { SUBSCRIPTION_TYPES, InMemorySubscriptionRepository } from '../index.js';
 
 function build() {
   const container: Container = buildContainer(TEST_ENV);
   container.rebind(SUBSCRIPTION_TYPES.SubscriptionRepository).to(InMemorySubscriptionRepository);
   container.rebind(NEWSLETTER_TYPES.NewsletterRepository).to(InMemoryNewsletterRepository);
+  // The import route writes imported hard bounces to the global list (ADR-022).
+  container.rebind(DELIVERABILITY_TYPES.SuppressionRepository).to(InMemorySuppressionRepository);
   const gateway = new InMemoryDeliveryGateway();
   container.rebind<DeliveryGateway>(EMAIL_TYPES.DeliveryGateway).toConstantValue(gateway);
   return { app: createApp(container), container, gateway };
@@ -157,5 +164,210 @@ describe('subscriptions routes', () => {
     expect(doc.paths).toHaveProperty(
       '/v1/newsletters/{newsletterId}/subscriptions/{id}/confirm',
     );
+    expect(doc.paths).toHaveProperty('/v1/newsletters/{newsletterId}/subscriptions/import');
+  });
+
+  describe('consent record (ADR-023)', () => {
+    async function subscribed(body: Record<string, unknown> = {}): Promise<string> {
+      const res = await subscribe({
+        email: 'reader@dispatch.example',
+        doubleOptIn: true,
+        ...body,
+      });
+      return ((await res.json()) as { id: string }).id;
+    }
+
+    it('still accepts a confirm with no body at all', async () => {
+      // The pre-existing contract. Hono rejects an empty body whenever a JSON
+      // content-type is set, so this asserts the tolerance is really there.
+      const id = await subscribed();
+
+      const res = await app.request(
+        `/v1/newsletters/${newsletterId}/subscriptions/${id}/confirm`,
+        { method: 'POST', headers: auth },
+      );
+
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as { status: string; confirmedAt: string | null };
+      expect(json.status).toBe('subscribed');
+      expect(json.confirmedAt).not.toBeNull();
+    });
+
+    it('takes the subscriber’s IP from the body, never from the request', async () => {
+      // cablegram is headless: the caller here is the operator's backend, so
+      // reading the request would record the wrong party as having consented.
+      const id = await subscribed({ signupIp: '198.51.100.7' });
+
+      const res = await app.request(
+        `/v1/newsletters/${newsletterId}/subscriptions/${id}/confirm`,
+        {
+          method: 'POST',
+          headers: { ...auth, 'x-forwarded-for': '10.9.9.9' },
+          body: JSON.stringify({ ip: '203.0.113.42' }),
+        },
+      );
+
+      const json = (await res.json()) as { signupIp: string; confirmedIp: string };
+      expect(json.signupIp).toBe('198.51.100.7');
+      // The forwarded header is ignored on /v1 — the body is the only source.
+      expect(json.confirmedIp).toBe('203.0.113.42');
+    });
+
+    it('rejects an IP that is not an address', async () => {
+      const res = await subscribe({ email: 'a@dispatch.example', signupIp: 'not-an-ip' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('auto-captures the forwarded IP on the public unsubscribe only', async () => {
+      const id = await subscribed();
+      const token = unsubscribeToken(TEST_JWT_SECRET, newsletterId, id);
+
+      const res = await app.request(
+        `/v1/unsubscribe?newsletterId=${newsletterId}&subscriptionId=${id}&token=${token}`,
+        { method: 'POST', headers: { 'x-forwarded-for': '203.0.113.7, 70.41.3.18' } },
+      );
+      expect(res.status).toBe(200);
+
+      const list = await app.request(`/v1/newsletters/${newsletterId}/subscriptions?limit=10`, {
+        headers: auth,
+      });
+      const page = (await list.json()) as {
+        data: { unsubscribedIp: string | null; unsubscribedAt: string | null }[];
+      };
+      // Leftmost entry: the original client, not the proxy that appended itself.
+      expect(page.data[0]?.unsubscribedIp).toBe('203.0.113.7');
+      expect(page.data[0]?.unsubscribedAt).not.toBeNull();
+    });
+
+    it('drops a forwarded value that is not a valid IP rather than storing junk', async () => {
+      const id = await subscribed();
+      const token = unsubscribeToken(TEST_JWT_SECRET, newsletterId, id);
+
+      await app.request(
+        `/v1/unsubscribe?newsletterId=${newsletterId}&subscriptionId=${id}&token=${token}`,
+        { method: 'POST', headers: { 'x-forwarded-for': 'unknown' } },
+      );
+
+      const list = await app.request(`/v1/newsletters/${newsletterId}/subscriptions?limit=10`, {
+        headers: auth,
+      });
+      const page = (await list.json()) as { data: { unsubscribedIp: string | null }[] };
+      expect(page.data[0]?.unsubscribedIp).toBeNull();
+    });
+  });
+
+  describe('import (ADR-022)', () => {
+    function importBatch(body: Record<string, unknown>, headers: Record<string, string> = {}) {
+      return app.request(`/v1/newsletters/${newsletterId}/subscriptions/import`, {
+        method: 'POST',
+        headers: { ...auth, ...headers },
+        body: JSON.stringify(body),
+      });
+    }
+
+    it('requires a JWT', async () => {
+      const res = await app.request(`/v1/newsletters/${newsletterId}/subscriptions/import`, {
+        method: 'POST',
+        body: JSON.stringify({ rows: [{ email: 'a@dispatch.example' }] }),
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it('imports a batch of statuses and sends no email', async () => {
+      const res = await importBatch({
+        rows: [
+          { email: 'a@dispatch.example', status: 'subscribed' },
+          { email: 'b@dispatch.example', status: 'unsubscribed' },
+          { email: 'c@dispatch.example', status: 'bounced' },
+        ],
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ received: 3, created: 3, skipped: 0 });
+      expect(gateway.sent).toHaveLength(0);
+    });
+
+    it('parses subscribedAt off the wire into the stored consent date', async () => {
+      await importBatch({
+        rows: [{ email: 'a@dispatch.example', subscribedAt: '2019-04-02T09:15:00.000Z' }],
+      });
+
+      const list = await app.request(`/v1/newsletters/${newsletterId}/subscriptions`, {
+        headers: auth,
+      });
+      const page = (await list.json()) as { data: { createdAt: string }[] };
+      expect(page.data[0]?.createdAt).toBe('2019-04-02T09:15:00.000Z');
+    });
+
+    it('exposes the provenance note on the subscription DTO', async () => {
+      await importBatch({
+        rows: [{ email: 'a@dispatch.example' }],
+        source: 'mailchimp-export-2026-07',
+      });
+      await subscribe({ email: 'native@dispatch.example', doubleOptIn: false });
+
+      const list = await app.request(`/v1/newsletters/${newsletterId}/subscriptions?limit=10`, {
+        headers: auth,
+      });
+      const page = (await list.json()) as { data: { email: string; source: string | null }[] };
+
+      expect(page.data.find((s) => s.email === 'a@dispatch.example')?.source).toBe(
+        'mailchimp-export-2026-07',
+      );
+      // Null, not absent: "we collected this ourselves" is a stated fact.
+      expect(page.data.find((s) => s.email === 'native@dispatch.example')?.source).toBeNull();
+    });
+
+    it('rejects an unknown status at the edge (400) rather than defaulting it', async () => {
+      const res = await importBatch({
+        rows: [{ email: 'a@dispatch.example', status: 'cleaned' }],
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects a batch over the row cap', async () => {
+      const res = await importBatch({
+        rows: Array.from({ length: 1001 }, (_, i) => ({ email: `r${i}@dispatch.example` })),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects an unknown onConflict mode — there is no merge', async () => {
+      const res = await importBatch({
+        rows: [{ email: 'a@dispatch.example' }],
+        onConflict: 'merge',
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 404 for an unknown newsletter', async () => {
+      const res = await app.request('/v1/newsletters/missing/subscriptions/import', {
+        method: 'POST',
+        headers: auth,
+        body: JSON.stringify({ rows: [{ email: 'a@dispatch.example' }] }),
+      });
+
+      expect(res.status).toBe(404);
+    });
+
+    it('replays a retried batch under the same Idempotency-Key instead of re-running it', async () => {
+      const body = {
+        rows: [{ email: 'a@dispatch.example', status: 'subscribed' }],
+        onConflict: 'overwrite',
+      };
+      const headers = { 'Idempotency-Key': 'batch-0' };
+
+      const first = await importBatch(body, headers);
+      const replay = await importBatch(body, headers);
+
+      // Without the replay the second call would report `updated: 1`; the
+      // cached response proves the handler did not run again.
+      expect(await first.json()).toMatchObject({ created: 1, updated: 0 });
+      expect(await replay.json()).toMatchObject({ created: 1, updated: 0 });
+    });
   });
 });
