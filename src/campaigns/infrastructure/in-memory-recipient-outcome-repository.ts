@@ -93,6 +93,7 @@ export class InMemoryRecipientOutcomeRepository implements RecipientOutcomeRepos
     stats.recipients = rows.length;
     stats.rejected = count('rejected');
     stats.delivered = count('delivered');
+    stats.softBounced = count('soft-bounced');
     stats.bounced = count('bounced');
     stats.complained = count('complained');
     stats.accepted = stats.recipients - stats.rejected - count('pending');

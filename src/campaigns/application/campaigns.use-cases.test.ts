@@ -369,6 +369,30 @@ describe('campaigns — the send integrator', () => {
         expect(byAddress['keep2@dispatch.example']).toBe('bounced');
       });
 
+      it('never globally suppresses a soft bounce, however many arrive', async () => {
+        const campaignId = await sendToTwo();
+        const record = container.get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents);
+
+        for (let i = 0; i < 5; i += 1) {
+          await record.execute({
+            RecordType: 'Bounce',
+            Type: 'SoftBounce',
+            Email: 'keep1@dispatch.example',
+            MessageID: 'in-memory-1-0',
+            BouncedAt: `2026-07-2${i}T10:00:00Z`,
+            Tag: campaignId,
+          });
+        }
+
+        // A soft bounce is not proof the mailbox is gone (ADR-020). Escalating
+        // to a GLOBAL fact from one newsletter's evidence is the over-reach
+        // ADR-018 corrected — another newsletter reaches its own conclusion.
+        const suppressed = await container
+          .get<FilterSuppressed>(DELIVERABILITY_TYPES.FilterSuppressed)
+          .execute(['keep1@dispatch.example']);
+        expect(suppressed).toEqual([]);
+      });
+
       it('leaves a second newsletter untouched by a complaint on the first', async () => {
         const other = await seedNewsletter(container, 'Other Dispatch');
         await subscribe(container, other, 'keep1@dispatch.example');

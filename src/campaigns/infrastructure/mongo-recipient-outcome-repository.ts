@@ -142,6 +142,7 @@ export class MongoRecipientOutcomeRepository implements RecipientOutcomeReposito
     for (const [, n] of byStatus) stats.recipients += n;
     stats.rejected = count('rejected');
     stats.delivered = count('delivered');
+    stats.softBounced = count('soft-bounced');
     stats.bounced = count('bounced');
     stats.complained = count('complained');
     // "Accepted" means the provider took it — everything that got past

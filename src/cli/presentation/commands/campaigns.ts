@@ -86,6 +86,7 @@ export function registerCampaignCommands(program: Command, ctx: () => CommandCon
           segmentTags: campaign.segmentTags,
           recipients: campaign.stats.recipients,
           delivered: campaign.stats.delivered,
+          softBounced: campaign.stats.softBounced,
           bounced: campaign.stats.bounced,
           complained: campaign.stats.complained,
           sentAt: campaign.sentAt,
@@ -338,6 +339,7 @@ function summaryOf(send: SendDto): Record<string, unknown> {
     accepted: send.stats.accepted,
     rejected: send.stats.rejected,
     delivered: send.stats.delivered,
+    softBounced: send.stats.softBounced,
     bounced: send.stats.bounced,
     complained: send.stats.complained,
   };

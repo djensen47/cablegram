@@ -24,6 +24,7 @@
 export type DeliveryEventType =
   | 'delivered'
   | 'hard-bounce'
+  | 'soft-bounce'
   | 'spam-complaint'
   | 'open'
   | 'click';
@@ -59,10 +60,7 @@ export interface DeliveryEvent {
  * produced one stayed un-suppressed and was re-sent on every subsequent
  * campaign — burning the sending domain's reputation on mail that cannot land.
  *
- * Transient types (`Transient`, `SoftBounce`, `DnsError`, `AutoResponder`,
- * `SMTPApiError`, …) are deliberately **not** here: a full mailbox or a
- * greylisting server is not a reason to stop mailing someone. Detecting a
- * *pattern* of soft bounces needs a counter, which is its own change.
+ * Transient types are **not** here — they are classified separately below.
  */
 const PERMANENT_BOUNCE_TYPES = new Set([
   'HardBounce',
@@ -73,6 +71,36 @@ const PERMANENT_BOUNCE_TYPES = new Set([
   'AddressChange',
   'Unconfirmed',
   'ManuallyDeactivated',
+]);
+
+/**
+ * Bounce types that are **transient** — the address may well accept mail later,
+ * and Postmark does not deactivate it.
+ *
+ * These are normalized to `soft-bounce` rather than dropped (ADR-020). That is a
+ * change of posture, and it rests on a fact worth stating: **Postmark already
+ * retried before telling us.** When a mailbox provider defers a message,
+ * Postmark re-attempts delivery on its own schedule; a `SoftBounce`/`Transient`
+ * webhook fires only once Postmark has *given up*. So one of these events does
+ * not mean "a hiccup" — it means a whole retry cycle failed.
+ *
+ * It is still not proof the mailbox is gone, which is why a single one changes
+ * nothing on its own. Repetition is the signal (`subscriptions` counts them).
+ *
+ * `AutoResponder` is deliberately excluded from both sets: an out-of-office
+ * reply is not a delivery failure at all — the mail arrived.
+ */
+const TRANSIENT_BOUNCE_TYPES = new Set([
+  'Transient',
+  'SoftBounce',
+  'DnsError',
+  'SMTPApiError',
+  'InboundError',
+  'TemplateRenderingFailed',
+  'ChallengeVerification',
+  'VirusNotification',
+  'OpenRelayTest',
+  'Unknown',
 ]);
 
 /** Shape-narrowing helpers over the untrusted webhook body. */
@@ -122,9 +150,11 @@ function normalizeOne(payload: unknown): DeliveryEvent | null {
     case 'Bounce': {
       // Permanence, not a single literal — see PERMANENT_BOUNCE_TYPES.
       const type = str(payload.Type);
-      return type !== null && PERMANENT_BOUNCE_TYPES.has(type)
-        ? build('hard-bounce', payload.Email, payload)
-        : null;
+      if (type === null) return null;
+      if (PERMANENT_BOUNCE_TYPES.has(type)) return build('hard-bounce', payload.Email, payload);
+      if (TRANSIENT_BOUNCE_TYPES.has(type)) return build('soft-bounce', payload.Email, payload);
+      // Anything unclassified (incl. AutoResponder, Subscribe) changes nothing.
+      return null;
     }
     case 'SpamComplaint':
       return build('spam-complaint', payload.Email, payload);

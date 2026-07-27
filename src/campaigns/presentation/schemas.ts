@@ -24,6 +24,7 @@ const StatsSchema = z
     accepted: z.number().int(),
     rejected: z.number().int(),
     delivered: z.number().int(),
+    softBounced: z.number().int(),
     bounced: z.number().int(),
     complained: z.number().int(),
   })
