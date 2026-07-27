@@ -13,12 +13,18 @@ import {
   InMemoryNewsletterRepository,
   CreateNewsletter,
 } from '../../newsletters/index.js';
+import {
+  DELIVERABILITY_TYPES,
+  InMemorySuppressionRepository,
+} from '../../deliverability/index.js';
 import { SUBSCRIPTION_TYPES, InMemorySubscriptionRepository } from '../index.js';
 
 function build() {
   const container: Container = buildContainer(TEST_ENV);
   container.rebind(SUBSCRIPTION_TYPES.SubscriptionRepository).to(InMemorySubscriptionRepository);
   container.rebind(NEWSLETTER_TYPES.NewsletterRepository).to(InMemoryNewsletterRepository);
+  // The import route writes imported hard bounces to the global list (ADR-022).
+  container.rebind(DELIVERABILITY_TYPES.SuppressionRepository).to(InMemorySuppressionRepository);
   const gateway = new InMemoryDeliveryGateway();
   container.rebind<DeliveryGateway>(EMAIL_TYPES.DeliveryGateway).toConstantValue(gateway);
   return { app: createApp(container), container, gateway };
@@ -157,5 +163,101 @@ describe('subscriptions routes', () => {
     expect(doc.paths).toHaveProperty(
       '/v1/newsletters/{newsletterId}/subscriptions/{id}/confirm',
     );
+    expect(doc.paths).toHaveProperty('/v1/newsletters/{newsletterId}/subscriptions/import');
+  });
+
+  describe('import (ADR-022)', () => {
+    function importBatch(body: Record<string, unknown>, headers: Record<string, string> = {}) {
+      return app.request(`/v1/newsletters/${newsletterId}/subscriptions/import`, {
+        method: 'POST',
+        headers: { ...auth, ...headers },
+        body: JSON.stringify(body),
+      });
+    }
+
+    it('requires a JWT', async () => {
+      const res = await app.request(`/v1/newsletters/${newsletterId}/subscriptions/import`, {
+        method: 'POST',
+        body: JSON.stringify({ rows: [{ email: 'a@dispatch.example' }] }),
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it('imports a batch of statuses and sends no email', async () => {
+      const res = await importBatch({
+        rows: [
+          { email: 'a@dispatch.example', status: 'subscribed' },
+          { email: 'b@dispatch.example', status: 'unsubscribed' },
+          { email: 'c@dispatch.example', status: 'bounced' },
+        ],
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ received: 3, created: 3, skipped: 0 });
+      expect(gateway.sent).toHaveLength(0);
+    });
+
+    it('parses subscribedAt off the wire into the stored consent date', async () => {
+      await importBatch({
+        rows: [{ email: 'a@dispatch.example', subscribedAt: '2019-04-02T09:15:00.000Z' }],
+      });
+
+      const list = await app.request(`/v1/newsletters/${newsletterId}/subscriptions`, {
+        headers: auth,
+      });
+      const page = (await list.json()) as { data: { createdAt: string }[] };
+      expect(page.data[0]?.createdAt).toBe('2019-04-02T09:15:00.000Z');
+    });
+
+    it('rejects an unknown status at the edge (400) rather than defaulting it', async () => {
+      const res = await importBatch({
+        rows: [{ email: 'a@dispatch.example', status: 'cleaned' }],
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects a batch over the row cap', async () => {
+      const res = await importBatch({
+        rows: Array.from({ length: 1001 }, (_, i) => ({ email: `r${i}@dispatch.example` })),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects an unknown onConflict mode — there is no merge', async () => {
+      const res = await importBatch({
+        rows: [{ email: 'a@dispatch.example' }],
+        onConflict: 'merge',
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 404 for an unknown newsletter', async () => {
+      const res = await app.request('/v1/newsletters/missing/subscriptions/import', {
+        method: 'POST',
+        headers: auth,
+        body: JSON.stringify({ rows: [{ email: 'a@dispatch.example' }] }),
+      });
+
+      expect(res.status).toBe(404);
+    });
+
+    it('replays a retried batch under the same Idempotency-Key instead of re-running it', async () => {
+      const body = {
+        rows: [{ email: 'a@dispatch.example', status: 'subscribed' }],
+        onConflict: 'overwrite',
+      };
+      const headers = { 'Idempotency-Key': 'batch-0' };
+
+      const first = await importBatch(body, headers);
+      const replay = await importBatch(body, headers);
+
+      // Without the replay the second call would report `updated: 1`; the
+      // cached response proves the handler did not run again.
+      expect(await first.json()).toMatchObject({ created: 1, updated: 0 });
+      expect(await replay.json()).toMatchObject({ created: 1, updated: 0 });
+    });
   });
 });

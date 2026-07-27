@@ -18,7 +18,10 @@ import type { Subscribe } from '../application/subscribe.js';
 import type { ConfirmSubscription } from '../application/confirm-subscription.js';
 import type { Unsubscribe } from '../application/unsubscribe.js';
 import type { ListSubscriptions } from '../application/list-subscriptions.js';
+import type { ImportSubscriptions } from '../application/import-subscriptions.js';
 import {
+  ImportResultSchema,
+  ImportSubscriptionsSchema,
   ListSubscriptionsQuerySchema,
   NewsletterIdParamSchema,
   SubscribeSchema,
@@ -77,6 +80,40 @@ const subscribeRoute = createRoute({
       content: { 'application/json': { schema: SubscriptionSchema } },
       description:
         'The subscription (pending under double opt-in; existing memberships are returned unchanged)',
+    },
+    400: badRequestResponse,
+    404: notFoundResponse,
+  },
+});
+
+const importRoute = createRoute({
+  method: 'post',
+  path: '/{newsletterId}/subscriptions/import',
+  tags: ['subscriptions'],
+  summary: 'Import a batch of memberships from another provider',
+  description:
+    'Restores existing memberships — **not** a bulk subscribe (ADR-022). Each row’s `status` is ' +
+    'taken verbatim across the full lifecycle vocabulary, so a migrated list keeps the people who ' +
+    'unsubscribed, bounced or complained instead of silently re-subscribing them. **No email is ' +
+    'sent by this endpoint**, not even for `pending` rows: an import restores consent that already ' +
+    'exists rather than seeking new consent.\n\n' +
+    'An imported `bounced` row is also added to the global suppression list — a dead mailbox is a ' +
+    'fact about the address, true for every newsletter (ADR-018). An imported `complained` row is ' +
+    'never added to it.\n\n' +
+    'Send batches of up to 1000 rows. Honours `Idempotency-Key`, so a retried batch whose response ' +
+    'was lost replays instead of re-running.',
+  security,
+  request: {
+    params: NewsletterIdParamSchema,
+    body: {
+      content: { 'application/json': { schema: ImportSubscriptionsSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: ImportResultSchema } },
+      description: 'What the batch did: created/updated/skipped counts and the status breakdown',
     },
     400: badRequestResponse,
     404: notFoundResponse,
@@ -143,6 +180,29 @@ export function createSubscriptionRoutes(container: Container): OpenAPIHono<AppE
         .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
         .execute({ newsletterId, ...body });
       return c.json(toSubscriptionResponse(subscription), 201);
+    } catch (err) {
+      rethrowDomainError(err);
+    }
+  });
+
+  app.openapi(importRoute, async (c) => {
+    const { newsletterId } = c.req.valid('param');
+    const body = c.req.valid('json');
+    try {
+      const result = await container
+        .get<ImportSubscriptions>(SUBSCRIPTION_TYPES.ImportSubscriptions)
+        .execute({
+          newsletterId,
+          onConflict: body.onConflict,
+          defaultStatus: body.defaultStatus,
+          // The wire carries an ISO string; the use case takes a `Date` —
+          // parsing belongs at the edge, like every other input conversion.
+          rows: body.rows.map((row) => ({
+            ...row,
+            subscribedAt: row.subscribedAt === undefined ? undefined : new Date(row.subscribedAt),
+          })),
+        });
+      return c.json(result, 200);
     } catch (err) {
       rethrowDomainError(err);
     }

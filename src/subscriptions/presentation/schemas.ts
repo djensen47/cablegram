@@ -43,6 +43,74 @@ export const SubscribeSchema = z
 
 export const SubscriptionListSchema = listResponseSchema(SubscriptionSchema, 'SubscriptionList');
 
+/**
+ * The largest batch one import request may carry (ADR-022). Sized so a whole
+ * batch is comfortably one Mongo bulk write and one function invocation, and so
+ * an 18k-row migration is tens of requests rather than tens of thousands.
+ */
+export const IMPORT_BATCH_LIMIT = 1000;
+
+const ImportRowSchema = z
+  .object({
+    email: emailField.openapi({ example: 'reader@dispatch.example' }),
+    status: statusField
+      .optional()
+      .openapi({ description: 'Restored verbatim. Absent → the batch’s `defaultStatus`.' }),
+    mergeFields: mergeFieldsField.optional(),
+    tags: tagsField.optional(),
+    subscribedAt: z
+      .string()
+      .datetime()
+      .optional()
+      .openapi({
+        description:
+          'The original opt-in date from the source system; stored as `createdAt`, because that ' +
+          'timestamp is the consent record. Absent → now.',
+        example: '2019-04-02T09:15:00.000Z',
+      }),
+  })
+  .openapi('ImportSubscriptionRow');
+
+export const ImportSubscriptionsSchema = z
+  .object({
+    rows: z.array(ImportRowSchema).min(1).max(IMPORT_BATCH_LIMIT),
+    onConflict: z
+      .enum(['skip', 'overwrite'])
+      .optional()
+      .openapi({
+        description:
+          'What to do when the address already has a membership. `skip` (the default) leaves the ' +
+          'stored row untouched, so a re-run is a cheap resume; `overwrite` makes the file the ' +
+          'source of truth for every field, opt-outs included. There is no partial/merge mode.',
+        example: 'skip',
+      }),
+    defaultStatus: statusField
+      .optional()
+      .openapi({ description: 'Status for rows carrying none. Defaults to `subscribed`.' }),
+  })
+  .openapi('ImportSubscriptions');
+
+export const ImportResultSchema = z
+  .object({
+    received: z.number().int().openapi({ example: 500 }),
+    created: z.number().int().openapi({ example: 480 }),
+    updated: z.number().int().openapi({ example: 0 }),
+    skipped: z.number().int().openapi({ example: 20 }),
+    suppressed: z
+      .number()
+      .int()
+      .openapi({
+        description:
+          'Imported hard bounces added to the GLOBAL suppression list (ADR-018/ADR-022). Driven ' +
+          'by the file, not by `onConflict`: a skipped row’s mailbox is no less dead.',
+        example: 12,
+      }),
+    byStatus: z
+      .record(z.number().int())
+      .openapi({ type: 'object', example: { subscribed: 460, unsubscribed: 20 } }),
+  })
+  .openapi('ImportResult');
+
 /** Query filters for the list route: pagination + query-time status/tag segment. */
 export const ListSubscriptionsQuerySchema = paginationQuerySchema.extend({
   status: z.enum(SUBSCRIPTION_STATUSES).optional(),
