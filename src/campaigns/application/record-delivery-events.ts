@@ -7,6 +7,7 @@ import { effectOf } from '../domain/recipient-outcome.js';
 import type { CampaignRepository } from './campaign-repository.js';
 import type { RecipientOutcomeRepository } from './recipient-outcome-repository.js';
 import type { SuppressionGateway } from './suppression-gateway.js';
+import type { SubscriberGateway } from './subscriber-gateway.js';
 
 /**
  * Applies a Postmark webhook body to the recipient it concerns (ADR-008,
@@ -39,6 +40,8 @@ export class RecordDeliveryEvents {
     private readonly outcomes: RecipientOutcomeRepository,
     @inject(CAMPAIGN_TYPES.SuppressionGateway)
     private readonly suppression: SuppressionGateway,
+    @inject(CAMPAIGN_TYPES.SubscriberGateway)
+    private readonly subscribers: SubscriberGateway,
     @inject(SHARED_TYPES.Clock) private readonly clock: Clock,
   ) {}
 
@@ -48,20 +51,23 @@ export class RecordDeliveryEvents {
     // Cache campaign lookups within one request. Postmark sends a single event
     // per request, so this is usually one entry — but the parser accepts an
     // array defensively, and a batch for one campaign should not re-read it.
-    const sendIds = new Map<string, string | null>();
+    const targets = new Map<string, { sendId: string; newsletterId: string } | null>();
 
     for (const event of events) {
       if (event.tag === null) continue; // untagged: cannot correlate — tolerate
 
-      let sendId = sendIds.get(event.tag);
-      if (sendId === undefined) {
+      let target = targets.get(event.tag);
+      if (target === undefined) {
         const campaign = await this.campaigns.findById(event.tag);
-        sendId = campaign?.sendId ?? null;
-        sendIds.set(event.tag, sendId);
+        target =
+          campaign === null || campaign.sendId === null
+            ? null
+            : { sendId: campaign.sendId, newsletterId: campaign.newsletterId };
+        targets.set(event.tag, target);
       }
-      if (sendId === null) continue; // unknown or never-sent campaign
+      if (target === null) continue; // unknown or never-sent campaign
 
-      const { effect, suppress, dedupeKey } = effectOf({
+      const { effect, suppress, subscription, dedupeKey } = effectOf({
         type: event.type,
         address: event.email,
         messageId: event.messageId,
@@ -69,19 +75,30 @@ export class RecordDeliveryEvents {
       });
 
       await this.outcomes.applyEvent({
-        sendId,
+        sendId: target.sendId,
         address: event.email,
         effect,
         dedupeKey,
         now: this.clock.now(),
       });
 
-      // Suppression is driven by the **event**, not by whether a matching
-      // recipient row existed. A permanent bounce for an address we cannot
-      // correlate is still a permanent bounce and must stop future sends.
-      // `AddSuppression` is idempotent, so a replayed webhook is harmless.
+      // Two DIFFERENT consequences, deliberately not conflated (ADR-018):
+      //
+      //  - the GLOBAL deny list, for permanent bounces only — the mailbox is
+      //    dead for every newsletter, so re-sending burns the shared sending
+      //    domain's reputation;
+      //  - THIS newsletter's membership status, for bounces *and* complaints.
+      //    A spam complaint about one publication is not a statement about the
+      //    others, so it never reaches the global list.
+      //
+      // Both are driven by the **event**, not by whether a matching recipient
+      // row existed: a permanent bounce we cannot correlate is still permanent.
+      // Both writes are idempotent, so a replayed webhook is harmless.
       if (suppress !== null) {
         await this.suppression.suppress(suppress);
+      }
+      if (subscription !== null) {
+        await this.subscribers.record(target.newsletterId, event.email, subscription);
       }
     }
   }

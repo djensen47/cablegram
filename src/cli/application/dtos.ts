@@ -37,7 +37,12 @@ export interface NewsletterDto {
   updatedAt: string;
 }
 
-export type SubscriptionStatus = 'pending' | 'subscribed' | 'unsubscribed';
+export type SubscriptionStatus =
+  | 'pending'
+  | 'subscribed'
+  | 'unsubscribed'
+  | 'bounced'
+  | 'complained';
 
 export interface SubscriptionDto {
   id: string;

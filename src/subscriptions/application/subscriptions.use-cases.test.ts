@@ -19,6 +19,7 @@ import {
   Unsubscribe,
   PublicUnsubscribe,
   ListSubscriptions,
+  MarkSubscriptionOutcome,
   ResolveRecipients,
   SubscriptionNewsletterNotFoundError,
   SubscriptionNotFoundError,
@@ -321,4 +322,79 @@ describe('subscriptions use cases', () => {
     const ids = subscribed.map((s) => s.id);
     expect([...ids].sort()).toEqual(ids);
   });
+
+  // ADR-018: bounces and complaints are per-newsletter statuses in their own
+  // right, not just a side effect of the global suppression list.
+  describe('provider-driven outcomes (ADR-018)', () => {
+    it('marks a membership bounced by address, quietly ignoring unknown ones', async () => {
+      const { id } = await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+      const mark = container.get<MarkSubscriptionOutcome>(
+        SUBSCRIPTION_TYPES.MarkSubscriptionOutcome,
+      );
+
+      expect(await mark.execute(newsletterId, 'reader@dispatch.example', 'bounced')).toBe(true);
+      // A webhook for a since-deleted row is a race, not a fault — it must not
+      // throw, or Postmark retries the event for hours.
+      expect(await mark.execute(newsletterId, 'nobody@dispatch.example', 'bounced')).toBe(false);
+
+      const found = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      expect(found.find((r) => r.id === id)?.status).toBe('bounced');
+    });
+
+    it('is idempotent — a replayed webhook reports no change', async () => {
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+      const mark = container.get<MarkSubscriptionOutcome>(
+        SUBSCRIPTION_TYPES.MarkSubscriptionOutcome,
+      );
+
+      expect(await mark.execute(newsletterId, 'reader@dispatch.example', 'complained')).toBe(true);
+      expect(await mark.execute(newsletterId, 'reader@dispatch.example', 'complained')).toBe(false);
+    });
+
+    it('does not let a later bounce overwrite an explicit unsubscribe', async () => {
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+      const mark = container.get<MarkSubscriptionOutcome>(
+        SUBSCRIPTION_TYPES.MarkSubscriptionOutcome,
+      );
+
+      await mark.execute(newsletterId, 'reader@dispatch.example', 'unsubscribed');
+      await mark.execute(newsletterId, 'reader@dispatch.example', 'bounced');
+
+      // Someone who opted out and later bounces is still, primarily, someone
+      // who opted out — that intent outranks a delivery failure.
+      const found = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      expect(found[0]?.status).toBe('unsubscribed');
+    });
+
+    it('allows a re-subscribe from bounced and from complained', async () => {
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+      const mark = container.get<MarkSubscriptionOutcome>(
+        SUBSCRIPTION_TYPES.MarkSubscriptionOutcome,
+      );
+      await mark.execute(newsletterId, 'reader@dispatch.example', 'bounced');
+
+      // Mailboxes get fixed and people genuinely re-opt-in; for a hard bounce
+      // the GLOBAL suppression list is the real gate, so reviving the row here
+      // cannot actually put mail back on the wire.
+      const revived = await container.get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe).execute({
+        newsletterId,
+        email: 'reader@dispatch.example',
+        doubleOptIn: false,
+      });
+      expect(revived.status).toBe('subscribed');
+    });
+  });
 });
+

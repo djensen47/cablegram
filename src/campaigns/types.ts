@@ -17,6 +17,9 @@ export const CAMPAIGN_TYPES = {
   RecipientResolver: Symbol.for('CampaignsRecipientResolver'),
   /** Consumer-owned port over the `deliverability` facade (gate 2 + suppression writes). */
   SuppressionGateway: Symbol.for('CampaignsSuppressionGateway'),
+  /** Consumer-owned port over the `subscriptions` facade — WRITE side: per-newsletter
+   * bounce/complaint status (ADR-018). Distinct from `SuppressionGateway`, which is global. */
+  SubscriberGateway: Symbol.for('CampaignsSubscriberGateway'),
   /** Consumer-owned port over the `templates` facade (content resolution + render). */
   MessageRenderer: Symbol.for('CampaignsMessageRenderer'),
   CreateCampaign: Symbol.for('CreateCampaign'),

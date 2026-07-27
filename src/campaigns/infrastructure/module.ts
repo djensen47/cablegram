@@ -6,6 +6,7 @@ import type { RecipientOutcomeRepository } from '../application/recipient-outcom
 import type { NewsletterGateway } from '../application/newsletter-gateway.js';
 import type { RecipientResolver } from '../application/recipient-resolver.js';
 import type { SuppressionGateway } from '../application/suppression-gateway.js';
+import type { SubscriberGateway } from '../application/subscriber-gateway.js';
 import type { MessageRenderer } from '../application/message-renderer.js';
 import { CreateCampaign } from '../application/create-campaign.js';
 import { GetCampaign } from '../application/get-campaign.js';
@@ -22,6 +23,7 @@ import { MongoRecipientOutcomeRepository } from './mongo-recipient-outcome-repos
 import { FacadeNewsletterGateway } from './facade-newsletter-gateway.js';
 import { FacadeRecipientResolver } from './facade-recipient-resolver.js';
 import { FacadeSuppressionGateway } from './facade-suppression-gateway.js';
+import { FacadeSubscriberGateway } from './facade-subscriber-gateway.js';
 import { FacadeMessageRenderer } from './facade-message-renderer.js';
 
 /**
@@ -44,6 +46,7 @@ export const campaignModule = new ContainerModule((bind) => {
   bind<NewsletterGateway>(CAMPAIGN_TYPES.NewsletterGateway).to(FacadeNewsletterGateway);
   bind<RecipientResolver>(CAMPAIGN_TYPES.RecipientResolver).to(FacadeRecipientResolver);
   bind<SuppressionGateway>(CAMPAIGN_TYPES.SuppressionGateway).to(FacadeSuppressionGateway);
+  bind<SubscriberGateway>(CAMPAIGN_TYPES.SubscriberGateway).to(FacadeSubscriberGateway);
   bind<MessageRenderer>(CAMPAIGN_TYPES.MessageRenderer).to(FacadeMessageRenderer);
 
   bind<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign).to(CreateCampaign);

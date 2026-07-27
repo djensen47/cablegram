@@ -11,6 +11,8 @@ export const SUBSCRIPTION_TYPES = {
   Subscribe: Symbol.for('Subscribe'),
   ConfirmSubscription: Symbol.for('ConfirmSubscription'),
   Unsubscribe: Symbol.for('Unsubscribe'),
+  /** Address-keyed status change for provider-driven bounces/complaints (ADR-018). */
+  MarkSubscriptionOutcome: Symbol.for('MarkSubscriptionOutcome'),
   /** Public, token-authenticated unsubscribe (ADR-015); no JWT. */
   PublicUnsubscribe: Symbol.for('PublicUnsubscribe'),
   ListSubscriptions: Symbol.for('ListSubscriptions'),

@@ -224,6 +224,24 @@ scope.
   guards). Integration-test cleanup uses the constants, never string literals. The integration
   `globalSetup` lives at **`src/integration-setup.ts`**, not `shared/testing/`, because it needs
   `ALL_INDEXES` and a `shared/*` leaf may not import components.
+- **Suppression is global ONLY for mailbox facts; complaints + unsubscribes are per-newsletter**
+  ([ADR-018](docs/adrs/ADR-018-suppression-scope.md)). One newsletter is independent of another — that
+  rule wins. **Hard bounce → BOTH** the global `deliverability` list (the mailbox is dead for everyone,
+  and all newsletters share one sending domain) **and** the per-newsletter status `bounced`. **Spam
+  complaint → per-newsletter `complained` ONLY — it must NEVER reach the global list.** Unsubscribe →
+  per-newsletter only (was already correct). The global list is **in addition to** per-subscriber
+  state, not a replacement: `bounced` as a status is a real data point and a far cheaper filter than
+  joining every subscriber against a deny-list. `SUBSCRIPTION_STATUSES` is
+  `pending | subscribed | unsubscribed | bounced | complained`; only `subscribed` is sendable.
+  `markBounced` won't overwrite `unsubscribed` (opt-out intent outranks a delivery failure);
+  `markComplained` overrides all but itself; **`resubscribe()` IS legal from `bounced`/`complained`**
+  (mailboxes get fixed; the global list is still the real gate). The webhook writes to two contexts via
+  two ports: `SuppressionGateway` (global) and `SubscriberGateway` (per-newsletter, address-keyed,
+  **quiet** on a missing row — a throwing receiver makes Postmark retry for hours). This kept getting
+  re-derived wrong because the decision lived only in conversation while ADR-011 said the opposite —
+  **don't re-litigate it in chat, the ADR is now the source of truth.** Bad-actor detection
+  (subscribe→complain→resubscribe→complain → global) is **deferred** — it needs an address-keyed
+  counter outliving the row, same shape as the soft-bounce counter.
 - **Per-recipient outcomes are their own documents; a webhook is ONE atomic single-document update**
   ([ADR-019](docs/adrs/ADR-019-per-recipient-outcome-documents.md)). `campaign_sends` holds only the
   submission facts (written twice: opened, acknowledged); `campaign_recipient_outcomes` holds one doc

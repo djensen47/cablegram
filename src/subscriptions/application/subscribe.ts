@@ -18,7 +18,8 @@ import type { SubscribeInput } from './dtos.js';
  * per-newsletter model:
  *  - a fresh address → a new `Subscription` row;
  *  - an already-`pending`/`subscribed` address → returned unchanged (idempotent);
- *  - a previously `unsubscribed` address → the **same row is revived**, never
+ *  - a previously lapsed address (unsubscribed / bounced / complained,
+ *    ADR-018) → the **same row is revived**, never
  *    a duplicate.
  *
  * Under double opt-in the resulting `pending` subscription triggers exactly one
@@ -49,7 +50,13 @@ export class Subscribe {
     if (existing !== null) {
       // Only a lapsed row is revived; an active (pending/subscribed) membership
       // is returned untouched — re-subscribing is idempotent, never duplicative.
-      if (existing.status !== 'unsubscribed') {
+      //
+      // "Lapsed" now includes `bounced` and `complained` (ADR-018), not just
+      // `unsubscribed`: mailboxes get fixed and people genuinely re-opt-in.
+      // Reviving a bounced row cannot put mail back on the wire on its own —
+      // the GLOBAL suppression list is still the gate for a dead mailbox.
+      const LAPSED = ['unsubscribed', 'bounced', 'complained'];
+      if (!LAPSED.includes(existing.status)) {
         return existing;
       }
       existing.resubscribe({

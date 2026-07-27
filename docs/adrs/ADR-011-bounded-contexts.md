@@ -48,7 +48,9 @@ Five. Each is a folder with `domain/ application/ infrastructure/ presentation/`
 - **`subscriptions`** — **per-newsletter, independent** membership: `email` + fields + status
   (subscribed / pending / unsubscribed), and segments. No cross-newsletter identity. Owns
   `SubscriptionRepository`. Resolves "who is subscribed to newsletter X." *Core subdomain.*
-- **`deliverability`** — **global, address-keyed** sending hygiene. Its first (today, only) aggregate
+- **`deliverability`** — **global, address-keyed** sending hygiene, for **mailbox-level facts only**
+  (permanent bounces; see [ADR-018](ADR-018-suppression-scope.md) — complaints and unsubscribes are
+  per-newsletter and never reach this list). Its first (today, only) aggregate
   is the **suppression list**: a deny-list of addresses cablegram must never send to, tagged by
   `reason` (hard bounce / spam complaint / manual junk / global opt-out) + timestamp. This is the
   forward-looking home for reputation and rate/throttle policy *if* cablegram ever owns those (today
@@ -119,7 +121,11 @@ This is the shape ADR-005's boundary rules enforce.
 - **Five** domain components + shared modules. The top level *screams* the newsletter domain
   (ADR-002): publications, their audiences, deliverability, content, and broadcasts.
 - The identity decision keeps `subscriptions` simple (flat rows) at the cost of no unified contact
-  profile — accepted; the only cross-newsletter fact we track by address is suppression.
+  profile — accepted; the only cross-newsletter facts we track by address are **mailbox-level** ones.
+  **Amended by [ADR-018](ADR-018-suppression-scope.md):** this originally said "the only
+  cross-newsletter fact is suppression", which wrongly swept spam complaints into a global list. A
+  complaint is a fact about *one relationship* and is per-newsletter; only a permanent bounce (the
+  mailbox does not exist) is global.
 - `deliverability` is named for a real ubiquitous-language concept, so it earns its name even with
   one aggregate today, and gives reputation/rate policy a home without a later rename.
 - `email` is a clean ESP anti-corruption boundary both directions; swapping providers (ADR-008)
