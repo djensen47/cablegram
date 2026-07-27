@@ -302,6 +302,20 @@ Statuses: `pending` · `subscribed` · `unsubscribed` · `bounced` · `complaine
 sendable. Public unsubscribe flips per-newsletter status only — it does **not** add to the global
 suppression list.
 
+**The consent record** ([ADR-023](docs/adrs/ADR-023-consent-record.md)). Three moments, each with its
+own timestamp and evidence: signup (`createdAt`, `signupIp`), confirmation (`confirmedAt`,
+`confirmedIp`), opt-out (`unsubscribedAt`, `unsubscribedIp`), plus matching user agents. `confirmedAt`
+is separate from `updatedAt` because `updatedAt` means "row last changed" and the next bounce would
+otherwise erase when consent was given — and under GDPR the confirmation, not the signup, is the
+consent act. It is `null` on a single-opt-in row, where no confirmation happened.
+
+**You must supply the IP; cablegram cannot observe it.** Being headless means every `/v1` call comes
+from *your* backend, so the request's IP is yours, not the subscriber's — recording it would be a
+false consent record. Send `signupIp` on subscribe and `{ ip, userAgent }` on confirm/unsubscribe. The
+sole exception is the public `POST /v1/unsubscribe`, where the caller really is the recipient's client:
+there the leftmost `X-Forwarded-For` entry is captured automatically, validated as an IP, and treated
+as corroboration rather than proof.
+
 **Importing is not subscribing.** `Subscribe` derives its status from the opt-in toggle, so it can
 only ever produce `pending` or `subscribed` — useless for migrating a list that already contains
 people who left. The import endpoint takes each row's `status` verbatim across the full vocabulary,
@@ -325,6 +339,11 @@ cablegram subscriptions import "$NL" subscribers.csv --source mailchimp-export-2
 column becomes a merge field with its casing preserved**, so a `firstName` column feeds
 `{{firstName}}`. `tags` is semicolon-separated (a comma would collide with the delimiter). An unknown
 `status` fails the row rather than being defaulted.
+
+The consent trail travels too: `signupIp` · `confirmedAt` · `confirmedIp` · `unsubscribedAt` ·
+`unsubscribedIp` (plus the matching `…UserAgent` columns) are all reserved and restored verbatim
+([ADR-023](docs/adrs/ADR-023-consent-record.md)). An export carrying opt-in IPs carries evidence
+nothing can rebuild afterwards, so import it the first time or lose it.
 
 `source` records where a record came from and is surfaced on the subscription DTO — it is the other
 half of the consent record, since `subscribedAt` alone cannot say whether a consent claim is one

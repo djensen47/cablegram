@@ -31,12 +31,12 @@ import { toImportRow } from './cli/presentation/commands/subscriptions.js';
 
 // One row per status in the vocabulary, the shape an ESP export actually has.
 const CSV = [
-  'email,status,subscribedAt,firstName,tags',
-  'active@dispatch.example,subscribed,2019-04-02T09:15:00Z,Ada,vip',
-  'waiting@dispatch.example,pending,2020-01-05T00:00:00Z,Grace,',
-  'left@dispatch.example,unsubscribed,2018-06-01T00:00:00Z,Alan,',
-  'dead@dispatch.example,bounced,2017-03-03T00:00:00Z,Edsger,',
-  'angry@dispatch.example,complained,2021-11-11T00:00:00Z,Barbara,',
+  'email,status,subscribedAt,confirmedAt,signupIp,firstName,tags',
+  'active@dispatch.example,subscribed,2019-04-02T09:15:00Z,2019-04-02T09:20:00Z,203.0.113.1,Ada,vip',
+  'waiting@dispatch.example,pending,2020-01-05T00:00:00Z,,203.0.113.2,Grace,',
+  'left@dispatch.example,unsubscribed,2018-06-01T00:00:00Z,2018-06-01T00:05:00Z,203.0.113.3,Alan,',
+  'dead@dispatch.example,bounced,2017-03-03T00:00:00Z,,203.0.113.4,Edsger,',
+  'angry@dispatch.example,complained,2021-11-11T00:00:00Z,,203.0.113.5,Barbara,',
 ].join('\n');
 
 const COLLECTIONS = [
@@ -132,6 +132,8 @@ describe('import then send (ADR-022)', () => {
         status: string;
         createdAt: string;
         source: string | null;
+        signupIp: string | null;
+        confirmedAt: string | null;
         mergeFields: Record<string, unknown>;
       }[];
     };
@@ -154,6 +156,14 @@ describe('import then send (ADR-022)', () => {
     expect(stored.data.every((s) => s.source === 'mailchimp-export-2026-07')).toBe(true);
     // And provenance is not a merge field — it must not be renderable.
     expect(active?.mergeFields).not.toHaveProperty('source');
+
+    // The consent trail survived the round trip through Mongo, which is the
+    // only way to prove the mapping actually persists it (ADR-023).
+    expect(active?.signupIp).toBe('203.0.113.1');
+    expect(active?.confirmedAt).toBe('2019-04-02T09:20:00.000Z');
+    expect(active?.mergeFields).not.toHaveProperty('signupIp');
+    // A row that never confirmed says so, rather than borrowing createdAt.
+    expect(stored.data.find((s) => s.email === 'dead@dispatch.example')?.confirmedAt).toBeNull();
 
     // The imported hard bounce reached the GLOBAL list; the complaint did not
     // (ADR-018 — a mailbox fact versus a relationship fact).

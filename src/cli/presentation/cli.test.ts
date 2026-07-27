@@ -481,6 +481,55 @@ describe('suppressions', () => {
   });
 });
 
+describe('subscriptions consent evidence', () => {
+  it('relays a signup IP the operator observed elsewhere', async () => {
+    // The "copied an address off the forum" case: cablegram cannot observe the
+    // subscriber, so the operator relays what their own system recorded.
+    const { api, deps } = harness();
+    api.responses.set('POST /v1/newsletters/n1/subscriptions', { id: 's1', status: 'subscribed' });
+
+    const code = await run(deps, [
+      'subscriptions',
+      'add',
+      'n1',
+      '--email',
+      'a@example.com',
+      '--signup-ip',
+      '203.0.113.1',
+      '--no-double-opt-in',
+    ]);
+
+    expect(code).toBe(EXIT.ok);
+    expect(api.calls[0]?.body).toMatchObject({ signupIp: '203.0.113.1' });
+  });
+
+  it('rejects a malformed IP at the CLI edge, before the round trip', async () => {
+    const { api, deps } = harness();
+
+    const code = await run(deps, [
+      'subscriptions',
+      'add',
+      'n1',
+      '--email',
+      'a@example.com',
+      '--signup-ip',
+      '10.0.0',
+    ]);
+
+    expect(code).toBe(EXIT.usage);
+    expect(api.calls).toHaveLength(0);
+  });
+
+  it('sends confirmation evidence on confirm', async () => {
+    const { api, deps } = harness();
+    api.responses.set('POST /v1/newsletters/n1/subscriptions/s1/confirm', { id: 's1' });
+
+    await run(deps, ['subscriptions', 'confirm', 'n1', 's1', '--ip', '203.0.113.9']);
+
+    expect(api.calls[0]?.body).toMatchObject({ ip: '203.0.113.9' });
+  });
+});
+
 describe('subscriptions import', () => {
   const IMPORT_PATH = '/v1/newsletters/n1/subscriptions/import';
 
@@ -672,6 +721,24 @@ describe('subscriptions import', () => {
 
     // Defaulted, so the operator sees what will be recorded either way.
     expect(JSON.parse(stdout)).toMatchObject({ source: 'import' });
+  });
+
+  it('carries the consent trail from the CSV into the request', async () => {
+    const { api, deps } = harness();
+    api.responses.set(`POST ${IMPORT_PATH}`, result({ received: 1, created: 1 }));
+    const file = await csvFile(
+      'email,signupIp,confirmedAt,confirmedIp\n' +
+        'a@example.com,203.0.113.1,2019-04-02T09:20:00Z,203.0.113.1\n',
+    );
+
+    await run(deps, ['subscriptions', 'import', 'n1', file, '--yes']);
+
+    const body = api.calls[0]?.body as { rows: Record<string, unknown>[] };
+    expect(body.rows[0]).toMatchObject({
+      signupIp: '203.0.113.1',
+      confirmedAt: '2019-04-02T09:20:00.000Z',
+      confirmedIp: '203.0.113.1',
+    });
   });
 
   it('says out loud when imported bounces reached the global suppression list', async () => {

@@ -29,8 +29,28 @@ interface SubscriptionDoc {
   consecutiveSoftBounces?: number;
   /** Absent on natively-collected rows (ADR-022) — not every row has a source. */
   source?: string;
+  // The consent record (ADR-023). All optional: a row may have signed up
+  // without observed evidence, may never have confirmed, and may never have
+  // opted out.
+  signupIp?: string;
+  signupUserAgent?: string;
+  confirmedAt?: Date;
+  confirmedIp?: string;
+  confirmedUserAgent?: string;
+  unsubscribedAt?: Date;
+  unsubscribedIp?: string;
+  unsubscribedUserAgent?: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+// Optional scalars are omitted rather than written as null: absence is the
+// statement ("we never observed this"), and a document full of nulls says the
+// same thing less clearly while costing more to store 18k times over.
+function defined<T extends Record<string, unknown>>(fields: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(fields).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
 }
 
 /**
@@ -147,9 +167,17 @@ function toDoc(subscription: Subscription): SubscriptionDoc {
     mergeFields: subscription.mergeFields,
     tags: [...subscription.tags],
     consecutiveSoftBounces: subscription.consecutiveSoftBounces,
-    // Omitted rather than stored as null when absent: a subscribe-path row has
-    // no provenance to record, and the field's absence is the statement.
-    ...(subscription.source === undefined ? {} : { source: subscription.source }),
+    ...defined({
+      source: subscription.source,
+      signupIp: subscription.signupIp,
+      signupUserAgent: subscription.signupUserAgent,
+      confirmedAt: subscription.confirmedAt,
+      confirmedIp: subscription.confirmedIp,
+      confirmedUserAgent: subscription.confirmedUserAgent,
+      unsubscribedAt: subscription.unsubscribedAt,
+      unsubscribedIp: subscription.unsubscribedIp,
+      unsubscribedUserAgent: subscription.unsubscribedUserAgent,
+    }),
     createdAt: subscription.createdAt,
     updatedAt: subscription.updatedAt,
   };
@@ -169,6 +197,14 @@ function toDomain(doc: SubscriptionDoc): Subscription {
     tags: doc.tags,
     consecutiveSoftBounces: doc.consecutiveSoftBounces ?? 0,
     source: doc.source,
+    signupIp: doc.signupIp,
+    signupUserAgent: doc.signupUserAgent,
+    confirmedAt: doc.confirmedAt,
+    confirmedIp: doc.confirmedIp,
+    confirmedUserAgent: doc.confirmedUserAgent,
+    unsubscribedAt: doc.unsubscribedAt,
+    unsubscribedIp: doc.unsubscribedIp,
+    unsubscribedUserAgent: doc.unsubscribedUserAgent,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });

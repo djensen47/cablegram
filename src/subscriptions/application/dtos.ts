@@ -1,4 +1,9 @@
-import type { MergeFields, SubscriptionStatus } from '../domain/subscription.js';
+import type {
+  ConsentEvidence,
+  ImportedConsentRecord,
+  MergeFields,
+  SubscriptionStatus,
+} from '../domain/subscription.js';
 
 /**
  * Application-layer input DTOs: plain, validated primitives handed to use cases
@@ -18,6 +23,12 @@ export interface SubscribeInput {
    * opt-in) → it is created `subscribed` with no email.
    */
   doubleOptIn?: boolean;
+  /**
+   * Who submitted the signup (ADR-023) — supplied by the operator's front end,
+   * never read off this request. cablegram is headless: the caller here is the
+   * operator's backend, so its IP is the operator's, not the subscriber's.
+   */
+  evidence?: ConsentEvidence;
 }
 
 /**
@@ -41,6 +52,12 @@ export interface ImportSubscriptionRow {
   subscribedAt?: Date;
   /** Per-row provenance override. Absent → the batch's `source`. */
   source?: string;
+  /**
+   * The consent trail as the source system recorded it (ADR-023). An export
+   * carrying opt-in IPs is carrying evidence that cannot be reconstructed once
+   * dropped, so it is restored verbatim rather than re-derived.
+   */
+  consent?: ImportedConsentRecord;
 }
 
 export interface ImportSubscriptionsInput {
