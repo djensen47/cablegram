@@ -25,7 +25,8 @@ folder `src/<component>/` fronted by an `index.ts` facade, with Clean layers nes
 - `infrastructure/` — implementations: Mongo repos, the Postmark adapter, DI wiring.
 - `presentation/` — Hono handlers only (no UI).
 
-Shared technical modules live under `src/shared/`, each its own facade.
+Shared technical modules live under `src/shared/`, each its own facade. `src/cli/` is the same shape
+minus a `domain/` — it is an HTTP **client**, not a component ([ADR-016](docs/adrs/ADR-016-cli-client.md)).
 
 ## Bounded contexts & the dependency DAG ([ADR-011](docs/adrs/ADR-011-bounded-contexts.md))
 
@@ -181,6 +182,28 @@ scope.
   broadcast uses `POSTMARK_SERVER_TOKEN`, transactional uses `POSTMARK_TRANSACTIONAL_SERVER_TOKEN`
   (which **falls back** to the broadcast token when unset — a single-server setup is unchanged). Don't
   reintroduce a raw `messageStream` field on the port.
+- **There is a CLI, and it is only an HTTP client** ([ADR-016](docs/adrs/ADR-016-cli-client.md)).
+  `src/cli/` (bin `cablegram`, `dist/cli/main.js`) speaks the public `/v1` API with a normal user JWT.
+  It **must not** import a domain component, build the Inversify container, open a `MongoClient`, or
+  read `JWT_SECRET`/`POSTMARK_*` — that in-process variant would be a second delivery mechanism and
+  would contradict ADR-004 *and* ADR-001. This is mechanically enforced: `src/cli/` is a `component`
+  to `eslint-plugin-boundaries`, so a `cli → newsletters` import is an unnamed edge and is denied by
+  `default: 'disallow'` — **no boundary-rule change was needed to add the CLI, and needing one is the
+  signal you've broken this.** Don't add a `--local` flag. Layout is the usual layers **minus
+  `domain/`** (it owns no rules); `presentation/` can't import `infrastructure/`, so composition
+  happens in `main.ts` with **plain constructor injection — not Inversify** (that container is for the
+  server's request-scoped Mongo graph). Deps: `commander` (parse + help) + **`zod` to validate parsed
+  flags** — deliberately the same edge-validation idiom as `shared/http`'s `throwOnInvalid`, chosen
+  over a type-inferring parser so there's one idiom across both edges — plus `@clack/prompts`.
+  Transport is Node's global `fetch`; **no HTTP dependency**. Commands are one-shot and scriptable
+  (`--json` prints the raw API DTO, `--yes` skips confirmations); prompts are confined to masked
+  passwords (**never a `--password` flag**), confirmation of irreversible actions, and omitted required
+  args, and are skipped entirely without a TTY (error, never hang). `CABLEGRAM_TOKEN` is used as-is —
+  **never refreshed or persisted**; a stored session refreshes + retries once on 401 and persists the
+  rotated pair. CSV import preserves header casing (a `firstName` column must feed `{{firstName}}`);
+  only `email`/`tags` match case-insensitively. Nothing in `app.ts`/`server.ts`/`function.ts` imports
+  `src/cli/`, so the function bundle is unchanged — keep it that way. A REPL/TUI is **not** in scope:
+  a CLI is a client, a TUI is a product surface and would need its own ADR.
 - **Postmark wire format** (request/response, webhook schema) is implemented in
   `src/shared/email/postmark-delivery-gateway.ts` and `src/campaigns/presentation/webhook-routes.ts` —
   treat that code (or live docs) as the source of truth, not memory, before restating a Postmark fact
