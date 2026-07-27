@@ -49,6 +49,22 @@ export class MongoSuppressionRepository implements SuppressionRepository {
     return doc === null ? entry : toDomain(doc);
   }
 
+  async addMany(entries: readonly SuppressionEntry[]): Promise<void> {
+    if (entries.length === 0) return;
+    // Same `$setOnInsert` idempotency as `add`, one operation per address:
+    // an address already on the list keeps its original reason and timestamp.
+    await this.collection.bulkWrite(
+      entries.map((entry) => ({
+        updateOne: {
+          filter: { _id: entry.address },
+          update: { $setOnInsert: { reason: entry.reason, createdAt: entry.createdAt } },
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    );
+  }
+
   async findByAddress(address: string): Promise<SuppressionEntry | null> {
     const doc = await this.collection.findOne({ _id: address });
     return doc === null ? null : toDomain(doc);

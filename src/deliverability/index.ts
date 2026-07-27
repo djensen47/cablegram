@@ -28,10 +28,15 @@ export type {
   SuppressionRepository,
   ListSuppressionsOptions,
 } from './application/suppression-repository.js';
-export type { AddSuppressionInput, ListSuppressionsInput } from './application/dtos.js';
+export type {
+  AddSuppressionInput,
+  AddSuppressionsInput,
+  ListSuppressionsInput,
+} from './application/dtos.js';
 
 // Use case classes (resolved from the container by token; typed here for tests).
 export { AddSuppression } from './application/add-suppression.js';
+export { AddSuppressions } from './application/add-suppressions.js';
 export { RemoveSuppression } from './application/remove-suppression.js';
 export { ListSuppressions } from './application/list-suppressions.js';
 export { CheckSuppression } from './application/check-suppression.js';

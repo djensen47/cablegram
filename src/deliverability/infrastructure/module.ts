@@ -2,6 +2,7 @@ import { ContainerModule } from 'inversify';
 import { DELIVERABILITY_TYPES } from '../types.js';
 import type { SuppressionRepository } from '../application/suppression-repository.js';
 import { AddSuppression } from '../application/add-suppression.js';
+import { AddSuppressions } from '../application/add-suppressions.js';
 import { RemoveSuppression } from '../application/remove-suppression.js';
 import { ListSuppressions } from '../application/list-suppressions.js';
 import { CheckSuppression } from '../application/check-suppression.js';
@@ -20,6 +21,7 @@ export const deliverabilityModule = new ContainerModule((bind) => {
   );
 
   bind<AddSuppression>(DELIVERABILITY_TYPES.AddSuppression).to(AddSuppression);
+  bind<AddSuppressions>(DELIVERABILITY_TYPES.AddSuppressions).to(AddSuppressions);
   bind<RemoveSuppression>(DELIVERABILITY_TYPES.RemoveSuppression).to(RemoveSuppression);
   bind<ListSuppressions>(DELIVERABILITY_TYPES.ListSuppressions).to(ListSuppressions);
   bind<CheckSuppression>(DELIVERABILITY_TYPES.CheckSuppression).to(CheckSuppression);

@@ -26,6 +26,16 @@ export interface SuppressionRepository {
    * never overwrite the first record.
    */
   add(entry: SuppressionEntry): Promise<SuppressionEntry>;
+  /**
+   * The batch form of `add`, with the same insert-if-absent idempotency per
+   * address. Exists for the bulk subscriber import (ADR-022), where a migrated
+   * list can carry thousands of already-dead mailboxes and one round trip per
+   * address would dominate the import's runtime.
+   *
+   * Still one document per write and no transaction (ADR-012) — a batch of
+   * independent single-document upserts, not an atomic unit.
+   */
+  addMany(entries: readonly SuppressionEntry[]): Promise<void>;
   findByAddress(address: string): Promise<SuppressionEntry | null>;
   /** Entries ordered by address ascending, `address > cursor`, capped at `limit`. */
   list(options: ListSuppressionsOptions): Promise<SuppressionEntry[]>;

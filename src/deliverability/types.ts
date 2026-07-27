@@ -7,6 +7,8 @@
 export const DELIVERABILITY_TYPES = {
   SuppressionRepository: Symbol.for('SuppressionRepository'),
   AddSuppression: Symbol.for('AddSuppression'),
+  /** Bulk form of `AddSuppression`, for the subscriber import (ADR-022). */
+  AddSuppressions: Symbol.for('AddSuppressions'),
   RemoveSuppression: Symbol.for('RemoveSuppression'),
   ListSuppressions: Symbol.for('ListSuppressions'),
   CheckSuppression: Symbol.for('CheckSuppression'),
