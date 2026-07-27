@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import type { Db, MongoClient } from 'mongodb';
 import { buildContainer, TYPES } from './shared/di/index.js';
 import { ensureIndexes } from './shared/persistence/index.js';
+import { ALL_INDEXES } from './indexes.js';
 import { createApp } from './app.js';
 
 // DigitalOcean Functions entrypoint (ADR-009). The container and app are built
@@ -17,7 +18,7 @@ let bootstrap: Promise<void> | undefined;
 function ensureBootstrapped(): Promise<void> {
   bootstrap ??= (async () => {
     await container.get<MongoClient>(TYPES.MongoClient).connect();
-    await ensureIndexes(container.get<Db>(TYPES.MongoDb));
+    await ensureIndexes(container.get<Db>(TYPES.MongoDb), ALL_INDEXES);
   })();
   return bootstrap;
 }

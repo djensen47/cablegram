@@ -4,6 +4,7 @@ import { MongoClient, type Db } from 'mongodb';
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest';
 import { SuppressionEntry } from '../domain/suppression.js';
 import { MongoSuppressionRepository } from './mongo-suppression-repository.js';
+import { DELIVERABILITY_COLLECTIONS } from './collections.js';
 
 describe('MongoSuppressionRepository (contract)', () => {
   let client: MongoClient;
@@ -18,7 +19,7 @@ describe('MongoSuppressionRepository (contract)', () => {
   });
 
   afterEach(async () => {
-    await db.collection('suppressions').deleteMany({});
+    await db.collection(DELIVERABILITY_COLLECTIONS.suppressions).deleteMany({});
   });
 
   afterAll(async () => {

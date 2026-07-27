@@ -65,3 +65,6 @@ export { DeleteCampaign } from './application/delete-campaign.js';
 export { SendCampaign } from './application/send-campaign.js';
 export { GetSendRecord } from './application/get-send-record.js';
 export { RecordDeliveryEvents } from './application/record-delivery-events.js';
+
+// The collections this component owns + the indexes they need (ADR-017).
+export { campaignIndexes, CAMPAIGN_COLLECTIONS } from './infrastructure/collections.js';

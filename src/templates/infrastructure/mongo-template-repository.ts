@@ -1,7 +1,7 @@
 import { inject, injectable } from 'inversify';
 import type { Collection, Db } from 'mongodb';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
-import { COLLECTIONS } from '../../shared/persistence/index.js';
+import { TEMPLATE_COLLECTIONS } from './collections.js';
 import { Template, type TemplateId } from '../domain/template.js';
 import type {
   ListTemplatesOptions,
@@ -31,7 +31,7 @@ export class MongoTemplateRepository implements TemplateRepository {
   private readonly collection: Collection<TemplateDoc>;
 
   constructor(@inject(SHARED_TYPES.MongoDb) db: Db) {
-    this.collection = db.collection<TemplateDoc>(COLLECTIONS.templates);
+    this.collection = db.collection<TemplateDoc>(TEMPLATE_COLLECTIONS.templates);
   }
 
   async create(template: Template): Promise<void> {

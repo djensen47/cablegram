@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vi
 import { newId } from '../../shared/ids/index.js';
 import { Newsletter } from '../domain/newsletter.js';
 import { MongoNewsletterRepository } from './mongo-newsletter-repository.js';
+import { NEWSLETTER_COLLECTIONS } from './collections.js';
 
 describe('MongoNewsletterRepository (contract)', () => {
   let client: MongoClient;
@@ -22,7 +23,7 @@ describe('MongoNewsletterRepository (contract)', () => {
   });
 
   afterEach(async () => {
-    await db.collection('newsletters').deleteMany({});
+    await db.collection(NEWSLETTER_COLLECTIONS.newsletters).deleteMany({});
   });
 
   afterAll(async () => {

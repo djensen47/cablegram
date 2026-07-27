@@ -36,3 +36,6 @@ export { RemoveSuppression } from './application/remove-suppression.js';
 export { ListSuppressions } from './application/list-suppressions.js';
 export { CheckSuppression } from './application/check-suppression.js';
 export { FilterSuppressed } from './application/filter-suppressed.js';
+
+// The collections this component owns + the indexes they need (ADR-017).
+export { deliverabilityIndexes, DELIVERABILITY_COLLECTIONS } from './infrastructure/collections.js';

@@ -4,6 +4,7 @@ import { MongoClient, type Db } from 'mongodb';
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest';
 import type { StoredRefreshToken } from '../application/refresh-token-repository.js';
 import { MongoRefreshTokenRepository } from './mongo-refresh-token-repository.js';
+import { ACCOUNT_COLLECTIONS } from './collections.js';
 
 function token(overrides: Partial<StoredRefreshToken> = {}): StoredRefreshToken {
   return {
@@ -28,7 +29,7 @@ describe('MongoRefreshTokenRepository (contract)', () => {
   });
 
   afterEach(async () => {
-    await db.collection('refresh_tokens').deleteMany({});
+    await db.collection(ACCOUNT_COLLECTIONS.refreshTokens).deleteMany({});
   });
 
   afterAll(async () => {

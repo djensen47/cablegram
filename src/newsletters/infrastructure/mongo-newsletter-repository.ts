@@ -1,7 +1,7 @@
 import { inject, injectable } from 'inversify';
 import type { Collection, Db } from 'mongodb';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
-import { COLLECTIONS } from '../../shared/persistence/index.js';
+import { NEWSLETTER_COLLECTIONS } from './collections.js';
 import { EmailAddress, Newsletter, type NewsletterId } from '../domain/newsletter.js';
 import type {
   ListNewslettersOptions,
@@ -33,7 +33,7 @@ export class MongoNewsletterRepository implements NewsletterRepository {
   private readonly collection: Collection<NewsletterDoc>;
 
   constructor(@inject(SHARED_TYPES.MongoDb) db: Db) {
-    this.collection = db.collection<NewsletterDoc>(COLLECTIONS.newsletters);
+    this.collection = db.collection<NewsletterDoc>(NEWSLETTER_COLLECTIONS.newsletters);
   }
 
   async create(newsletter: Newsletter): Promise<void> {

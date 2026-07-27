@@ -1,7 +1,7 @@
 import { inject, injectable } from 'inversify';
 import type { Collection, Db } from 'mongodb';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
-import { COLLECTIONS } from '../../shared/persistence/index.js';
+import { ACCOUNT_COLLECTIONS } from './collections.js';
 import { User, type Role } from '../domain/user.js';
 import type { ListUsersOptions, UserRepository } from '../application/user-repository.js';
 
@@ -31,7 +31,7 @@ export class MongoUserRepository implements UserRepository {
   private readonly collection: Collection<UserDoc>;
 
   constructor(@inject(SHARED_TYPES.MongoDb) db: Db) {
-    this.collection = db.collection<UserDoc>(COLLECTIONS.users);
+    this.collection = db.collection<UserDoc>(ACCOUNT_COLLECTIONS.users);
   }
 
   async create(user: User): Promise<void> {

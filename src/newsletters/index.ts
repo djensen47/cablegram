@@ -36,3 +36,6 @@ export { GetNewsletter } from './application/get-newsletter.js';
 export { ListNewsletters } from './application/list-newsletters.js';
 export { UpdateNewsletter } from './application/update-newsletter.js';
 export { DeleteNewsletter } from './application/delete-newsletter.js';
+
+// The collections this component owns + the indexes they need (ADR-017).
+export { newsletterIndexes, NEWSLETTER_COLLECTIONS } from './infrastructure/collections.js';

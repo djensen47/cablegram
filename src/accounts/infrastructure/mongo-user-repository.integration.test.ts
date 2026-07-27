@@ -4,6 +4,7 @@ import { MongoClient, type Db } from 'mongodb';
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest';
 import { User } from '../domain/user.js';
 import { MongoUserRepository } from './mongo-user-repository.js';
+import { ACCOUNT_COLLECTIONS } from './collections.js';
 
 const now = new Date('2026-01-01T00:00:00Z');
 
@@ -20,7 +21,7 @@ describe('MongoUserRepository (contract)', () => {
   });
 
   afterEach(async () => {
-    await db.collection('users').deleteMany({});
+    await db.collection(ACCOUNT_COLLECTIONS.users).deleteMany({});
   });
 
   afterAll(async () => {

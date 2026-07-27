@@ -1,7 +1,7 @@
 import { inject, injectable } from 'inversify';
 import type { Collection, Db } from 'mongodb';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
-import { COLLECTIONS } from '../../shared/persistence/index.js';
+import { DELIVERABILITY_COLLECTIONS } from './collections.js';
 import { SuppressionEntry, type SuppressionReason } from '../domain/suppression.js';
 import type {
   ListSuppressionsOptions,
@@ -31,7 +31,7 @@ export class MongoSuppressionRepository implements SuppressionRepository {
   private readonly collection: Collection<SuppressionDoc>;
 
   constructor(@inject(SHARED_TYPES.MongoDb) db: Db) {
-    this.collection = db.collection<SuppressionDoc>(COLLECTIONS.suppressions);
+    this.collection = db.collection<SuppressionDoc>(DELIVERABILITY_COLLECTIONS.suppressions);
   }
 
   async add(entry: SuppressionEntry): Promise<SuppressionEntry> {

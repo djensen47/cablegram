@@ -1,7 +1,7 @@
 import { inject, injectable } from 'inversify';
 import type { Collection, Db } from 'mongodb';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
-import { COLLECTIONS } from '../../shared/persistence/index.js';
+import { ACCOUNT_COLLECTIONS } from './collections.js';
 import type {
   RefreshTokenRepository,
   StoredRefreshToken,
@@ -29,7 +29,7 @@ export class MongoRefreshTokenRepository implements RefreshTokenRepository {
   private readonly collection: Collection<RefreshTokenDoc>;
 
   constructor(@inject(SHARED_TYPES.MongoDb) db: Db) {
-    this.collection = db.collection<RefreshTokenDoc>(COLLECTIONS.refreshTokens);
+    this.collection = db.collection<RefreshTokenDoc>(ACCOUNT_COLLECTIONS.refreshTokens);
   }
 
   async create(token: StoredRefreshToken): Promise<void> {

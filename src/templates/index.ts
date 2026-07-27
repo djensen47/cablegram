@@ -37,3 +37,6 @@ export { GetTemplate } from './application/get-template.js';
 export { ListTemplates } from './application/list-templates.js';
 export { UpdateTemplate } from './application/update-template.js';
 export { DeleteTemplate } from './application/delete-template.js';
+
+// The collections this component owns + the indexes they need (ADR-017).
+export { templateIndexes, TEMPLATE_COLLECTIONS } from './infrastructure/collections.js';

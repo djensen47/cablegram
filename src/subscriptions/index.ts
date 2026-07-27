@@ -52,3 +52,6 @@ export { Unsubscribe } from './application/unsubscribe.js';
 export { PublicUnsubscribe } from './application/public-unsubscribe.js';
 export { ListSubscriptions } from './application/list-subscriptions.js';
 export { ResolveRecipients } from './application/resolve-recipients.js';
+
+// The collections this component owns + the indexes they need (ADR-017).
+export { subscriptionIndexes, SUBSCRIPTION_COLLECTIONS } from './infrastructure/collections.js';

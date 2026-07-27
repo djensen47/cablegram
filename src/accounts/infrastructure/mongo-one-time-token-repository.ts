@@ -1,7 +1,7 @@
 import { inject, injectable } from 'inversify';
 import type { Collection, Db } from 'mongodb';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
-import { COLLECTIONS } from '../../shared/persistence/index.js';
+import { ACCOUNT_COLLECTIONS } from './collections.js';
 import type {
   OneTimeTokenPurpose,
   OneTimeTokenRepository,
@@ -32,7 +32,7 @@ export class MongoOneTimeTokenRepository implements OneTimeTokenRepository {
   private readonly collection: Collection<OneTimeTokenDoc>;
 
   constructor(@inject(SHARED_TYPES.MongoDb) db: Db) {
-    this.collection = db.collection<OneTimeTokenDoc>(COLLECTIONS.oneTimeTokens);
+    this.collection = db.collection<OneTimeTokenDoc>(ACCOUNT_COLLECTIONS.oneTimeTokens);
   }
 
   async create(token: StoredOneTimeToken): Promise<void> {

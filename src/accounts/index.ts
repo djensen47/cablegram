@@ -54,3 +54,6 @@ export { RequestMagicLink } from './application/request-magic-link.js';
 export { ConsumeMagicLink } from './application/consume-magic-link.js';
 export { ListUsers } from './application/list-users.js';
 export { GetUser } from './application/get-user.js';
+
+// The collections this component owns + the indexes they need (ADR-017).
+export { accountIndexes, ACCOUNT_COLLECTIONS } from './infrastructure/collections.js';

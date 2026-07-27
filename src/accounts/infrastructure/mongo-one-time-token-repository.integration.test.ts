@@ -4,6 +4,7 @@ import { MongoClient, type Db } from 'mongodb';
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest';
 import type { StoredOneTimeToken } from '../application/one-time-token-repository.js';
 import { MongoOneTimeTokenRepository } from './mongo-one-time-token-repository.js';
+import { ACCOUNT_COLLECTIONS } from './collections.js';
 
 function token(overrides: Partial<StoredOneTimeToken> = {}): StoredOneTimeToken {
   return {
@@ -29,7 +30,7 @@ describe('MongoOneTimeTokenRepository (contract)', () => {
   });
 
   afterEach(async () => {
-    await db.collection('one_time_tokens').deleteMany({});
+    await db.collection(ACCOUNT_COLLECTIONS.oneTimeTokens).deleteMany({});
   });
 
   afterAll(async () => {
