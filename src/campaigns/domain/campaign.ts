@@ -27,18 +27,20 @@ export function isCampaignStatus(value: string): value is CampaignStatus {
 
 /**
  * Aggregate delivery stats for a campaign's one send (ADR-008). Set from the
- * provider response at send time (`recipients`/`accepted`/`rejected`) and
- * updated from the send record as webhooks arrive
- * (`delivered`/`bounced`/`complained`). A full snapshot, recomputed from the
- * authoritative send record — never incremented — so it is order-independent.
+ * provider response at send time (`recipients`/`accepted`) and updated from the
+ * send record as webhooks arrive (`delivered`/`bounced`/`complained`). A full
+ * snapshot, recomputed from the authoritative send record — never incremented —
+ * so it is order-independent.
+ *
+ * There is no `rejected` counter. The Bulk submit is asynchronous and returns
+ * an ack, not per-message results, so nothing could ever raise it above zero —
+ * the same reason `errorCode` went in ADR-019 (#28).
  */
 export interface CampaignStats {
   /** Addresses handed to the provider after both send gates. */
   recipients: number;
   /** Provider-accepted at send. */
   accepted: number;
-  /** Provider-rejected at send. */
-  rejected: number;
   delivered: number;
   /** Provider gave up after its own retries; not (yet) a permanent failure. */
   softBounced: number;
@@ -50,7 +52,6 @@ export function zeroStats(): CampaignStats {
   return {
     recipients: 0,
     accepted: 0,
-    rejected: 0,
     delivered: 0,
     softBounced: 0,
     bounced: 0,

@@ -23,7 +23,6 @@ const StatsSchema = z
   .object({
     recipients: z.number().int(),
     accepted: z.number().int(),
-    rejected: z.number().int(),
     delivered: z.number().int(),
     softBounced: z.number().int(),
     bounced: z.number().int(),
@@ -130,7 +129,7 @@ export const RecipientOutcomeListSchema = listResponseSchema(
 /** Query filters for the recipients list: pagination + status segment. */
 export const ListRecipientOutcomesQuerySchema = paginationQuerySchema.extend({
   status: z.enum(OUTCOME_STATUSES).optional(),
-  /** Convenience: bounced + complained + rejected in one filter. */
+  /** Convenience: bounced + complained in one filter. */
   failuresOnly: z.coerce.boolean().optional(),
 });
 

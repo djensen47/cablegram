@@ -239,7 +239,7 @@ describe('campaigns send', () => {
     newsletterId: 'n1',
     status: 'draft',
     segmentTags: [],
-    stats: { recipients: 0, accepted: 0, rejected: 0, delivered: 0, bounced: 0, complained: 0 },
+    stats: { recipients: 0, accepted: 0, delivered: 0, bounced: 0, complained: 0 },
     sentAt: null,
   };
 

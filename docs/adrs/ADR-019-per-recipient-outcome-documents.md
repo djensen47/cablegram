@@ -3,6 +3,8 @@
 ## Status
 
 Accepted — 2026-07-27. Amends [ADR-008](ADR-008-email-delivery-postmark.md)'s send-record shape.
+Addended 2026-07-27 (§6): the `rejected` outcome status is removed for the same reason `errorCode`
+was.
 
 > ADR-018 is intentionally unused — it is reserved for the in-flight
 > per-newsletter suppression scoping work, which was branched first but will land after this.
@@ -100,8 +102,8 @@ that pattern is what lost updates.
 ### 3. Stats are counted on read, not maintained on write
 
 `campaign.stats` was recomputed and rewritten on every webhook — 50k campaign writes per send. It is
-now a **snapshot taken at send time** (recipients / accepted / rejected), and live delivery counts come
-from a grouped count over the outcomes when the send is read.
+now a **snapshot taken at send time** (recipients / accepted — see §6, which drops `rejected`), and
+live delivery counts come from a grouped count over the outcomes when the send is read.
 
 Counters were rejected: incrementing correctly requires knowing the *previous* status (pending→delivered
 is −1/+1), which is not derivable from a single atomic update, and a counter that drifts stays wrong
@@ -132,6 +134,38 @@ The CLI's `campaigns report` follows, gaining `--all`, `--limit`, `--cursor` and
   someone. Detecting a *pattern* of soft bounces needs a counter and is deferred.
 - **`errorCode` removed.** Nothing ever wrote it; it was a permanent `0` exposed through the API and
   the CLI. Wiring it from Postmark's bulk response is a separate change.
+
+### 6. Addendum (2026-07-27): the `rejected` outcome status is removed too
+
+The same defect as `errorCode`, missed on the first pass: `rejected` was in `OUTCOME_STATUSES`,
+counted in `CampaignStats`, on the wire in `StatsSchema`, in the CLI report, and in the
+`failuresOnly` filter set — and **nothing could ever write it.**
+
+Checked against Postmark's live docs rather than restated from memory, and there is no source to
+wire it to:
+
+- `POST /email/bulk` is asynchronous. The response is `{ID, Status, SubmittedAt}` — a submission
+  ack with no per-message results and no `ErrorCode`. (`POST /email/batch` *does* return per-message
+  error codes, but that is the synchronous endpoint this system deliberately does not use, ADR-008.)
+- A request the provider will not take at all comes back 422 and throws, which fails the whole
+  **campaign** (`status: failed`). That is not a per-recipient fact and never was.
+- The only genuinely send-time bounce types — `SMTPApiError` (100007) and `TemplateRenderingFailed`
+  (100010) — arrive later as *webhooks*, and both are classified transient (ADR-020). Re-badging
+  them `rejected` was considered and rejected: they describe **our** template or API being wrong,
+  not the address, so folding them in beside bounces and complaints under `failuresOnly` would
+  conflate an operator bug with a bad recipient.
+
+There was also a structural tell. `rejected` sat at `STATUS_PRIORITY: 0`, *below* the `pending` (1)
+that every outcome is created at, and `applyEvent` raises only on `statusPriority < n` — so the
+status was unreachable through the sole write path even for code that tried. It is not merely
+unwritten; it is unwritable.
+
+Removed from the domain enum, `CampaignStats`/`zeroStats`, `StatsSchema`, the `failuresOnly` set and
+the CLI. Both repositories' `accepted` derivation loses its subtrahend and becomes
+`recipients − pending`. This is a **breaking change** to `CampaignStats` — a field disappears from
+`GET /v1/campaigns/{id}/send` — taken now precisely because nothing is deployed and no first send has
+run. Priorities are left numbered from 1, leaving the slot below `pending` free should a real
+pre-acceptance failure ever have a source.
 
 ## Consequences
 

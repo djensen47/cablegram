@@ -140,15 +140,14 @@ export class MongoRecipientOutcomeRepository implements RecipientOutcomeReposito
 
     const stats = zeroStats();
     for (const [, n] of byStatus) stats.recipients += n;
-    stats.rejected = count('rejected');
     stats.delivered = count('delivered');
     stats.softBounced = count('soft-bounced');
     stats.bounced = count('bounced');
     stats.complained = count('complained');
     // "Accepted" means the provider took it — everything that got past
-    // `pending` without being rejected, including those since delivered or
-    // bounced. Matches the previous aggregate's meaning.
-    stats.accepted = stats.recipients - stats.rejected - count('pending');
+    // `pending`, including those since delivered or bounced. Nothing is
+    // subtracted for rejections: the async Bulk ack cannot report one (#28).
+    stats.accepted = stats.recipients - count('pending');
     return stats;
   }
 

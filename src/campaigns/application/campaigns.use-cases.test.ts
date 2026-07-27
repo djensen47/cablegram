@@ -148,7 +148,7 @@ describe('campaigns — the send integrator', () => {
     expect(gateway.sent[0]?.content.subject).toBe('This month in review');
 
     expect(sent.status).toBe('sent');
-    expect(sent.stats).toMatchObject({ recipients: 2, accepted: 2, rejected: 0 });
+    expect(sent.stats).toMatchObject({ recipients: 2, accepted: 2 });
     expect(sent.sendId).not.toBeNull();
     expect(sent.sentAt).not.toBeNull();
   });

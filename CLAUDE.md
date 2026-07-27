@@ -269,6 +269,11 @@ scope.
   guards live in the *filter* (`applied: {$ne: key}` for idempotency, `statusPriority: {$lt: n}` for
   only-ever-raise) — a plain conditional update, **not** `$max`/aggregation-pipeline, to keep ADR-012's
   portable subset. There is deliberately **no `update(outcome)`**: read-modify-write is the bug.
+  `OUTCOME_STATUSES` is `pending | accepted | delivered | soft-bounced | bounced | complained` —
+  there is **no `rejected`** and no `errorCode` (both removed as permanently-zero: ADR-019 §6). The
+  async Bulk ack carries no per-message results, and a submission the provider refuses is a 422 that
+  fails the whole **campaign**, not one recipient — so don't reintroduce a per-recipient rejection,
+  and don't re-badge `SMTPApiError`/`TemplateRenderingFailed` as one (they're transient, ADR-020).
   Domain decides intent (`effectOf` → raise/count/ignore), repository does the atomic write. **Stats
   are counted on read**, not rewritten per webhook — so a campaign *list* shows send-time snapshot
   stats while `GET /campaigns/{id}/send` shows live ones; that asymmetry is intentional. Recipients are

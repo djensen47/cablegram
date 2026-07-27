@@ -200,7 +200,7 @@ curl -sX POST "localhost:3000/v1/campaigns/$CMP/send" -H "$A"
 # 6. Read the send record back — per-recipient outcomes + aggregate stats,
 #    updated as Postmark webhook events arrive.
 curl -s "localhost:3000/v1/campaigns/$CMP/send" -H "$A" | jq '.stats'
-# { "recipients": 1, "accepted": 1, "rejected": 0, "delivered": 0, "bounced": 0, "complained": 0 }
+# { "recipients": 1, "accepted": 1, "delivered": 0, "bounced": 0, "complained": 0 }
 
 # 7. Manage the suppression list directly (hard bounces / complaints add to it automatically).
 curl -sX POST localhost:3000/v1/suppressions -H "$A" -H "$J" \

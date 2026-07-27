@@ -60,7 +60,7 @@ describe('MongoCampaignRepository (contract)', () => {
     expect((await repo.findById(campaign.id))?.status).toBe('sending');
 
     campaign.markSent(
-      { recipients: 2, accepted: 2, rejected: 0, delivered: 0,
+      { recipients: 2, accepted: 2, delivered: 0,
       softBounced: 0, bounced: 0, complained: 0 },
       new Date('2026-01-03T00:00:00Z'),
     );
