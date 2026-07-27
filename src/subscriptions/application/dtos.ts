@@ -39,6 +39,8 @@ export interface ImportSubscriptionRow {
   tags?: string[];
   /** The original opt-in date from the source system; becomes `createdAt`. */
   subscribedAt?: Date;
+  /** Per-row provenance override. Absent → the batch's `source`. */
+  source?: string;
 }
 
 export interface ImportSubscriptionsInput {
@@ -48,6 +50,17 @@ export interface ImportSubscriptionsInput {
   onConflict?: ImportConflictMode;
   /** Status for rows that carry none. Defaults to `subscribed`. */
   defaultStatus?: SubscriptionStatus;
+  /**
+   * Where this batch came from — e.g. `mailchimp-export-2026-07`. Recorded on
+   * every row it writes, so an inherited consent claim stays distinguishable
+   * from one cablegram witnessed itself.
+   *
+   * Optional, but never absent from the stored record: an import with no note
+   * falls back to `import`. The point of the field is that an imported row is
+   * *always* identifiable as imported, and a property that holds only when the
+   * operator remembers a flag is not a property you can audit against.
+   */
+  source?: string;
 }
 
 /** What one import batch did, for progress reporting and the dry-run summary. */

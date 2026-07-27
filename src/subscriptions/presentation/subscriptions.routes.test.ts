@@ -209,6 +209,25 @@ describe('subscriptions routes', () => {
       expect(page.data[0]?.createdAt).toBe('2019-04-02T09:15:00.000Z');
     });
 
+    it('exposes the provenance note on the subscription DTO', async () => {
+      await importBatch({
+        rows: [{ email: 'a@dispatch.example' }],
+        source: 'mailchimp-export-2026-07',
+      });
+      await subscribe({ email: 'native@dispatch.example', doubleOptIn: false });
+
+      const list = await app.request(`/v1/newsletters/${newsletterId}/subscriptions?limit=10`, {
+        headers: auth,
+      });
+      const page = (await list.json()) as { data: { email: string; source: string | null }[] };
+
+      expect(page.data.find((s) => s.email === 'a@dispatch.example')?.source).toBe(
+        'mailchimp-export-2026-07',
+      );
+      // Null, not absent: "we collected this ourselves" is a stated fact.
+      expect(page.data.find((s) => s.email === 'native@dispatch.example')?.source).toBeNull();
+    });
+
     it('rejects an unknown status at the edge (400) rather than defaulting it', async () => {
       const res = await importBatch({
         rows: [{ email: 'a@dispatch.example', status: 'cleaned' }],

@@ -317,10 +317,20 @@ ada@example.com,subscribed,2019-04-02T09:15:00Z,Ada,vip;beta
 alan@example.com,unsubscribed,2018-06-01T00:00:00Z,Alan,
 ```
 
-`email` · `tags` · `status` · `subscribedAt` are matched case-insensitively; **every other column
-becomes a merge field with its casing preserved**, so a `firstName` column feeds `{{firstName}}`.
-`tags` is semicolon-separated (a comma would collide with the delimiter). An unknown `status` fails
-the row rather than being defaulted.
+```bash
+cablegram subscriptions import "$NL" subscribers.csv --source mailchimp-export-2026-07
+```
+
+`email` · `tags` · `status` · `subscribedAt` · `source` are matched case-insensitively; **every other
+column becomes a merge field with its casing preserved**, so a `firstName` column feeds
+`{{firstName}}`. `tags` is semicolon-separated (a comma would collide with the delimiter). An unknown
+`status` fails the row rather than being defaulted.
+
+`source` records where a record came from and is surfaced on the subscription DTO — it is the other
+half of the consent record, since `subscribedAt` alone cannot say whether a consent claim is one
+cablegram witnessed or one inherited from another provider. It is metadata, deliberately **not** a
+merge field, so it can never render into a campaign. An import with no `--source` still records
+`import`, so an imported row is always identifiable as one.
 
 ### Templates
 | Method | Path | Notes |

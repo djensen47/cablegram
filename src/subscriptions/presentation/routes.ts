@@ -195,6 +195,7 @@ export function createSubscriptionRoutes(container: Container): OpenAPIHono<AppE
           newsletterId,
           onConflict: body.onConflict,
           defaultStatus: body.defaultStatus,
+          source: body.source,
           // The wire carries an ISO string; the use case takes a `Date` —
           // parsing belongs at the edge, like every other input conversion.
           rows: body.rows.map((row) => ({

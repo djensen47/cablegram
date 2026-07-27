@@ -646,6 +646,34 @@ describe('subscriptions import', () => {
     expect(body.rows[0]?.subscribedAt).toBe('2019-04-02T09:15:00.000Z');
   });
 
+  it('passes --source through as the batch provenance note', async () => {
+    const { api, deps } = harness();
+    api.responses.set(`POST ${IMPORT_PATH}`, result({ received: 1, created: 1 }));
+    const file = await csvFile('email\na@example.com\n');
+
+    await run(deps, [
+      'subscriptions',
+      'import',
+      'n1',
+      file,
+      '--source',
+      'mailchimp-export-2026-07',
+      '--yes',
+    ]);
+
+    expect(api.calls[0]?.body).toMatchObject({ source: 'mailchimp-export-2026-07' });
+  });
+
+  it('shows the source the rows would be stamped with under --dry-run', async () => {
+    const { deps } = harness();
+    const file = await csvFile('email\na@example.com\n');
+
+    await run(deps, ['--json', 'subscriptions', 'import', 'n1', file, '--dry-run']);
+
+    // Defaulted, so the operator sees what will be recorded either way.
+    expect(JSON.parse(stdout)).toMatchObject({ source: 'import' });
+  });
+
   it('says out loud when imported bounces reached the global suppression list', async () => {
     // The one part of an import that escapes this newsletter (ADR-018).
     const { api, deps } = harness();

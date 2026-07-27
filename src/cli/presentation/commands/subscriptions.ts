@@ -166,6 +166,11 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
       'skip',
     )
     .option('--default-status <status>', 'status for rows with no `status` column', 'subscribed')
+    .option(
+      '--source <note>',
+      'where this list came from, recorded on every imported row (e.g. mailchimp-export-2026-07); ' +
+        'defaults to `import`',
+    )
     .option('--batch-size <n>', `rows per request (1-${IMPORT_BATCH_LIMIT})`, '500')
     .option('--dry-run', 'parse and report the status breakdown without calling the API')
     .option('--continue-on-error', 'keep going past failed rows and batches instead of stopping')
@@ -175,6 +180,7 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
         z.object({
           onConflict: z.enum(['skip', 'overwrite']),
           defaultStatus: z.enum(SUBSCRIPTION_STATUSES),
+          source: z.string().trim().min(1).max(200).optional(),
           batchSize: z.coerce.number().int().min(1).max(IMPORT_BATCH_LIMIT),
           dryRun: z.boolean().default(false),
           continueOnError: z.boolean().default(false),
@@ -205,6 +211,7 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
           invalid: invalid.length,
           byStatus: breakdown,
           wouldSuppress: breakdown.bounced ?? 0,
+          source: flags.source ?? 'import',
         });
         c.printer.line(formatBreakdown(breakdown));
         c.printer.success(
@@ -241,6 +248,7 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
               rows: batch,
               onConflict: flags.onConflict,
               defaultStatus: flags.defaultStatus,
+              source: flags.source,
             },
             {
               // A batch is the unit of retry: if the response is lost, the same
@@ -310,6 +318,7 @@ interface ImportRowBody {
   tags?: string[];
   mergeFields?: Record<string, unknown>;
   subscribedAt?: string;
+  source?: string;
 }
 
 /**
@@ -332,6 +341,10 @@ export function toImportRow(row: Record<string, string>): ParsedRow {
   const tagsColumn = column(row, 'tags');
   const statusColumn = column(row, 'status');
   const subscribedAtColumn = column(row, 'subscribedAt');
+  // Reserved rather than left to fall through to merge fields: provenance is
+  // metadata about the record, and a `{{source}}` placeholder that renders into
+  // a campaign is not what an operator means by a `source` column.
+  const sourceColumn = column(row, 'source');
 
   const email = emailColumn?.value ?? '';
   const parsedEmail = emailFlag.safeParse(email);
@@ -375,6 +388,7 @@ export function toImportRow(row: Record<string, string>): ParsedRow {
     tagsColumn?.key,
     statusColumn?.key,
     subscribedAtColumn?.key,
+    sourceColumn?.key,
   ]);
   const mergeFields: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(row)) {
@@ -389,6 +403,7 @@ export function toImportRow(row: Record<string, string>): ParsedRow {
       tags: tags.length > 0 ? tags : undefined,
       mergeFields: Object.keys(mergeFields).length > 0 ? mergeFields : undefined,
       subscribedAt,
+      source: sourceColumn?.value.trim() || undefined,
     },
   };
 }

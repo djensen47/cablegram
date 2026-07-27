@@ -27,6 +27,8 @@ interface SubscriptionDoc {
   mergeFields: MergeFields;
   tags: string[];
   consecutiveSoftBounces?: number;
+  /** Absent on natively-collected rows (ADR-022) — not every row has a source. */
+  source?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -145,6 +147,9 @@ function toDoc(subscription: Subscription): SubscriptionDoc {
     mergeFields: subscription.mergeFields,
     tags: [...subscription.tags],
     consecutiveSoftBounces: subscription.consecutiveSoftBounces,
+    // Omitted rather than stored as null when absent: a subscribe-path row has
+    // no provenance to record, and the field's absence is the statement.
+    ...(subscription.source === undefined ? {} : { source: subscription.source }),
     createdAt: subscription.createdAt,
     updatedAt: subscription.updatedAt,
   };
@@ -163,6 +168,7 @@ function toDomain(doc: SubscriptionDoc): Subscription {
     // Absent on rows written before the counter existed — treat as no streak.
     tags: doc.tags,
     consecutiveSoftBounces: doc.consecutiveSoftBounces ?? 0,
+    source: doc.source,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });

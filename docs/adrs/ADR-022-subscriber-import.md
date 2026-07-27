@@ -45,14 +45,39 @@ batch's `--default-status` (default `subscribed`); an **unknown value fails the 
 malformed address does. Defaulting an unrecognised status would quietly turn someone's opt-out into a
 `subscribed`, which is the single worst thing this command could do.
 
-### 2. The original opt-in date is preserved
+### 2. The consent record is preserved — both halves of it
 
 An optional `subscribedAt` column becomes the subscription's `createdAt`. That timestamp *is* the
 consent record — the thing you most need if consent is ever challenged — and letting an import reset
 it to "the day we migrated" destroys it silently.
 
-No `source` field was added: every non-reserved column already becomes a merge field with its casing
-preserved, so a `source` column works today and is visible to templates.
+But a date alone is only half the answer. "When did they opt in" needs "and how do we know", and
+after an import those two kinds of record are otherwise **indistinguishable**: a subscription
+cablegram created has first-hand evidence (it sent the confirmation and saw the click), while an
+imported one carries a claim made to somebody else's system. This ADR is willing to act on
+second-hand evidence in §3; it would be incoherent to act on it and then store nothing saying the
+evidence was second-hand.
+
+So `Subscription` gains an optional **`source`** — an opaque operator note (`mailchimp-export-2026-07`),
+set per batch and overridable by a per-row `source` column, surfaced on the API DTO. Absent means
+cablegram collected the consent itself.
+
+Two details that carry the intent:
+
+- **It is not a merge field.** Letting a `source` column fall through to `mergeFields` — which was the
+  first design, and was wrong — puts provenance into the *template rendering model*, where it becomes
+  a `{{source}}` that can render into a campaign. Provenance is metadata about the record, not data
+  about the person. `source` is therefore a reserved CSV column alongside `email`/`tags`/`status`/
+  `subscribedAt`. It is also the wrong *shape* as a merge field: "this batch came from Mailchimp" is a
+  fact about the import, and expressing it per-row means stamping one string onto 18,000 rows.
+- **An import with no note still records `import`.** The property worth having is that an imported row
+  is *always* identifiable as imported; one that holds only when the operator remembers a flag is not
+  a property you can audit against.
+
+`source` is a **historical** fact about where the row came from, so later transitions leave it alone —
+a re-subscribe through cablegram records "they since re-opted in" in the status and `updatedAt`, which
+is the right place for it. `--on-conflict overwrite` does re-stamp it, since that row is being
+replaced from the file.
 
 ### 3. An imported hard bounce **does** write the global suppression list
 
@@ -145,9 +170,13 @@ export that would have re-subscribed everyone.
 - **`subscriptions import` is a breaking CLI change.** `--no-double-opt-in` is gone (an import sends
   no mail, so the flag was meaningless) and the default status is `subscribed` rather than `pending`.
   Acceptable: cablegram is not yet live and has no production data.
-- **`status` and `subscribedAt` are now reserved CSV columns**, so a file that used either as a merge
-  field changes meaning. Both are matched case-insensitively, like `email` and `tags`; every other
-  header still keeps its exact casing so `{{firstName}}` keeps working.
+- **`status`, `subscribedAt` and `source` are now reserved CSV columns**, so a file that used any of
+  them as a merge field changes meaning. All are matched case-insensitively, like `email` and `tags`;
+  every other header still keeps its exact casing so `{{firstName}}` keeps working.
+- **`source` is a new nullable field on the subscription DTO**, and the first piece of per-record
+  metadata that is deliberately *not* reachable from a template. If more provenance is ever needed
+  (who ran the import, which file, when), that is an import-run record rather than more fields on the
+  subscription — and it would need its own decision.
 - **The dry run is now worth running.** It reports the status breakdown and how many addresses would
   be globally suppressed before anything is written.
 - **`bulkWrite` enters the persistence vocabulary.** It stays within ADR-012's portable subset — no

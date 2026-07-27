@@ -122,6 +122,7 @@ describe('toImportRow', () => {
       tags: undefined,
       mergeFields: undefined,
       subscribedAt: undefined,
+      source: undefined,
     });
   });
 
@@ -149,6 +150,15 @@ describe('toImportRow', () => {
 
   it('leaves the status unset when the column is empty, for the batch default', () => {
     expect(toImportRow({ email: 'a@example.com', status: '  ' }).row.status).toBeUndefined();
+  });
+
+  it('treats source as a reserved column, not a merge field', () => {
+    // A `{{source}}` placeholder that renders into a campaign is not what an
+    // operator means by a `source` column — it is metadata about the record.
+    const { row } = toImportRow({ email: 'a@example.com', source: 'mailchimp-2026' });
+
+    expect(row.source).toBe('mailchimp-2026');
+    expect(row.mergeFields).toBeUndefined();
   });
 
   it('fails a row whose subscribedAt is not a date', () => {

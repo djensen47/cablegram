@@ -60,6 +60,8 @@ export interface SubscriptionDto {
   status: SubscriptionStatus;
   mergeFields: Record<string, unknown>;
   tags: string[];
+  /** Provenance when the record was imported; `null` when cablegram collected it. */
+  source: string | null;
   createdAt: string;
   updatedAt: string;
 }

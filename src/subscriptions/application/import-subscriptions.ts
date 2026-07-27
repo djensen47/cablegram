@@ -77,6 +77,9 @@ export class ImportSubscriptions {
 
     const onConflict = input.onConflict ?? 'skip';
     const defaultStatus = input.defaultStatus ?? 'subscribed';
+    // Never empty: a row this use case writes is always marked as imported,
+    // whether or not the operator named the source (see `source` on the input).
+    const defaultSource = input.source?.trim() || 'import';
     const now = this.clock.now();
     const result: ImportSubscriptionsResult = {
       received: input.rows.length,
@@ -112,6 +115,7 @@ export class ImportSubscriptions {
 
     for (const [email, row] of rows) {
       const status = row.status ?? defaultStatus;
+      const source = row.source?.trim() || defaultSource;
 
       // Suppression is decided by the **file**, not by whether the membership
       // row was written: `onConflict` governs this newsletter's row, while a
@@ -132,6 +136,7 @@ export class ImportSubscriptions {
           mergeFields: row.mergeFields,
           tags: row.tags,
           subscribedAt: row.subscribedAt,
+          source,
           now,
         });
         toWrite.push(found);
@@ -149,6 +154,7 @@ export class ImportSubscriptions {
           mergeFields: row.mergeFields,
           tags: row.tags,
           subscribedAt: row.subscribedAt,
+          source,
           now,
         }),
       );

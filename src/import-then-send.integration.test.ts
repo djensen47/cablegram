@@ -105,6 +105,7 @@ describe('import then send (ADR-022)', () => {
 
     const imported = await post(`/v1/newsletters/${newsletterId}/subscriptions/import`, {
       rows: rows.map((r) => r.row),
+      source: 'mailchimp-export-2026-07',
     });
     expect(imported.status).toBe(200);
     expect(await imported.json()).toMatchObject({
@@ -126,7 +127,13 @@ describe('import then send (ADR-022)', () => {
       { headers: auth },
     );
     const stored = (await list.json()) as {
-      data: { email: string; status: string; createdAt: string; mergeFields: Record<string, unknown> }[];
+      data: {
+        email: string;
+        status: string;
+        createdAt: string;
+        source: string | null;
+        mergeFields: Record<string, unknown>;
+      }[];
     };
     expect(
       Object.fromEntries(stored.data.map((s) => [s.email, s.status])),
@@ -138,10 +145,15 @@ describe('import then send (ADR-022)', () => {
       'angry@dispatch.example': 'complained',
     });
 
-    // The consent record and the merge model came across intact.
+    // The consent record and the merge model came across intact — and every row
+    // is marked as second-hand, so an inherited consent claim never masquerades
+    // as one cablegram witnessed itself.
     const active = stored.data.find((s) => s.email === 'active@dispatch.example');
     expect(active?.createdAt).toBe('2019-04-02T09:15:00.000Z');
     expect(active?.mergeFields).toEqual({ firstName: 'Ada' });
+    expect(stored.data.every((s) => s.source === 'mailchimp-export-2026-07')).toBe(true);
+    // And provenance is not a merge field — it must not be renderable.
+    expect(active?.mergeFields).not.toHaveProperty('source');
 
     // The imported hard bounce reached the GLOBAL list; the complaint did not
     // (ADR-018 — a mailbox fact versus a relationship fact).

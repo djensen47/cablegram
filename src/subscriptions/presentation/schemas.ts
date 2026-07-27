@@ -15,6 +15,8 @@ const mergeFieldsField = z
   .record(z.unknown())
   .openapi({ type: 'object', example: { firstName: 'Ada' } });
 const tagsField = z.array(z.string().trim().min(1).max(64)).openapi({ example: ['vip', 'beta'] });
+// An opaque operator note, bounded so it stays a label rather than a payload.
+const sourceField = z.string().trim().min(1).max(200);
 
 export const SubscriptionSchema = z
   .object({
@@ -24,6 +26,15 @@ export const SubscriptionSchema = z
     status: statusField,
     mergeFields: z.record(z.unknown()).openapi({ type: 'object', example: { firstName: 'Ada' } }),
     tags: z.array(z.string()).openapi({ example: ['vip'] }),
+    source: z
+      .string()
+      .nullable()
+      .openapi({
+        description:
+          'Where this record came from when it did not originate here (ADR-022). `null` means ' +
+          'cablegram collected the consent itself — the subscribe/confirm path.',
+        example: 'mailchimp-export-2026-07',
+      }),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -68,6 +79,9 @@ const ImportRowSchema = z
           'timestamp is the consent record. Absent → now.',
         example: '2019-04-02T09:15:00.000Z',
       }),
+    source: sourceField
+      .optional()
+      .openapi({ description: 'Per-row provenance override. Absent → the batch’s `source`.' }),
   })
   .openapi('ImportSubscriptionRow');
 
@@ -87,6 +101,13 @@ export const ImportSubscriptionsSchema = z
     defaultStatus: statusField
       .optional()
       .openapi({ description: 'Status for rows carrying none. Defaults to `subscribed`.' }),
+    source: sourceField.optional().openapi({
+      description:
+        'Where this batch came from, recorded on every row it writes so an inherited consent ' +
+        'claim stays distinguishable from one cablegram witnessed. Defaults to `import` — a row ' +
+        'written by this endpoint is always marked as imported, named source or not.',
+      example: 'mailchimp-export-2026-07',
+    }),
   })
   .openapi('ImportSubscriptions');
 
@@ -155,6 +176,7 @@ export function toSubscriptionResponse(subscription: Subscription): Subscription
     status: subscription.status,
     mergeFields: subscription.mergeFields,
     tags: [...subscription.tags],
+    source: subscription.source ?? null,
     createdAt: subscription.createdAt.toISOString(),
     updatedAt: subscription.updatedAt.toISOString(),
   };

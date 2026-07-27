@@ -302,7 +302,12 @@ scope.
   ([ADR-022](docs/adrs/ADR-022-subscriber-import.md)). `Subscribe` derives status from `doubleOptIn`,
   so it can only ever make `pending`/`subscribed` — structurally unable to carry a migration.
   `Subscription.import()` + the `ImportSubscriptions` use case take the status **verbatim** across the
-  whole vocabulary and preserve the source system's opt-in date as `createdAt` (the consent record).
+  whole vocabulary and preserve **both halves of the consent record**: the source system's opt-in date
+  as `createdAt`, and a `source` provenance note (batch-level, per-row `source` column overrides,
+  defaults to `import` so an imported row is *always* identifiable). `source` is a **field, NOT a merge
+  field** — merge fields are the template rendering model and a `{{source}}` must never render into a
+  campaign; it's a reserved CSV column for the same reason. It's historical: later transitions leave it
+  alone (a re-subscribe says "re-opted in" via status + `updatedAt`), only `overwrite` re-stamps it.
   **An import sends no mail, ever** — not even for `pending` rows; the use case has **no
   `DeliveryGateway`**, which is the point. `POST /v1/newsletters/{id}/subscriptions/import` takes up to
   1000 rows/batch (CLI batches 500, one `Idempotency-Key` per batch derived from file+index so a resume
@@ -316,8 +321,9 @@ scope.
   **`complained` never does**. That write is why the DAG gained `subscriptions → deliverability`
   (consumer-owned `SuppressionGateway`, reason pinned to `hard-bounce` in the adapter so a complaint
   can't be routed onto the global list). CSV reserved columns are now `email`/`tags`/`status`/
-  `subscribedAt` (case-insensitive); everything else is still a merge field with casing preserved. An
-  unknown `status` **fails the row** — never defaulted. `--no-double-opt-in` is gone from `import`.
+  `subscribedAt`/`source` (case-insensitive); everything else is still a merge field with casing
+  preserved. An unknown `status` **fails the row** — never defaulted. `--no-double-opt-in` is gone
+  from `import`.
 - **Postmark wire format** (request/response, webhook schema) is implemented in
   `src/shared/email/postmark-delivery-gateway.ts` and `src/campaigns/presentation/webhook-routes.ts` —
   treat that code (or live docs) as the source of truth, not memory, before restating a Postmark fact

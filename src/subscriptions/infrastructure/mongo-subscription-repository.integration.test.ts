@@ -82,7 +82,11 @@ describe('MongoSubscriptionRepository (contract)', () => {
   it('saves a batch, inserting new rows and replacing existing ones by id', async () => {
     const existing = make('a@dispatch.example');
     await repo.create(existing);
-    existing.overwriteFromImport({ status: 'unsubscribed', now: new Date('2026-03-01T00:00:00Z') });
+    existing.overwriteFromImport({
+      status: 'unsubscribed',
+      source: 'import',
+      now: new Date('2026-03-01T00:00:00Z'),
+    });
     const fresh = make('b@dispatch.example');
 
     await repo.saveMany([existing, fresh]);
@@ -111,6 +115,7 @@ describe('MongoSubscriptionRepository (contract)', () => {
       email: 'legacy@dispatch.example',
       status: 'unsubscribed',
       subscribedAt,
+      source: 'mailchimp-export-2026-07',
       now: new Date('2026-01-01T00:00:00Z'),
     });
 
@@ -119,6 +124,12 @@ describe('MongoSubscriptionRepository (contract)', () => {
     const stored = await repo.findById(imported.id);
     expect(stored?.createdAt).toEqual(subscribedAt);
     expect(stored?.status).toBe('unsubscribed');
+    expect(stored?.source).toBe('mailchimp-export-2026-07');
+    // A subscribe-path row has no provenance to record; absence is the statement.
+    await repo.create(make('native@dispatch.example'));
+    expect(
+      (await repo.findByNewsletterAndEmail(newsletterId, 'native@dispatch.example'))?.source,
+    ).toBeUndefined();
   });
 
   it('updates in place', async () => {

@@ -581,6 +581,93 @@ describe('subscriptions use cases', () => {
       expect(recipients.map((r) => r.address)).toEqual(['a@dispatch.example']);
     });
 
+    it('records where an imported row came from', async () => {
+      // Without this, an inherited consent claim and one cablegram witnessed
+      // itself are indistinguishable in the data — which is the half of the
+      // consent record `subscribedAt` alone does not cover.
+      await importer().execute({
+        newsletterId,
+        source: 'mailchimp-export-2026-07',
+        rows: [
+          { email: 'a@dispatch.example' },
+          { email: 'b@dispatch.example', source: 'campaign-monitor-2021' },
+        ],
+      });
+
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      expect(rows.find((s) => s.email === 'a@dispatch.example')?.source).toBe(
+        'mailchimp-export-2026-07',
+      );
+      // A per-row column beats the batch note.
+      expect(rows.find((s) => s.email === 'b@dispatch.example')?.source).toBe(
+        'campaign-monitor-2021',
+      );
+    });
+
+    it('marks a row as imported even when no source was named', async () => {
+      // The property has to hold unconditionally: one that only holds when the
+      // operator remembers a flag is not a property you can audit against.
+      await importer().execute({ newsletterId, rows: [{ email: 'a@dispatch.example' }] });
+
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      expect(rows[0]?.source).toBe('import');
+    });
+
+    it('leaves a natively-collected subscription with no source at all', async () => {
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      expect(rows[0]?.source).toBeUndefined();
+    });
+
+    it('keeps the source as a historical fact when the row is later re-subscribed', async () => {
+      // A re-subscribe records "they since re-opted in" in the status and
+      // `updatedAt`; it does not rewrite where the row came from.
+      await importer().execute({
+        newsletterId,
+        source: 'mailchimp-export-2026-07',
+        rows: [{ email: 'reader@dispatch.example', status: 'unsubscribed' }],
+      });
+
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      expect(rows[0]?.status).toBe('subscribed');
+      expect(rows[0]?.source).toBe('mailchimp-export-2026-07');
+    });
+
+    it('re-stamps the source when overwrite replaces an existing row', async () => {
+      await importer().execute({
+        newsletterId,
+        source: 'first-pass',
+        rows: [{ email: 'a@dispatch.example' }],
+      });
+
+      await importer().execute({
+        newsletterId,
+        onConflict: 'overwrite',
+        source: 'second-pass',
+        rows: [{ email: 'a@dispatch.example' }],
+      });
+
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      expect(rows[0]?.source).toBe('second-pass');
+    });
+
     it('reports what the batch did, for progress and the dry-run summary', async () => {
       const result = await importer().execute({
         newsletterId,

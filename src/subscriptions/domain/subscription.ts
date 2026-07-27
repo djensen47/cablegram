@@ -74,6 +74,22 @@ export interface SubscriptionProps {
    * — the over-reach ADR-018 exists to prevent.
    */
   consecutiveSoftBounces: number;
+  /**
+   * Where this membership's record came from, when it did not originate here
+   * (ADR-022). Absent means cablegram collected the consent itself — the
+   * subscribe/confirm path, first-hand evidence.
+   *
+   * It exists because an import restores a consent claim made to *another*
+   * system, and without a marker that claim becomes indistinguishable from one
+   * cablegram witnessed. If consent is ever challenged, "when did they opt in"
+   * (`createdAt`) is only half the answer; "how do we know" is the other half.
+   *
+   * Deliberately **not** a merge field: merge fields are the template rendering
+   * model, and provenance is metadata about the record rather than data about
+   * the person — a `{{source}}` that can render into mail is a bug waiting to
+   * happen. An opaque operator-supplied note; the domain never interprets it.
+   */
+  source?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -121,6 +137,8 @@ export interface ImportSubscriptionProps {
    * thing you most need if consent is ever challenged. Absent → `now`.
    */
   subscribedAt?: Date;
+  /** Provenance note — where this record came from. Required for an import. */
+  source: string;
   now: Date;
 }
 
@@ -130,6 +148,7 @@ export interface OverwriteSubscriptionProps {
   mergeFields?: MergeFields;
   tags?: string[];
   subscribedAt?: Date;
+  source: string;
   now: Date;
 }
 
@@ -211,6 +230,7 @@ export class Subscription {
       mergeFields: input.mergeFields ?? {},
       tags: normalizeTags(input.tags),
       consecutiveSoftBounces: 0,
+      source: input.source,
       createdAt,
       updatedAt: input.now,
     });
@@ -237,6 +257,7 @@ export class Subscription {
       mergeFields: input.mergeFields ?? this.props.mergeFields,
       tags: input.tags === undefined ? this.props.tags : normalizeTags(input.tags),
       consecutiveSoftBounces: 0,
+      source: input.source,
       createdAt: input.subscribedAt ?? this.props.createdAt,
       updatedAt: input.now,
     };
@@ -381,6 +402,16 @@ export class Subscription {
   }
   get consecutiveSoftBounces(): number {
     return this.props.consecutiveSoftBounces;
+  }
+  /**
+   * Where the record came from, or `undefined` when cablegram collected the
+   * consent itself. A **historical** fact about the record's origin, so it is
+   * left alone by every later transition — a re-subscribe through cablegram
+   * changes the status and `updatedAt`, which is where "they since re-opted in"
+   * is recorded; it does not rewrite where the row came from.
+   */
+  get source(): string | undefined {
+    return this.props.source;
   }
   get createdAt(): Date {
     return this.props.createdAt;
