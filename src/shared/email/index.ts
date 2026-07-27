@@ -25,9 +25,15 @@ export type {
 export { PostmarkDeliveryGateway } from './postmark-delivery-gateway.js';
 export { InMemoryDeliveryGateway } from './in-memory-delivery-gateway.js';
 
-// Provider webhook normalization.
-export { parseProviderEvent } from './provider-event.js';
-export type { DeliveryEvent, DeliveryEventType } from './provider-event.js';
+// Provider webhook normalization — the parsed events, and the payloads it
+// could not claim (recorded by `campaigns`, never dropped in silence).
+export { parseProviderEvent, UNPARSEABLE_EVENT_KEY } from './provider-event.js';
+export type {
+  DeliveryEvent,
+  DeliveryEventType,
+  ParsedProviderEvents,
+  UnhandledProviderEvent,
+} from './provider-event.js';
 
 // Gateway failure type.
 export { EmailDeliveryError } from './errors.js';

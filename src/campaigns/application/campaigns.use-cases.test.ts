@@ -31,6 +31,7 @@ import {
   InMemoryCampaignRepository,
   InMemorySendRepository,
   InMemoryRecipientOutcomeRepository,
+  InMemoryUnhandledEventRepository,
   CreateCampaign,
   GetCampaign,
   SendCampaign,
@@ -60,6 +61,9 @@ function testContainer(): { container: Container; gateway: InMemoryDeliveryGatew
   container
     .rebind(CAMPAIGN_TYPES.RecipientOutcomeRepository)
     .to(InMemoryRecipientOutcomeRepository);
+  container
+    .rebind(CAMPAIGN_TYPES.UnhandledEventRepository)
+    .to(InMemoryUnhandledEventRepository);
   container.rebind(NEWSLETTER_TYPES.NewsletterRepository).to(InMemoryNewsletterRepository);
   container.rebind(SUBSCRIPTION_TYPES.SubscriptionRepository).to(InMemorySubscriptionRepository);
   container.rebind(DELIVERABILITY_TYPES.SuppressionRepository).to(InMemorySuppressionRepository);
@@ -475,9 +479,12 @@ describe('campaigns — per-recipient List-Unsubscribe headers (ADR-015)', () =>
     } as NodeJS.ProcessEnv);
     container.rebind(CAMPAIGN_TYPES.CampaignRepository).to(InMemoryCampaignRepository);
     container.rebind(CAMPAIGN_TYPES.SendRepository).to(InMemorySendRepository);
-  container
-    .rebind(CAMPAIGN_TYPES.RecipientOutcomeRepository)
-    .to(InMemoryRecipientOutcomeRepository);
+    container
+      .rebind(CAMPAIGN_TYPES.RecipientOutcomeRepository)
+      .to(InMemoryRecipientOutcomeRepository);
+    container
+      .rebind(CAMPAIGN_TYPES.UnhandledEventRepository)
+      .to(InMemoryUnhandledEventRepository);
     container.rebind(NEWSLETTER_TYPES.NewsletterRepository).to(InMemoryNewsletterRepository);
     container.rebind(SUBSCRIPTION_TYPES.SubscriptionRepository).to(InMemorySubscriptionRepository);
     container.rebind(DELIVERABILITY_TYPES.SuppressionRepository).to(InMemorySuppressionRepository);

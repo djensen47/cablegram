@@ -12,7 +12,13 @@ import {
 } from '../../shared/http/index.js';
 import { CAMPAIGN_TYPES } from '../types.js';
 import type { RecordDeliveryEvents } from '../application/record-delivery-events.js';
-import { PostmarkWebhookSchema, WebhookAckSchema } from './schemas.js';
+import type { ListUnhandledEvents } from '../application/list-unhandled-events.js';
+import {
+  PostmarkWebhookSchema,
+  UnhandledEventListSchema,
+  WebhookAckSchema,
+  toUnhandledEventResponse,
+} from './schemas.js';
 
 function safeEquals(a: string, b: string): boolean {
   const ab = Buffer.from(a);
@@ -83,6 +89,49 @@ export function createPostmarkWebhookRoutes(container: Container): OpenAPIHono<A
       .get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents)
       .execute(body);
     return c.json({ status: 'ok' }, 200);
+  });
+
+  return app;
+}
+
+const unhandledRoute = createRoute({
+  method: 'get',
+  path: '/unhandled',
+  tags: ['webhooks'],
+  summary: 'List provider events the receiver did not act on',
+  description:
+    'One row per *kind* of unrecognized event (record type, unclassified bounce type, or an ' +
+    'unparseable body), with a count, first/last seen and a truncated sample of the first ' +
+    'payload. A non-empty list means Postmark is sending something cablegram drops. Not ' +
+    'paginated: the collection is bounded by the record-type table, not by traffic.',
+  security: [{ BearerAuth: [] }],
+  responses: {
+    200: {
+      content: { 'application/json': { schema: UnhandledEventListSchema } },
+      description: 'Every unhandled-event bucket, most frequent first',
+    },
+    401: errorResponse('Missing or invalid access token'),
+  },
+});
+
+/**
+ * The **operator-facing** side of the webhook receiver, mounted at
+ * `/v1/webhooks` behind the ordinary JWT gate — the opposite posture from the
+ * receiver above, which is Basic-Auth'd because Postmark calls it.
+ *
+ * It exists because the receiver's "always 200" contract (ADR-008) used to mean
+ * an unrecognized payload left no trace at all, and a log line is not a fix on
+ * DigitalOcean Functions, where activation logs cannot be searched or alerted
+ * on. Queryable state can answer the question; a diary cannot.
+ */
+export function createUnhandledEventRoutes(container: Container): OpenAPIHono<AppEnv> {
+  const app = new OpenAPIHono<AppEnv>({ defaultHook: throwOnInvalid });
+
+  app.openapi(unhandledRoute, async (c) => {
+    const records = await container
+      .get<ListUnhandledEvents>(CAMPAIGN_TYPES.ListUnhandledEvents)
+      .execute();
+    return c.json({ data: records.map(toUnhandledEventResponse) }, 200);
   });
 
   return app;

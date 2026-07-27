@@ -8,6 +8,7 @@ import type { CampaignRepository } from './campaign-repository.js';
 import type { RecipientOutcomeRepository } from './recipient-outcome-repository.js';
 import type { SuppressionGateway } from './suppression-gateway.js';
 import type { SubscriberGateway } from './subscriber-gateway.js';
+import type { UnhandledEventRepository } from './unhandled-event-repository.js';
 
 /**
  * Applies a Postmark webhook body to the recipient it concerns (ADR-008,
@@ -30,6 +31,13 @@ import type { SubscriberGateway } from './subscriber-gateway.js';
  * Unknown campaigns, never-sent campaigns and untagged events are tolerated
  * (skipped), never fatal — the receiver must always 200 or Postmark retries for
  * hours (ADR-008).
+ *
+ * Tolerated is not the same as unrecorded, though. A payload the parser could
+ * not claim — a record type Postmark added or renamed, a bounce type that fell
+ * off its published table, a malformed body — is counted into
+ * `campaign_unhandled_events` (ADR-021). That costs one extra write only when
+ * something is genuinely unrecognized, and it is keyed by the *kind* of event,
+ * so it stays a handful of rows no matter how many arrive.
  */
 @injectable()
 export class RecordDeliveryEvents {
@@ -42,11 +50,20 @@ export class RecordDeliveryEvents {
     private readonly suppression: SuppressionGateway,
     @inject(CAMPAIGN_TYPES.SubscriberGateway)
     private readonly subscribers: SubscriberGateway,
+    @inject(CAMPAIGN_TYPES.UnhandledEventRepository)
+    private readonly unhandled: UnhandledEventRepository,
     @inject(SHARED_TYPES.Clock) private readonly clock: Clock,
   ) {}
 
   async execute(rawWebhookPayload: unknown): Promise<void> {
-    const events = parseProviderEvent(rawWebhookPayload);
+    const { events, unhandled } = parseProviderEvent(rawWebhookPayload);
+
+    // Whatever the parser could not claim is counted before anything else, so a
+    // failure applying a sibling event in the same (defensively accepted) batch
+    // cannot lose the observation. One upsert per distinct kind, not per event.
+    for (const item of unhandled) {
+      await this.unhandled.record({ key: item.key, sample: item.sample, now: this.clock.now() });
+    }
 
     // Cache campaign lookups within one request. Postmark sends a single event
     // per request, so this is usually one entry — but the parser accepts an

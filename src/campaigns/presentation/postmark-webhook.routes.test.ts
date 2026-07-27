@@ -12,7 +12,8 @@ import { SUBSCRIPTION_TYPES, InMemorySubscriptionRepository, Subscribe } from '.
 import { DELIVERABILITY_TYPES, InMemorySuppressionRepository } from '../../deliverability/index.js';
 import { TEMPLATE_TYPES, InMemoryTemplateRepository, CreateTemplate } from '../../templates/index.js';
 import { CAMPAIGN_TYPES, InMemoryCampaignRepository, InMemorySendRepository,
-  InMemoryRecipientOutcomeRepository } from '../index.js';
+  InMemoryRecipientOutcomeRepository,
+  InMemoryUnhandledEventRepository } from '../index.js';
 import { TEST_ENV, bearerHeaders } from '../../shared/testing/index.js';
 
 // This suite needs a known webhook secret for the Basic-Auth assertions; the
@@ -32,6 +33,9 @@ function build() {
   container
     .rebind(CAMPAIGN_TYPES.RecipientOutcomeRepository)
     .to(InMemoryRecipientOutcomeRepository);
+  container
+    .rebind(CAMPAIGN_TYPES.UnhandledEventRepository)
+    .to(InMemoryUnhandledEventRepository);
   container.rebind(NEWSLETTER_TYPES.NewsletterRepository).to(InMemoryNewsletterRepository);
   container.rebind(SUBSCRIPTION_TYPES.SubscriptionRepository).to(InMemorySubscriptionRepository);
   container.rebind(DELIVERABILITY_TYPES.SuppressionRepository).to(InMemorySuppressionRepository);
@@ -113,5 +117,88 @@ describe('postmark webhook receiver', () => {
   it('200s (tolerates) an authenticated but unrecognized payload', async () => {
     const res = await post(app, webhookAuth, { RecordType: 'SomethingNew' });
     expect(res.status).toBe(200);
+  });
+});
+
+/**
+ * Issue #29: an unrecognized payload must still 200, but it must no longer
+ * vanish. The receiver's tolerance was silent *and* undetectable — if Postmark
+ * renamed a record type, those events were lost with nothing to find.
+ */
+describe('unrecognized events are recorded, not dropped', () => {
+  let app: ReturnType<typeof build>['app'];
+  let auth: Record<string, string>;
+
+  beforeEach(async () => {
+    ({ app } = build());
+    auth = await bearerHeaders();
+  });
+
+  async function unhandled(): Promise<
+    { key: string; count: number; sample: string; firstSeenAt: string; lastSeenAt: string }[]
+  > {
+    const res = await app.request('/v1/webhooks/unhandled', { headers: auth });
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { data: [] }).data;
+  }
+
+  it('counts one row per record type, however many events arrive', async () => {
+    for (let i = 0; i < 3; i += 1) {
+      const res = await post(app, webhookAuth, {
+        RecordType: 'SubscriptionChange',
+        Recipient: `reader${i}@dispatch.example`,
+      });
+      expect(res.status).toBe(200);
+    }
+
+    const rows = await unhandled();
+    // The whole point of keying by type: three events, one row. At 50k webhooks
+    // per send, one row per *event* would be the growth problem all over again.
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ key: 'SubscriptionChange', count: 3 });
+    // The sample is the FIRST payload seen, so the row stays stable over time.
+    expect(rows[0]!.sample).toContain('reader0@dispatch.example');
+    expect(rows[0]!.firstSeenAt).toBeDefined();
+    expect(rows[0]!.lastSeenAt).toBeDefined();
+  });
+
+  it('buckets a malformed body under a sentinel key', async () => {
+    // A body with no RecordType at all still parses as JSON, so it reaches the
+    // use case — and is exactly the kind of surprise worth seeing.
+    const res = await post(app, webhookAuth, { NotARecord: true });
+    expect(res.status).toBe(200);
+
+    expect((await unhandled()).map((r) => r.key)).toEqual(['__unparseable']);
+  });
+
+  it('records nothing for a deliberately-ignored bounce type', async () => {
+    const res = await post(app, webhookAuth, {
+      RecordType: 'Bounce',
+      Type: 'AutoResponder',
+      Email: 'ooo@dispatch.example',
+    });
+    expect(res.status).toBe(200);
+
+    // An out-of-office reply is not a failure (ADR-020) — a row here would be
+    // noise that trains people to stop reading the report.
+    expect(await unhandled()).toEqual([]);
+  });
+
+  it('records nothing for events it handles', async () => {
+    const res = await post(app, webhookAuth, {
+      RecordType: 'Delivery',
+      Recipient: 'reader@dispatch.example',
+      MessageID: 'm-1',
+      Tag: 'no-such-campaign',
+    });
+    expect(res.status).toBe(200);
+
+    // Note the unknown Tag: the event was *handled* and merely uncorrelatable,
+    // which is a different thing from unrecognized and must not be reported.
+    expect(await unhandled()).toEqual([]);
+  });
+
+  it('requires a JWT to read (unlike the receiver, which is Basic-Auth’d)', async () => {
+    expect((await app.request('/v1/webhooks/unhandled')).status).toBe(401);
   });
 });

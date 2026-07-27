@@ -216,7 +216,8 @@ scope.
 - **Collections are `<singular component>_<aggregate>`, owned by one component**
   ([ADR-017](docs/adrs/ADR-017-component-owned-collections.md)). `newsletter_newsletters`,
   `subscription_subscriptions`, `template_templates`, `campaign_campaigns`, `campaign_send_records`,
-  `deliverability_suppressions`, `account_users`, `account_refresh_tokens`, `account_one_time_tokens`.
+  `deliverability_suppressions`, `campaign_unhandled_events`, `account_users`,
+  `account_refresh_tokens`, `account_one_time_tokens`.
   The convention is applied **uniformly, stutter included** — a rule with no exceptions beats four
   avoided repetitions, and it means an anonymous name in a shell/slow-query log/backup always names its
   owning context. Names + index specs live in `<component>/infrastructure/collections.ts`, exported from
@@ -277,6 +278,21 @@ scope.
   types incl. `BadEmailAddress`/`Blocked`/`DMARCPolicy`; transient ones are still dropped. Atomicity
   is only provable in the **integration** suite — the in-memory double mirrors the semantics, but a
   single-threaded double can't catch a lost update.
+- **An unrecognized webhook payload is recorded, not logged — and the receiver still 200s**
+  ([ADR-021](docs/adrs/ADR-021-unhandled-webhook-events.md)).
+  `parseProviderEvent` returns **`{ events, unhandled }`** (not a bare array): what it could not claim
+  comes back as bucket keys, and `RecordDeliveryEvents` upserts each into `campaign_unhandled_events`,
+  readable at `GET /v1/webhooks/unhandled` (JWT) / `cablegram webhooks unhandled`. Keyed by the **kind**
+  of event, **never one row per event** — one `updateOne` upsert on `_id: <key>` (`$inc` count, `$set`
+  lastSeenAt, `$setOnInsert` sample+firstSeenAt), so it's bounded to a handful of rows forever, needs no
+  TTL/retention, and is a single-document write (ADR-012). A log line was rejected on purpose:
+  DO Functions' activation logs can't be searched or alerted on, so it would be a diary, not
+  observability. Keys: a bare `RecordType`; `Bounce:<Type>` for a bounce type in neither the permanent
+  nor transient table (the case that catches Postmark's table moving); `<RecordType>:__no-address` when
+  a handled type carried no address; `__unparseable` for a non-object/type-less body. `AutoResponder`
+  and `Subscribe` are on an explicit **ignore list** — deliberate drops (ADR-020), so recording them
+  would be noise. Classification stays in the `shared/email` leaf (one place decides what we handle);
+  the write stays in `campaigns` (a leaf owns no repository).
 - **Postmark wire format** (request/response, webhook schema) is implemented in
   `src/shared/email/postmark-delivery-gateway.ts` and `src/campaigns/presentation/webhook-routes.ts` —
   treat that code (or live docs) as the source of truth, not memory, before restating a Postmark fact

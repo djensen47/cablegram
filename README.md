@@ -233,11 +233,12 @@ cablegram templates create --name "Weekly digest" --subject "Your {{weekOf}} dig
 cablegram campaigns send <campaign-id> --dry-run    # recipient count, sends nothing
 cablegram campaigns send <campaign-id>              # confirms first; --yes to skip
 cablegram campaigns report <campaign-id> --failures
+cablegram webhooks unhandled                        # anything Postmark sends that we drop
 ```
 
 **Command groups:** `setup` · `login` / `logout` / `whoami` · `password-reset` · `config` ·
-`newsletters` · `subscriptions` (aka `subs`) · `campaigns` · `templates` · `suppressions` · `users`.
-Run `cablegram <group> --help` for the flags.
+`newsletters` · `subscriptions` (aka `subs`) · `campaigns` · `templates` · `suppressions` · `users` ·
+`webhooks`. Run `cablegram <group> --help` for the flags.
 
 **Scriptable by default.** Every command works non-interactively when given flags; prompting is
 reserved for masked passwords, confirmations on irreversible actions, and omitted required arguments.
@@ -326,6 +327,15 @@ Reasons: `hard-bounce` · `spam-complaint` · `manual-junk` · `global-opt-out`.
 | Method | Path | Auth | Notes |
 |---|---|---|---|
 | POST | `/webhooks/postmark` | HTTP Basic | Provider delivery/bounce/complaint events |
+| GET | `/v1/webhooks/unhandled` | Bearer JWT | Events the receiver accepted but did not act on |
+
+The receiver always answers `200` — a non-200 makes Postmark retry for hours — so an event it does
+not recognize cannot fail loudly. It is recorded instead
+([ADR-021](docs/adrs/ADR-021-unhandled-webhook-events.md)): one row per *kind* of unrecognized event
+(an unknown `RecordType`, a bounce type outside the classified tables, or an unparseable body), with
+a count, first/last seen and a truncated sample of the first payload. Deliberate drops
+(`AutoResponder`, `Subscribe`) are not recorded — they are not failures. A non-empty list means
+Postmark is sending traffic cablegram is discarding.
 
 ## Conventions every endpoint shares
 
