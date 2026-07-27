@@ -22,7 +22,7 @@ interface UnhandledEventDoc {
 }
 
 /**
- * The Mongo-backed `UnhandledEventRepository` (issue #29).
+ * The Mongo-backed `UnhandledEventRepository` (ADR-021).
  *
  * `record` is one upsert on one document — the same discipline as the
  * per-recipient outcome writes (ADR-019): no read first, so concurrent webhooks

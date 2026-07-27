@@ -35,7 +35,7 @@ import type { UnhandledEventRepository } from './unhandled-event-repository.js';
  * Tolerated is not the same as unrecorded, though. A payload the parser could
  * not claim — a record type Postmark added or renamed, a bounce type that fell
  * off its published table, a malformed body — is counted into
- * `campaign_unhandled_events` (issue #29). That costs one extra write only when
+ * `campaign_unhandled_events` (ADR-021). That costs one extra write only when
  * something is genuinely unrecognized, and it is keyed by the *kind* of event,
  * so it stays a handful of rows no matter how many arrive.
  */

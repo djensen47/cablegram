@@ -36,6 +36,7 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [018](ADR-018-suppression-scope.md) | Suppression Scope — global for mailbox facts, per-newsletter for consent | Accepted — implemented |
 | [019](ADR-019-per-recipient-outcome-documents.md) | Per-Recipient Outcome Documents (splitting the send record) | Accepted — implemented |
 | [020](ADR-020-soft-bounce-streak.md) | Soft-Bounce Streaks — counting transient failures without over-reacting | Accepted — implemented |
+| [021](ADR-021-unhandled-webhook-events.md) | Unhandled Webhook Events — recording what the receiver cannot act on | Accepted — implemented |
 
 ## How to read these
 

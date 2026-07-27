@@ -137,7 +137,7 @@ export const ListRecipientOutcomesQuerySchema = paginationQuerySchema.extend({
 export const WebhookAckSchema = z.object({ status: z.string() }).openapi('WebhookAck');
 
 /**
- * One kind of provider event the receiver took but did not act on (issue #29).
+ * One kind of provider event the receiver took but did not act on (ADR-021).
  * A non-empty list is the signal that Postmark is sending something cablegram
  * drops — the question a log line on an ephemeral function cannot answer.
  */

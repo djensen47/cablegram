@@ -330,7 +330,8 @@ Reasons: `hard-bounce` · `spam-complaint` · `manual-junk` · `global-opt-out`.
 | GET | `/v1/webhooks/unhandled` | Bearer JWT | Events the receiver accepted but did not act on |
 
 The receiver always answers `200` — a non-200 makes Postmark retry for hours — so an event it does
-not recognize cannot fail loudly. It is recorded instead: one row per *kind* of unrecognized event
+not recognize cannot fail loudly. It is recorded instead
+([ADR-021](docs/adrs/ADR-021-unhandled-webhook-events.md)): one row per *kind* of unrecognized event
 (an unknown `RecordType`, a bounce type outside the classified tables, or an unparseable body), with
 a count, first/last seen and a truncated sample of the first payload. Deliberate drops
 (`AutoResponder`, `Subscribe`) are not recorded — they are not failures. A non-empty list means

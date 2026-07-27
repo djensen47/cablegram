@@ -278,7 +278,8 @@ scope.
   types incl. `BadEmailAddress`/`Blocked`/`DMARCPolicy`; transient ones are still dropped. Atomicity
   is only provable in the **integration** suite — the in-memory double mirrors the semantics, but a
   single-threaded double can't catch a lost update.
-- **An unrecognized webhook payload is recorded, not logged — and the receiver still 200s.**
+- **An unrecognized webhook payload is recorded, not logged — and the receiver still 200s**
+  ([ADR-021](docs/adrs/ADR-021-unhandled-webhook-events.md)).
   `parseProviderEvent` returns **`{ events, unhandled }`** (not a bare array): what it could not claim
   comes back as bucket keys, and `RecordDeliveryEvents` upserts each into `campaign_unhandled_events`,
   readable at `GET /v1/webhooks/unhandled` (JWT) / `cablegram webhooks unhandled`. Keyed by the **kind**

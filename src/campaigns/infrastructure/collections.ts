@@ -21,7 +21,7 @@ export const CAMPAIGN_COLLECTIONS = {
   recipientOutcomes: 'campaign_recipient_outcomes',
   /**
    * One document per *kind* of provider event we received and did not act on
-   * (issue #29) — not one per event, so this stays a handful of rows forever.
+   * (ADR-021) — not one per event, so this stays a handful of rows forever.
    */
   unhandledEvents: 'campaign_unhandled_events',
 } as const;

@@ -19,7 +19,7 @@ export interface RecordUnhandledEvent {
 
 /**
  * The record of provider events cablegram received but could not act on
- * (issue #29).
+ * (ADR-021).
  *
  * This exists because the alternative — a log line — is not observability on
  * DigitalOcean Functions, where activation logs cannot be searched, aggregated

@@ -7,7 +7,7 @@ import type {
 
 /**
  * Reads the record of provider events cablegram received but did not act on
- * (issue #29) — the answer to "is Postmark sending us anything we're dropping?".
+ * (ADR-021) — the answer to "is Postmark sending us anything we're dropping?".
  *
  * Deliberately not paginated: the collection is one row per *kind* of event, so
  * it is bounded by Postmark's record-type table, not by traffic.

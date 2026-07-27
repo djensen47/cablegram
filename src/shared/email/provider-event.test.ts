@@ -168,7 +168,7 @@ describe('bounce classification', () => {
 });
 
 /**
- * The reporting half (issue #29). Every payload that yields no event must be
+ * The reporting half (ADR-021). Every payload that yields no event must be
  * accounted for: either it is on the deliberate ignore list, or it comes back
  * as an `unhandled` bucket. "Nothing happened and nobody can tell" is the bug.
  */

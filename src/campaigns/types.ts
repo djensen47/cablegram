@@ -11,7 +11,7 @@ export const CAMPAIGN_TYPES = {
   SendRepository: Symbol.for('SendRepository'),
   /** Per-recipient outcomes — one document each, atomic updates (ADR-019). */
   RecipientOutcomeRepository: Symbol.for('RecipientOutcomeRepository'),
-  /** Provider events we received but did not act on — one row per kind (issue #29). */
+  /** Provider events we received but did not act on — one row per kind (ADR-021). */
   UnhandledEventRepository: Symbol.for('UnhandledEventRepository'),
   /** Consumer-owned port over the `newsletters` facade (existence + sender identity). */
   NewsletterGateway: Symbol.for('CampaignsNewsletterGateway'),
