@@ -15,7 +15,7 @@ import {
   CampaignNewsletterNotFoundError,
   CampaignNotFoundError,
   CampaignStateError,
-  SendRecordNotFoundError,
+  SendNotFoundError,
 } from '../domain/errors.js';
 import type { CreateCampaign } from '../application/create-campaign.js';
 import type { GetCampaign } from '../application/get-campaign.js';
@@ -23,17 +23,21 @@ import type { ListCampaigns } from '../application/list-campaigns.js';
 import type { UpdateCampaign } from '../application/update-campaign.js';
 import type { DeleteCampaign } from '../application/delete-campaign.js';
 import type { SendCampaign } from '../application/send-campaign.js';
-import type { GetSendRecord } from '../application/get-send-record.js';
+import type { GetSend } from '../application/get-send.js';
+import type { ListRecipientOutcomes } from '../application/list-recipient-outcomes.js';
 import {
   CampaignIdParamSchema,
   CampaignListSchema,
   CampaignSchema,
   CreateCampaignSchema,
   ListCampaignsQuerySchema,
-  SendRecordSchema,
+  SendSchema,
+  RecipientOutcomeListSchema,
+  ListRecipientOutcomesQuerySchema,
   UpdateCampaignSchema,
   toCampaignResponse,
-  toSendRecordResponse,
+  toSendResponse,
+  toRecipientOutcomeResponse,
 } from './schemas.js';
 
 const security = [{ BearerAuth: [] }];
@@ -56,7 +60,7 @@ function rethrowDomainError(err: unknown): never {
   if (
     err instanceof CampaignNotFoundError ||
     err instanceof CampaignNewsletterNotFoundError ||
-    err instanceof SendRecordNotFoundError
+    err instanceof SendNotFoundError
   ) {
     throw new NotFoundError(err.message);
   }
@@ -183,13 +187,36 @@ const getSendRoute = createRoute({
   method: 'get',
   path: '/{id}/send',
   tags: ['campaigns'],
-  summary: 'Get a campaign’s send record (per-recipient outcomes)',
+  summary: 'Get a campaign’s send (submission facts + live stats)',
+  description:
+    'Per-recipient outcomes are NOT inlined — at scale that is a multi-megabyte response. ' +
+    'Read them from GET /campaigns/{id}/send/recipients, which is cursor-paginated.',
   security,
   request: { params: CampaignIdParamSchema },
   responses: {
     200: {
-      content: { 'application/json': { schema: SendRecordSchema } },
-      description: 'The send record',
+      content: { 'application/json': { schema: SendSchema } },
+      description: 'The send, with stats counted live from its recipients',
+    },
+    404: notFoundResponse,
+    ...authedResponses,
+  },
+});
+
+const listRecipientsRoute = createRoute({
+  method: 'get',
+  path: '/{id}/send/recipients',
+  tags: ['campaigns'],
+  summary: 'List a send’s per-recipient outcomes (cursor-paginated)',
+  description:
+    'One row per recipient: delivery status, opens and clicks. Filter with `status`, or ' +
+    '`failuresOnly=true` for rejected + bounced + complained in one query.',
+  security,
+  request: { params: CampaignIdParamSchema, query: ListRecipientOutcomesQuerySchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: RecipientOutcomeListSchema } },
+      description: 'A page of recipient outcomes',
     },
     404: notFoundResponse,
     ...authedResponses,
@@ -270,11 +297,35 @@ export function createCampaignRoutes(container: Container): OpenAPIHono<AppEnv> 
     }
   });
 
+  app.openapi(listRecipientsRoute, async (c) => {
+    const { id } = c.req.valid('param');
+    const { limit, cursor, status, failuresOnly } = c.req.valid('query');
+    // `failuresOnly` is the common report question ("who didn't get it?") —
+    // expressed as a status set so the store filters on its index.
+    const statuses =
+      failuresOnly === true
+        ? (['rejected', 'bounced', 'complained'] as const)
+        : status !== undefined
+          ? ([status] as const)
+          : undefined;
+    try {
+      const rows = await container
+        .get<ListRecipientOutcomes>(CAMPAIGN_TYPES.ListRecipientOutcomes)
+        .execute({ campaignId: id, statuses, limit, cursor });
+      const page = toPage(rows, limit, (o) => o.id);
+      return c.json({ data: page.data.map(toRecipientOutcomeResponse), meta: page.meta }, 200);
+    } catch (err) {
+      rethrowDomainError(err);
+    }
+  });
+
   app.openapi(getSendRoute, async (c) => {
     const { id } = c.req.valid('param');
     try {
-      const record = await container.get<GetSendRecord>(CAMPAIGN_TYPES.GetSendRecord).execute(id);
-      return c.json(toSendRecordResponse(record), 200);
+      const { send, stats } = await container
+        .get<GetSend>(CAMPAIGN_TYPES.GetSend)
+        .execute(id);
+      return c.json(toSendResponse(send, stats), 200);
     } catch (err) {
       rethrowDomainError(err);
     }

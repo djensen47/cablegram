@@ -14,7 +14,8 @@ export { createPostmarkWebhookRoutes } from './presentation/webhook-routes.js';
 
 // In-memory repositories: the DI-rebind test doubles (ADR-003).
 export { InMemoryCampaignRepository } from './infrastructure/in-memory-campaign-repository.js';
-export { InMemorySendRecordRepository } from './infrastructure/in-memory-send-record-repository.js';
+export { InMemorySendRepository } from './infrastructure/in-memory-send-repository.js';
+export { InMemoryRecipientOutcomeRepository } from './infrastructure/in-memory-recipient-outcome-repository.js';
 
 // Domain + application contracts consumers may need to type against.
 export {
@@ -28,13 +29,14 @@ export {
   type CampaignContentRef,
   type CampaignSegment,
 } from './domain/campaign.js';
+export { Send, type SendId } from './domain/send.js';
 export {
-  SendRecord,
+  RecipientOutcome,
   OUTCOME_STATUSES,
-  type SendRecordId,
+  type RecipientOutcomeId,
   type OutcomeStatus,
-  type RecipientOutcome,
-} from './domain/send-record.js';
+  type SuppressionSignal,
+} from './domain/recipient-outcome.js';
 export {
   CampaignError,
   InvalidCampaignError,
@@ -42,10 +44,11 @@ export {
   CampaignNewsletterNotFoundError,
   CampaignStateError,
   CampaignContentError,
-  SendRecordNotFoundError,
+  SendNotFoundError,
 } from './domain/errors.js';
 export type { CampaignRepository, ListCampaignsOptions } from './application/campaign-repository.js';
-export type { SendRecordRepository } from './application/send-record-repository.js';
+export type { SendRepository } from './application/send-repository.js';
+export type { RecipientOutcomeRepository } from './application/recipient-outcome-repository.js';
 export type { NewsletterGateway, CampaignSender } from './application/newsletter-gateway.js';
 export type { RecipientResolver, CampaignRecipient } from './application/recipient-resolver.js';
 export type { SuppressionGateway } from './application/suppression-gateway.js';
@@ -63,7 +66,8 @@ export { ListCampaigns } from './application/list-campaigns.js';
 export { UpdateCampaign } from './application/update-campaign.js';
 export { DeleteCampaign } from './application/delete-campaign.js';
 export { SendCampaign } from './application/send-campaign.js';
-export { GetSendRecord } from './application/get-send-record.js';
+export { GetSend } from './application/get-send.js';
+export { ListRecipientOutcomes } from './application/list-recipient-outcomes.js';
 export { RecordDeliveryEvents } from './application/record-delivery-events.js';
 
 // The collections this component owns + the indexes they need (ADR-017).

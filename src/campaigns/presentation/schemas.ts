@@ -1,8 +1,8 @@
 import { z } from '@hono/zod-openapi';
 import { listResponseSchema, paginationQuerySchema } from '../../shared/http/index.js';
-import { CAMPAIGN_STATUSES, type Campaign } from '../domain/campaign.js';
-import type { SendRecord } from '../domain/send-record.js';
-import { OUTCOME_STATUSES } from '../domain/send-record.js';
+import { CAMPAIGN_STATUSES, type Campaign, type CampaignStats } from '../domain/campaign.js';
+import type { Send } from '../domain/send.js';
+import { OUTCOME_STATUSES, type RecipientOutcome } from '../domain/recipient-outcome.js';
 
 /**
  * zod-OpenAPI schemas for the campaigns API. These are the single source of
@@ -96,22 +96,41 @@ const RecipientOutcomeSchema = z
     address: z.string().email(),
     messageId: z.string().nullable(),
     status: z.enum(OUTCOME_STATUSES),
-    errorCode: z.number().int(),
     opens: z.number().int(),
     clicks: z.number().int(),
+    updatedAt: z.string().datetime(),
   })
   .openapi('RecipientOutcome');
 
-export const SendRecordSchema = z
+/**
+ * A send's submission facts plus **live** stats. Recipients are deliberately
+ * NOT inlined (ADR-019): at 18k recipients that is a multi-megabyte response.
+ * They are a separate paginated resource, `GET /campaigns/{id}/send/recipients`.
+ */
+export const SendSchema = z
   .object({
     id: z.string(),
     campaignId: z.string(),
+    bulkRequestId: z.string().nullable(),
+    submittedAt: z.string().datetime().nullable(),
+    recipientCount: z.number().int(),
     stats: StatsSchema,
-    recipients: z.array(RecipientOutcomeSchema),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
-  .openapi('SendRecord');
+  .openapi('Send');
+
+export const RecipientOutcomeListSchema = listResponseSchema(
+  RecipientOutcomeSchema,
+  'RecipientOutcomeList',
+);
+
+/** Query filters for the recipients list: pagination + status segment. */
+export const ListRecipientOutcomesQuerySchema = paginationQuerySchema.extend({
+  status: z.enum(OUTCOME_STATUSES).optional(),
+  /** Convenience: bounced + complained + rejected in one filter. */
+  failuresOnly: z.coerce.boolean().optional(),
+});
 
 export const WebhookAckSchema = z.object({ status: z.string() }).openapi('WebhookAck');
 
@@ -121,7 +140,8 @@ export const PostmarkWebhookSchema = z
   .openapi('PostmarkWebhookEvent', { example: { RecordType: 'Delivery' } });
 
 export type CampaignResponse = z.infer<typeof CampaignSchema>;
-export type SendRecordResponse = z.infer<typeof SendRecordSchema>;
+export type SendResponse = z.infer<typeof SendSchema>;
+export type RecipientOutcomeResponse = z.infer<typeof RecipientOutcomeSchema>;
 
 /** Maps a domain aggregate to its wire DTO — entities are never serialized directly (ADR-004). */
 export function toCampaignResponse(campaign: Campaign): CampaignResponse {
@@ -143,21 +163,28 @@ export function toCampaignResponse(campaign: Campaign): CampaignResponse {
   };
 }
 
-/** Maps a send record to its wire DTO (per-recipient outcomes + derived stats). */
-export function toSendRecordResponse(record: SendRecord): SendRecordResponse {
+/** Maps a send + its live stats to the wire DTO. */
+export function toSendResponse(send: Send, stats: CampaignStats): SendResponse {
   return {
-    id: record.id,
-    campaignId: record.campaignId,
-    stats: record.stats(),
-    recipients: record.outcomes.map((o) => ({
-      address: o.address,
-      messageId: o.messageId,
-      status: o.status,
-      errorCode: o.errorCode,
-      opens: o.opens,
-      clicks: o.clicks,
-    })),
-    createdAt: record.createdAt.toISOString(),
-    updatedAt: record.updatedAt.toISOString(),
+    id: send.id,
+    campaignId: send.campaignId,
+    bulkRequestId: send.bulkRequestId,
+    submittedAt: send.submittedAt?.toISOString() ?? null,
+    recipientCount: send.recipientCount,
+    stats,
+    createdAt: send.createdAt.toISOString(),
+    updatedAt: send.updatedAt.toISOString(),
+  };
+}
+
+/** Maps one recipient outcome to its wire DTO. */
+export function toRecipientOutcomeResponse(outcome: RecipientOutcome): RecipientOutcomeResponse {
+  return {
+    address: outcome.address,
+    messageId: outcome.messageId,
+    status: outcome.status,
+    opens: outcome.opens,
+    clicks: outcome.clicks,
+    updatedAt: outcome.updatedAt.toISOString(),
   };
 }

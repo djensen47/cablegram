@@ -1,4 +1,4 @@
-import type { SuppressionSignal } from '../domain/send-record.js';
+import type { SuppressionSignal } from '../domain/recipient-outcome.js';
 
 /**
  * A consumer-owned port over the `deliverability` context (ADR-001). Two

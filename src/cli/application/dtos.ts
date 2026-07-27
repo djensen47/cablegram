@@ -92,16 +92,23 @@ export interface RecipientOutcomeDto {
   address: string;
   messageId: string | null;
   status: string;
-  errorCode: number;
   opens: number;
   clicks: number;
+  updatedAt: string;
 }
 
-export interface SendRecordDto {
+/**
+ * A send's submission facts + live stats. Recipients are deliberately NOT
+ * inlined — they are a separate cursor-paginated resource, because at 18k
+ * recipients an inline array is a multi-megabyte response.
+ */
+export interface SendDto {
   id: string;
   campaignId: string;
+  bulkRequestId: string | null;
+  submittedAt: string | null;
+  recipientCount: number;
   stats: CampaignStatsDto;
-  recipients: RecipientOutcomeDto[];
   createdAt: string;
   updatedAt: string;
 }

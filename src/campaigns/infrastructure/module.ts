@@ -1,7 +1,8 @@
 import { ContainerModule } from 'inversify';
 import { CAMPAIGN_TYPES } from '../types.js';
 import type { CampaignRepository } from '../application/campaign-repository.js';
-import type { SendRecordRepository } from '../application/send-record-repository.js';
+import type { SendRepository } from '../application/send-repository.js';
+import type { RecipientOutcomeRepository } from '../application/recipient-outcome-repository.js';
 import type { NewsletterGateway } from '../application/newsletter-gateway.js';
 import type { RecipientResolver } from '../application/recipient-resolver.js';
 import type { SuppressionGateway } from '../application/suppression-gateway.js';
@@ -12,10 +13,12 @@ import { ListCampaigns } from '../application/list-campaigns.js';
 import { UpdateCampaign } from '../application/update-campaign.js';
 import { DeleteCampaign } from '../application/delete-campaign.js';
 import { SendCampaign } from '../application/send-campaign.js';
-import { GetSendRecord } from '../application/get-send-record.js';
+import { GetSend } from '../application/get-send.js';
+import { ListRecipientOutcomes } from '../application/list-recipient-outcomes.js';
 import { RecordDeliveryEvents } from '../application/record-delivery-events.js';
 import { MongoCampaignRepository } from './mongo-campaign-repository.js';
-import { MongoSendRecordRepository } from './mongo-send-record-repository.js';
+import { MongoSendRepository } from './mongo-send-repository.js';
+import { MongoRecipientOutcomeRepository } from './mongo-recipient-outcome-repository.js';
 import { FacadeNewsletterGateway } from './facade-newsletter-gateway.js';
 import { FacadeRecipientResolver } from './facade-recipient-resolver.js';
 import { FacadeSuppressionGateway } from './facade-suppression-gateway.js';
@@ -33,7 +36,10 @@ import { FacadeMessageRenderer } from './facade-message-renderer.js';
  */
 export const campaignModule = new ContainerModule((bind) => {
   bind<CampaignRepository>(CAMPAIGN_TYPES.CampaignRepository).to(MongoCampaignRepository);
-  bind<SendRecordRepository>(CAMPAIGN_TYPES.SendRecordRepository).to(MongoSendRecordRepository);
+  bind<SendRepository>(CAMPAIGN_TYPES.SendRepository).to(MongoSendRepository);
+  bind<RecipientOutcomeRepository>(CAMPAIGN_TYPES.RecipientOutcomeRepository).to(
+    MongoRecipientOutcomeRepository,
+  );
 
   bind<NewsletterGateway>(CAMPAIGN_TYPES.NewsletterGateway).to(FacadeNewsletterGateway);
   bind<RecipientResolver>(CAMPAIGN_TYPES.RecipientResolver).to(FacadeRecipientResolver);
@@ -46,6 +52,7 @@ export const campaignModule = new ContainerModule((bind) => {
   bind<UpdateCampaign>(CAMPAIGN_TYPES.UpdateCampaign).to(UpdateCampaign);
   bind<DeleteCampaign>(CAMPAIGN_TYPES.DeleteCampaign).to(DeleteCampaign);
   bind<SendCampaign>(CAMPAIGN_TYPES.SendCampaign).to(SendCampaign);
-  bind<GetSendRecord>(CAMPAIGN_TYPES.GetSendRecord).to(GetSendRecord);
+  bind<GetSend>(CAMPAIGN_TYPES.GetSend).to(GetSend);
+  bind<ListRecipientOutcomes>(CAMPAIGN_TYPES.ListRecipientOutcomes).to(ListRecipientOutcomes);
   bind<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents).to(RecordDeliveryEvents);
 });

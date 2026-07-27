@@ -33,6 +33,8 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [015](ADR-015-public-token-unsubscribe.md) | Public Token Unsubscribe & RFC 8058 List-Unsubscribe | Accepted — implemented |
 | [016](ADR-016-cli-client.md) | A First-Party CLI — an API *client*, not a delivery mechanism | Accepted — implemented |
 | [017](ADR-017-component-owned-collections.md) | Component-Owned Collections & the `<component>_<aggregate>` naming rule | Accepted — implemented |
+| 018 | *(reserved — per-newsletter suppression scoping, in flight)* | Proposed |
+| [019](ADR-019-per-recipient-outcome-documents.md) | Per-Recipient Outcome Documents (splitting the send record) | Accepted — implemented |
 
 ## How to read these
 
