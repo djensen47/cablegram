@@ -5,7 +5,8 @@ import { z } from 'zod';
 import type {
   CampaignDto,
   ListEnvelope,
-  SendRecordDto,
+  SendDto,
+  RecipientOutcomeDto,
   SubscriptionDto,
 } from '../../application/dtos.js';
 import type { CommandContext } from '../context.js';
@@ -270,40 +271,74 @@ export function registerCampaignCommands(program: Command, ctx: () => CommandCon
 
   campaigns
     .command('report <id>')
-    .description('Show a campaign’s send record (per-recipient outcomes)')
-    .option('--failures', 'only bounced, complained, or rejected recipients')
+    .description('Show a campaign’s send: live stats + per-recipient outcomes')
+    .option('--failures', 'only rejected, bounced or complained recipients')
+    .option('--status <status>', 'filter to one outcome status')
+    .option('--limit <n>', 'recipients per page (1-100)', '20')
+    .option('--cursor <cursor>', 'continue from a previous page')
+    .option('--all', 'fetch every page of recipients')
+    .option('--summary', 'stats only — skip the recipient list entirely')
     .action(async (id: string, raw) => {
       const c = ctx();
-      const flags = parseFlags(z.object({ failures: z.boolean().default(false) }), raw);
+      const flags = parseFlags(
+        paginationFlags.extend({
+          failures: z.boolean().default(false),
+          status: z.string().trim().min(1).optional(),
+          summary: z.boolean().default(false),
+        }),
+        raw,
+      );
       const api = await c.api();
-      const record = await api.get<SendRecordDto>(`/v1/campaigns/${encodeURIComponent(id)}/send`);
+      const base = `/v1/campaigns/${encodeURIComponent(id)}`;
 
-      if (c.printer.isJson) {
-        c.printer.data(record);
+      // Two calls now, not one: the send carries submission facts + live stats,
+      // and recipients are a separate paginated resource (they are no longer
+      // inlined — at 18k that was a multi-megabyte response).
+      const send = await api.get<SendDto>(`${base}/send`);
+
+      if (flags.summary) {
+        c.printer.data(send);
+        c.printer.detail(summaryOf(send));
         return;
       }
 
-      c.printer.detail({
-        campaignId: record.campaignId,
-        recipients: record.stats.recipients,
-        accepted: record.stats.accepted,
-        rejected: record.stats.rejected,
-        delivered: record.stats.delivered,
-        bounced: record.stats.bounced,
-        complained: record.stats.complained,
-      });
+      const query = { failuresOnly: flags.failures || undefined, status: flags.status };
+      const recipients = flags.all
+        ? await api.listAll<RecipientOutcomeDto>(`${base}/send/recipients`, query)
+        : (
+            await api.get<ListEnvelope<RecipientOutcomeDto>>(`${base}/send/recipients`, {
+              ...query,
+              limit: flags.limit,
+              cursor: flags.cursor,
+            })
+          ).data;
+
+      if (c.printer.isJson) {
+        c.printer.data({ ...send, recipients });
+        return;
+      }
+
+      c.printer.detail(summaryOf(send));
       c.printer.line();
-
-      const failureStatuses = new Set(['bounced', 'complained', 'rejected', 'failed']);
-      const rows = flags.failures
-        ? record.recipients.filter((r) => failureStatuses.has(r.status))
-        : record.recipients;
-
-      c.printer.table({ data: rows }, [
+      c.printer.table({ data: recipients }, [
         { header: 'address', value: (r) => r.address },
         { header: 'status', value: (r) => r.status },
         { header: 'opens', value: (r) => String(r.opens) },
         { header: 'clicks', value: (r) => String(r.clicks) },
       ]);
     });
+}
+
+/** The stats block shown above a report. */
+function summaryOf(send: SendDto): Record<string, unknown> {
+  return {
+    campaignId: send.campaignId,
+    submittedAt: send.submittedAt,
+    recipients: send.stats.recipients,
+    accepted: send.stats.accepted,
+    rejected: send.stats.rejected,
+    delivered: send.stats.delivered,
+    bounced: send.stats.bounced,
+    complained: send.stats.complained,
+  };
 }

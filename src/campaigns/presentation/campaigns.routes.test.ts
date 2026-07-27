@@ -15,13 +15,17 @@ import {
 import { SUBSCRIPTION_TYPES, InMemorySubscriptionRepository, Subscribe } from '../../subscriptions/index.js';
 import { DELIVERABILITY_TYPES, InMemorySuppressionRepository } from '../../deliverability/index.js';
 import { TEMPLATE_TYPES, InMemoryTemplateRepository, CreateTemplate } from '../../templates/index.js';
-import { CAMPAIGN_TYPES, InMemoryCampaignRepository, InMemorySendRecordRepository } from '../index.js';
+import { CAMPAIGN_TYPES, InMemoryCampaignRepository, InMemorySendRepository,
+  InMemoryRecipientOutcomeRepository } from '../index.js';
 import { TEST_ENV, bearerHeaders } from '../../shared/testing/index.js';
 
 function build() {
   const container: Container = buildContainer(TEST_ENV);
   container.rebind(CAMPAIGN_TYPES.CampaignRepository).to(InMemoryCampaignRepository);
-  container.rebind(CAMPAIGN_TYPES.SendRecordRepository).to(InMemorySendRecordRepository);
+  container.rebind(CAMPAIGN_TYPES.SendRepository).to(InMemorySendRepository);
+  container
+    .rebind(CAMPAIGN_TYPES.RecipientOutcomeRepository)
+    .to(InMemoryRecipientOutcomeRepository);
   container.rebind(NEWSLETTER_TYPES.NewsletterRepository).to(InMemoryNewsletterRepository);
   container.rebind(SUBSCRIPTION_TYPES.SubscriptionRepository).to(InMemorySubscriptionRepository);
   container.rebind(DELIVERABILITY_TYPES.SuppressionRepository).to(InMemorySuppressionRepository);
@@ -171,9 +175,30 @@ describe('campaigns routes', () => {
 
     const after = await app.request(`/v1/campaigns/${created.id}/send`, { headers: auth });
     expect(after.status).toBe(200);
-    const record = (await after.json()) as { recipients: { address: string; status: string }[] };
-    expect(record.recipients).toHaveLength(1);
-    expect(record.recipients[0]?.address).toBe('reader@dispatch.example');
+    // The send carries submission facts + live stats. Recipients are NOT
+    // inlined (ADR-019) — at scale that is a multi-megabyte response.
+    const send = (await after.json()) as {
+      recipientCount: number;
+      stats: { recipients: number };
+      recipients?: unknown;
+    };
+    expect(send.recipientCount).toBe(1);
+    expect(send.stats.recipients).toBe(1);
+    expect(send.recipients).toBeUndefined();
+
+    // They are their own cursor-paginated resource.
+    const listed = await app.request(
+      `/v1/campaigns/${created.id}/send/recipients`,
+      { headers: auth },
+    );
+    expect(listed.status).toBe(200);
+    const page = (await listed.json()) as {
+      data: { address: string; status: string }[];
+      meta: { nextCursor: string | null };
+    };
+    expect(page.data).toHaveLength(1);
+    expect(page.data[0]?.address).toBe('reader@dispatch.example');
+    expect(page.meta.nextCursor).toBeNull();
   });
 
   it('deletes a campaign (204) then 404s a get', async () => {

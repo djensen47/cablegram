@@ -11,7 +11,8 @@ import { NEWSLETTER_TYPES, InMemoryNewsletterRepository, CreateNewsletter } from
 import { SUBSCRIPTION_TYPES, InMemorySubscriptionRepository, Subscribe } from '../../subscriptions/index.js';
 import { DELIVERABILITY_TYPES, InMemorySuppressionRepository } from '../../deliverability/index.js';
 import { TEMPLATE_TYPES, InMemoryTemplateRepository, CreateTemplate } from '../../templates/index.js';
-import { CAMPAIGN_TYPES, InMemoryCampaignRepository, InMemorySendRecordRepository } from '../index.js';
+import { CAMPAIGN_TYPES, InMemoryCampaignRepository, InMemorySendRepository,
+  InMemoryRecipientOutcomeRepository } from '../index.js';
 import { TEST_ENV, bearerHeaders } from '../../shared/testing/index.js';
 
 // This suite needs a known webhook secret for the Basic-Auth assertions; the
@@ -27,7 +28,10 @@ const webhookAuth = {
 function build() {
   const container: Container = buildContainer(env);
   container.rebind(CAMPAIGN_TYPES.CampaignRepository).to(InMemoryCampaignRepository);
-  container.rebind(CAMPAIGN_TYPES.SendRecordRepository).to(InMemorySendRecordRepository);
+  container.rebind(CAMPAIGN_TYPES.SendRepository).to(InMemorySendRepository);
+  container
+    .rebind(CAMPAIGN_TYPES.RecipientOutcomeRepository)
+    .to(InMemoryRecipientOutcomeRepository);
   container.rebind(NEWSLETTER_TYPES.NewsletterRepository).to(InMemoryNewsletterRepository);
   container.rebind(SUBSCRIPTION_TYPES.SubscriptionRepository).to(InMemorySubscriptionRepository);
   container.rebind(DELIVERABILITY_TYPES.SuppressionRepository).to(InMemorySuppressionRepository);
@@ -102,8 +106,7 @@ describe('postmark webhook receiver', () => {
 
     const record = (await (
       await app.request(`/v1/campaigns/${campaignId}/send`, { headers: auth })
-    ).json()) as { recipients: { address: string; status: string }[]; stats: { delivered: number } };
-    expect(record.recipients[0]?.status).toBe('delivered');
+    ).json()) as { stats: { delivered: number } };
     expect(record.stats.delivered).toBe(1);
   });
 

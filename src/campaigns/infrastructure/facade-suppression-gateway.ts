@@ -1,6 +1,6 @@
 import { inject, injectable } from 'inversify';
 import { AddSuppression, DELIVERABILITY_TYPES, FilterSuppressed } from '../../deliverability/index.js';
-import type { SuppressionSignal } from '../domain/send-record.js';
+import type { SuppressionSignal } from '../domain/recipient-outcome.js';
 import type { SuppressionGateway } from '../application/suppression-gateway.js';
 
 /**

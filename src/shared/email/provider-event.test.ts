@@ -64,6 +64,7 @@ describe('parseProviderEvent', () => {
       messageId: '883953f4-6105-42a2-a16a-77a8eac79483',
       occurredAt: new Date('2019-11-05T16:33:54.9070259Z'),
       tag: 'campaign-42',
+      firstEngagement: null,
     });
   });
 
@@ -111,5 +112,48 @@ describe('parseProviderEvent', () => {
   it('accepts an array of events defensively', () => {
     const events = parseProviderEvent([deliveryPayload, spamComplaintPayload, softBouncePayload]);
     expect(events.map((e) => e.type)).toEqual(['delivered', 'spam-complaint']);
+  });
+});
+
+// Regression (ADR-019): the previous implementation matched only the literal
+// 'HardBounce' and silently discarded every other bounce type — including seven
+// Postmark classifies as PERMANENT and has already deactivated. Those addresses
+// stayed un-suppressed and were re-sent on every subsequent campaign.
+describe('bounce classification', () => {
+  const bounce = (type: string): unknown => ({
+    RecordType: 'Bounce',
+    Type: type,
+    Email: 'john@example.com',
+    MessageID: 'm-1',
+    BouncedAt: '2019-11-05T16:33:54Z',
+    Tag: 'campaign-42',
+  });
+
+  it.each(['HardBounce', 'BadEmailAddress', 'Blocked', 'DMARCPolicy', 'SpamNotification'])(
+    'treats %s as permanent',
+    (type) => {
+      const [event] = parseProviderEvent(bounce(type));
+      expect(event?.type).toBe('hard-bounce');
+    },
+  );
+
+  it.each(['Transient', 'SoftBounce', 'DnsError', 'AutoResponder', 'SMTPApiError'])(
+    'drops %s as transient',
+    (type) => {
+      // A full mailbox or a greylisting server is not a reason to suppress.
+      expect(parseProviderEvent(bounce(type))).toEqual([]);
+    },
+  );
+
+  it('carries FirstOpen through as firstEngagement on an Open', () => {
+    const [event] = parseProviderEvent({
+      RecordType: 'Open',
+      FirstOpen: true,
+      Recipient: 'john@example.com',
+      MessageID: 'm-1',
+      ReceivedAt: '2019-11-05T16:33:54Z',
+      Tag: 'campaign-42',
+    });
+    expect(event?.firstEngagement).toBe(true);
   });
 });

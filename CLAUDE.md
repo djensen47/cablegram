@@ -224,6 +224,25 @@ scope.
   guards). Integration-test cleanup uses the constants, never string literals. The integration
   `globalSetup` lives at **`src/integration-setup.ts`**, not `shared/testing/`, because it needs
   `ALL_INDEXES` and a `shared/*` leaf may not import components.
+- **Per-recipient outcomes are their own documents; a webhook is ONE atomic single-document update**
+  ([ADR-019](docs/adrs/ADR-019-per-recipient-outcome-documents.md)). `campaign_sends` holds only the
+  submission facts (written twice: opened, acknowledged); `campaign_recipient_outcomes` holds one doc
+  per recipient, unique on `(sendId, address)`. **Never** reintroduce an embedded `outcomes`/
+  `appliedEvents` array — at 18k recipients that doc was 5.2 MB, blew the 16 MB BSON limit near 100k,
+  cost ~560 GB of I/O per send, and (worst) `replaceOne`'d a whole doc from a stale read so concurrent
+  webhooks **silently lost outcomes**. Writes go through `RecipientOutcomeRepository.applyEvent`, whose
+  guards live in the *filter* (`applied: {$ne: key}` for idempotency, `statusPriority: {$lt: n}` for
+  only-ever-raise) — a plain conditional update, **not** `$max`/aggregation-pipeline, to keep ADR-012's
+  portable subset. There is deliberately **no `update(outcome)`**: read-modify-write is the bug.
+  Domain decides intent (`effectOf` → raise/count/ignore), repository does the atomic write. **Stats
+  are counted on read**, not rewritten per webhook — so a campaign *list* shows send-time snapshot
+  stats while `GET /campaigns/{id}/send` shows live ones; that asymmetry is intentional. Recipients are
+  **not** inlined on the send — they're cursor-paginated at `GET /campaigns/{id}/send/recipients`.
+  `opens`/`clicks` are **totals** (dedupe key includes `occurredAt`; the old `<messageId>:open` key
+  capped them at 1). Bounces suppress by **permanence, not the literal `HardBounce`** — 8 permanent
+  types incl. `BadEmailAddress`/`Blocked`/`DMARCPolicy`; transient ones are still dropped. Atomicity
+  is only provable in the **integration** suite — the in-memory double mirrors the semantics, but a
+  single-threaded double can't catch a lost update.
 - **Postmark wire format** (request/response, webhook schema) is implemented in
   `src/shared/email/postmark-delivery-gateway.ts` and `src/campaigns/presentation/webhook-routes.ts` —
   treat that code (or live docs) as the source of truth, not memory, before restating a Postmark fact

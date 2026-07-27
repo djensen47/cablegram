@@ -28,11 +28,13 @@ import { TEMPLATE_TYPES, InMemoryTemplateRepository, CreateTemplate } from '../.
 import {
   CAMPAIGN_TYPES,
   InMemoryCampaignRepository,
-  InMemorySendRecordRepository,
+  InMemorySendRepository,
+  InMemoryRecipientOutcomeRepository,
   CreateCampaign,
   GetCampaign,
   SendCampaign,
-  GetSendRecord,
+  GetSend,
+  ListRecipientOutcomes,
   RecordDeliveryEvents,
   CampaignNotFoundError,
   CampaignStateError,
@@ -53,7 +55,10 @@ const env = {
 function testContainer(): { container: Container; gateway: InMemoryDeliveryGateway } {
   const container = buildContainer(env);
   container.rebind(CAMPAIGN_TYPES.CampaignRepository).to(InMemoryCampaignRepository);
-  container.rebind(CAMPAIGN_TYPES.SendRecordRepository).to(InMemorySendRecordRepository);
+  container.rebind(CAMPAIGN_TYPES.SendRepository).to(InMemorySendRepository);
+  container
+    .rebind(CAMPAIGN_TYPES.RecipientOutcomeRepository)
+    .to(InMemoryRecipientOutcomeRepository);
   container.rebind(NEWSLETTER_TYPES.NewsletterRepository).to(InMemoryNewsletterRepository);
   container.rebind(SUBSCRIPTION_TYPES.SubscriptionRepository).to(InMemorySubscriptionRepository);
   container.rebind(DELIVERABILITY_TYPES.SuppressionRepository).to(InMemorySuppressionRepository);
@@ -281,10 +286,10 @@ describe('campaigns — the send integrator', () => {
         .get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents)
         .execute(fixtures(campaignId));
 
-      const record = await container
-        .get<GetSendRecord>(CAMPAIGN_TYPES.GetSendRecord)
-        .execute(campaignId);
-      const byAddress = Object.fromEntries(record.outcomes.map((o) => [o.address, o.status]));
+      const rows = await container
+        .get<ListRecipientOutcomes>(CAMPAIGN_TYPES.ListRecipientOutcomes)
+        .execute({ campaignId, limit: 100 });
+      const byAddress = Object.fromEntries(rows.map((o) => [o.address, o.status]));
       expect(byAddress['keep1@dispatch.example']).toBe('delivered');
       expect(byAddress['keep2@dispatch.example']).toBe('bounced');
 
@@ -294,9 +299,10 @@ describe('campaigns — the send integrator', () => {
         .execute(['keep2@dispatch.example']);
       expect(stillSuppressed).toEqual(['keep2@dispatch.example']);
 
-      // The campaign's aggregate stats reflect the record.
-      const campaign = await container.get<GetCampaign>(CAMPAIGN_TYPES.GetCampaign).execute(campaignId);
-      expect(campaign.stats).toMatchObject({ recipients: 2, delivered: 1, bounced: 1 });
+      // Live stats are counted from the outcomes when the send is read — they
+      // are no longer rewritten onto the campaign by every webhook (ADR-019).
+      const { stats } = await container.get<GetSend>(CAMPAIGN_TYPES.GetSend).execute(campaignId);
+      expect(stats).toMatchObject({ recipients: 2, delivered: 1, bounced: 1 });
     });
 
     it('is idempotent under duplicate / out-of-order delivery', async () => {
@@ -307,12 +313,13 @@ describe('campaigns — the send integrator', () => {
       await record.execute(payload);
       await record.execute(payload); // duplicate delivery
 
-      const after = await container.get<GetSendRecord>(CAMPAIGN_TYPES.GetSendRecord).execute(campaignId);
-      const bounced = after.outcomes.filter((o) => o.status === 'bounced');
-      expect(bounced).toHaveLength(1);
+      const after = await container
+        .get<ListRecipientOutcomes>(CAMPAIGN_TYPES.ListRecipientOutcomes)
+        .execute({ campaignId, limit: 100 });
+      expect(after.filter((o) => o.status === 'bounced')).toHaveLength(1);
 
-      const campaign = await container.get<GetCampaign>(CAMPAIGN_TYPES.GetCampaign).execute(campaignId);
-      expect(campaign.stats).toMatchObject({ delivered: 1, bounced: 1, complained: 0 });
+      const { stats } = await container.get<GetSend>(CAMPAIGN_TYPES.GetSend).execute(campaignId);
+      expect(stats).toMatchObject({ delivered: 1, bounced: 1, complained: 0 });
     });
 
     it('excludes a newly-suppressed address from a subsequent send', async () => {
@@ -362,7 +369,10 @@ describe('campaigns — per-recipient List-Unsubscribe headers (ADR-015)', () =>
       ...extraEnv,
     } as NodeJS.ProcessEnv);
     container.rebind(CAMPAIGN_TYPES.CampaignRepository).to(InMemoryCampaignRepository);
-    container.rebind(CAMPAIGN_TYPES.SendRecordRepository).to(InMemorySendRecordRepository);
+    container.rebind(CAMPAIGN_TYPES.SendRepository).to(InMemorySendRepository);
+  container
+    .rebind(CAMPAIGN_TYPES.RecipientOutcomeRepository)
+    .to(InMemoryRecipientOutcomeRepository);
     container.rebind(NEWSLETTER_TYPES.NewsletterRepository).to(InMemoryNewsletterRepository);
     container.rebind(SUBSCRIPTION_TYPES.SubscriptionRepository).to(InMemorySubscriptionRepository);
     container.rebind(DELIVERABILITY_TYPES.SuppressionRepository).to(InMemorySuppressionRepository);

@@ -8,10 +8,12 @@ import { EMAIL_TYPES, type DeliveryGateway, type EmailHeader } from '../../share
 import { PUBLIC_UNSUBSCRIBE_PATH } from '../../subscriptions/index.js';
 import { CAMPAIGN_TYPES } from '../types.js';
 import type { Campaign, CampaignId } from '../domain/campaign.js';
-import { SendRecord } from '../domain/send-record.js';
+import { Send } from '../domain/send.js';
+import { RecipientOutcome } from '../domain/recipient-outcome.js';
 import { CampaignNotFoundError, CampaignNewsletterNotFoundError } from '../domain/errors.js';
 import type { CampaignRepository } from './campaign-repository.js';
-import type { SendRecordRepository } from './send-record-repository.js';
+import type { SendRepository } from './send-repository.js';
+import type { RecipientOutcomeRepository } from './recipient-outcome-repository.js';
 import type { NewsletterGateway } from './newsletter-gateway.js';
 import type { RecipientResolver } from './recipient-resolver.js';
 import type { SuppressionGateway } from './suppression-gateway.js';
@@ -39,8 +41,10 @@ export class SendCampaign {
   constructor(
     @inject(CAMPAIGN_TYPES.CampaignRepository)
     private readonly campaigns: CampaignRepository,
-    @inject(CAMPAIGN_TYPES.SendRecordRepository)
-    private readonly sendRecords: SendRecordRepository,
+    @inject(CAMPAIGN_TYPES.SendRepository)
+    private readonly sends: SendRepository,
+    @inject(CAMPAIGN_TYPES.RecipientOutcomeRepository)
+    private readonly outcomes: RecipientOutcomeRepository,
     @inject(CAMPAIGN_TYPES.NewsletterGateway)
     private readonly newsletters: NewsletterGateway,
     @inject(CAMPAIGN_TYPES.RecipientResolver)
@@ -85,16 +89,30 @@ export class SendCampaign {
     // leaves the campaign editable.
     const message = await this.renderer.render(campaign.contentRef(), {});
 
-    const addresses = allowed.map((r) => r.address);
     const sendId = newId();
-    // Durable record opened BEFORE the provider call (crash recovery).
-    const record = SendRecord.create({
+    const now = this.clock.now();
+    // Durable ledger opened BEFORE the provider call (crash recovery). The send
+    // document holds the submission facts; each recipient gets its own row, so
+    // webhooks can later update one document apiece instead of rewriting a
+    // multi-megabyte embedded array (ADR-019).
+    const send = Send.create({
       id: sendId,
       campaignId: campaign.id,
-      addresses,
-      now: this.clock.now(),
+      recipientCount: allowed.length,
+      now,
     });
-    await this.sendRecords.create(record);
+    await this.sends.create(send);
+    await this.outcomes.createMany(
+      allowed.map((r) =>
+        RecipientOutcome.create({
+          id: newId(),
+          sendId,
+          campaignId: campaign.id,
+          address: r.address,
+          now,
+        }),
+      ),
+    );
 
     // Persist `sending` BEFORE the provider call (ADR-008).
     campaign.markSending(sendId, this.clock.now());
@@ -125,11 +143,17 @@ export class SendCampaign {
         // Async bulk submit: record the request id + submission time; the
         // gated recipients become `accepted`. Per-recipient outcomes arrive
         // later via webhooks (ADR-008).
-        record.markSubmitted(ack.bulkRequestId, new Date(ack.submittedAt), this.clock.now());
-        await this.sendRecords.update(record);
+        send.markSubmitted(ack.bulkRequestId, new Date(ack.submittedAt), this.clock.now());
+        await this.sends.update(send);
+        // One bulk update raises every still-`pending` recipient to `accepted`.
+        await this.outcomes.markAccepted(sendId, this.clock.now());
       }
 
-      campaign.markSent(record.stats(), this.clock.now());
+      // The snapshot stored on the campaign is the send-time picture
+      // (recipients / accepted / rejected). Delivery outcomes arrive later by
+      // webhook and are counted from the outcomes collection on read, rather
+      // than rewritten onto the campaign ~50k times per send (ADR-019).
+      campaign.markSent(await this.outcomes.stats(sendId), this.clock.now());
       await this.campaigns.update(campaign);
       return campaign;
     } catch (err) {

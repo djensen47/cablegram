@@ -57,7 +57,7 @@ export class CampaignContentError extends CampaignError {
 }
 
 /** No send record exists for the campaign yet (it has never been sent). */
-export class SendRecordNotFoundError extends CampaignError {
+export class SendNotFoundError extends CampaignError {
   constructor(readonly campaignId: string) {
     super(`No send record for campaign: ${campaignId}`);
   }

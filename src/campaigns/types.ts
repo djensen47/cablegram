@@ -8,7 +8,9 @@
  */
 export const CAMPAIGN_TYPES = {
   CampaignRepository: Symbol.for('CampaignRepository'),
-  SendRecordRepository: Symbol.for('SendRecordRepository'),
+  SendRepository: Symbol.for('SendRepository'),
+  /** Per-recipient outcomes — one document each, atomic updates (ADR-019). */
+  RecipientOutcomeRepository: Symbol.for('RecipientOutcomeRepository'),
   /** Consumer-owned port over the `newsletters` facade (existence + sender identity). */
   NewsletterGateway: Symbol.for('CampaignsNewsletterGateway'),
   /** Consumer-owned port over the `subscriptions` facade (gate 1: subscribed recipients). */
@@ -23,6 +25,7 @@ export const CAMPAIGN_TYPES = {
   UpdateCampaign: Symbol.for('UpdateCampaign'),
   DeleteCampaign: Symbol.for('DeleteCampaign'),
   SendCampaign: Symbol.for('SendCampaign'),
-  GetSendRecord: Symbol.for('GetSendRecord'),
+  GetSend: Symbol.for('GetSend'),
+  ListRecipientOutcomes: Symbol.for('ListRecipientOutcomes'),
   RecordDeliveryEvents: Symbol.for('RecordDeliveryEvents'),
 } as const;
