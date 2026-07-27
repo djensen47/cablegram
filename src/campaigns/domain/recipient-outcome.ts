@@ -107,9 +107,20 @@ export type OutcomeEffect =
   | { readonly kind: 'count'; readonly field: 'opens' | 'clicks' }
   | { readonly kind: 'ignore' };
 
+/**
+ * A per-newsletter membership status change (ADR-018). Distinct from
+ * {@link SuppressionSignal}, and that distinction is the point: a bounce is a
+ * fact about the **address** and goes on the global list; a complaint is a fact
+ * about **this newsletter** and must not.
+ */
+export type SubscriptionOutcomeSignal = 'bounced' | 'complained';
+
 export interface EventEffect {
   readonly effect: OutcomeEffect;
+  /** The **global**, address-keyed deny list. Permanent bounces only. */
   readonly suppress: SuppressionSignal | null;
+  /** The **per-newsletter** membership status. Bounces and complaints both. */
+  readonly subscription: SubscriptionOutcomeSignal | null;
   /**
    * The key that makes this event idempotent, or `null` if it should not be
    * deduped at all.
@@ -142,18 +153,26 @@ export function effectOf(event: DeliveryEventInput): EventEffect {
       return {
         effect: { kind: 'raise', status: 'delivered' },
         suppress: null,
+        subscription: null,
         dedupeKey: `${keyBase}:delivered`,
       };
     case 'hard-bounce':
+      // BOTH: the mailbox is dead for everyone (global list), and this
+      // newsletter's membership records the observed failure (ADR-018).
       return {
         effect: { kind: 'raise', status: 'bounced' },
         suppress: { address: event.address, reason: 'hard-bounce' },
+        subscription: 'bounced',
         dedupeKey: `${keyBase}:hard-bounce`,
       };
     case 'spam-complaint':
+      // Per-newsletter ONLY. A complaint about one publication is not a
+      // statement about every publication the operator runs, so it must never
+      // reach the global deny list (ADR-018).
       return {
         effect: { kind: 'raise', status: 'complained' },
-        suppress: { address: event.address, reason: 'spam-complaint' },
+        suppress: null,
+        subscription: 'complained',
         dedupeKey: `${keyBase}:spam-complaint`,
       };
     case 'open':
@@ -162,6 +181,7 @@ export function effectOf(event: DeliveryEventInput): EventEffect {
       return {
         effect: { kind: 'count', field },
         suppress: null,
+        subscription: null,
         dedupeKey:
           event.occurredAt === null
             ? null
@@ -171,7 +191,7 @@ export function effectOf(event: DeliveryEventInput): EventEffect {
     default:
       // An unrecognized type changes nothing. Not an error: Postmark adds
       // record types over time and the receiver must keep succeeding (ADR-008).
-      return { effect: { kind: 'ignore' }, suppress: null, dedupeKey: null };
+      return { effect: { kind: 'ignore' }, suppress: null, subscription: null, dedupeKey: null };
   }
 }
 

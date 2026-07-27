@@ -13,6 +13,7 @@ import {
 } from '../../newsletters/index.js';
 import {
   SUBSCRIPTION_TYPES,
+  ListSubscriptions,
   InMemorySubscriptionRepository,
   Subscribe,
   PublicUnsubscribe,
@@ -68,9 +69,9 @@ function testContainer(): { container: Container; gateway: InMemoryDeliveryGatew
   return { container, gateway };
 }
 
-async function seedNewsletter(container: Container): Promise<string> {
+async function seedNewsletter(container: Container, name = 'The Weekly Dispatch'): Promise<string> {
   const newsletter = await container.get<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter).execute({
-    name: 'The Weekly Dispatch',
+    name,
     fromName: 'Dispatch Editors',
     fromEmail: 'editors@dispatch.example',
   });
@@ -303,6 +304,86 @@ describe('campaigns — the send integrator', () => {
       // are no longer rewritten onto the campaign by every webhook (ADR-019).
       const { stats } = await container.get<GetSend>(CAMPAIGN_TYPES.GetSend).execute(campaignId);
       expect(stats).toMatchObject({ recipients: 2, delivered: 1, bounced: 1 });
+    });
+
+    // ADR-018: a provider event has TWO different consequences and they must
+    // not be conflated. These four tests are the whole scoping rule.
+    describe('suppression scope (ADR-018)', () => {
+      const complaint = (campaignId: string): unknown => ({
+        RecordType: 'SpamComplaint',
+        Email: 'keep1@dispatch.example',
+        MessageID: 'in-memory-1-0',
+        BouncedAt: '2026-07-20T10:02:00Z',
+        Tag: campaignId,
+      });
+
+      it('does NOT globally suppress a spam complaint', async () => {
+        const campaignId = await sendToTwo();
+
+        await container
+          .get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents)
+          .execute(complaint(campaignId));
+
+        // A complaint about ONE newsletter is not a statement about every
+        // publication the operator runs. It must never reach the global list.
+        const suppressed = await container
+          .get<FilterSuppressed>(DELIVERABILITY_TYPES.FilterSuppressed)
+          .execute(['keep1@dispatch.example']);
+        expect(suppressed).toEqual([]);
+      });
+
+      it('marks the complainer `complained` on that newsletter only', async () => {
+        const campaignId = await sendToTwo();
+
+        await container
+          .get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents)
+          .execute(complaint(campaignId));
+
+        const rows = await container
+          .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+          .execute({ newsletterId, limit: 50 });
+        const byAddress = Object.fromEntries(rows.map((r) => [r.email, r.status]));
+        expect(byAddress['keep1@dispatch.example']).toBe('complained');
+        // The other subscriber is untouched.
+        expect(byAddress['keep2@dispatch.example']).toBe('subscribed');
+      });
+
+      it('a hard bounce does BOTH: global suppression + per-newsletter status', async () => {
+        const campaignId = await sendToTwo();
+
+        await container
+          .get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents)
+          .execute(fixtures(campaignId));
+
+        // A dead mailbox is dead for everyone — the address-level fact.
+        const suppressed = await container
+          .get<FilterSuppressed>(DELIVERABILITY_TYPES.FilterSuppressed)
+          .execute(['keep2@dispatch.example']);
+        expect(suppressed).toEqual(['keep2@dispatch.example']);
+
+        // AND the observed failure on this newsletter, which is the fast filter.
+        const rows = await container
+          .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+          .execute({ newsletterId, limit: 50 });
+        const byAddress = Object.fromEntries(rows.map((r) => [r.email, r.status]));
+        expect(byAddress['keep2@dispatch.example']).toBe('bounced');
+      });
+
+      it('leaves a second newsletter untouched by a complaint on the first', async () => {
+        const other = await seedNewsletter(container, 'Other Dispatch');
+        await subscribe(container, other, 'keep1@dispatch.example');
+        const campaignId = await sendToTwo();
+
+        await container
+          .get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents)
+          .execute(complaint(campaignId));
+
+        // The founding rule: one newsletter is independent of another.
+        const rows = await container
+          .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+          .execute({ newsletterId: other, limit: 50 });
+        expect(rows[0]?.status).toBe('subscribed');
+      });
     });
 
     it('is idempotent under duplicate / out-of-order delivery', async () => {

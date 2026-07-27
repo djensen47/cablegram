@@ -36,7 +36,7 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
   subs
     .command('list <newsletterId>', { isDefault: true })
     .description('List a newsletter’s subscriptions')
-    .option('--status <status>', 'pending | subscribed | unsubscribed')
+    .option('--status <status>', 'pending | subscribed | unsubscribed | bounced | complained')
     .option('--tag <tag>', 'only subscriptions carrying this tag')
     .option('--limit <n>', 'page size (1-100)', '20')
     .option('--cursor <cursor>', 'continue from a previous page')
@@ -45,7 +45,7 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
       const c = ctx();
       const flags = parseFlags(
         paginationFlags.extend({
-          status: z.enum(['pending', 'subscribed', 'unsubscribed']).optional(),
+          status: z.enum(['pending', 'subscribed', 'unsubscribed', 'bounced', 'complained']).optional(),
           tag: z.string().trim().min(1).max(64).optional(),
         }),
         raw,

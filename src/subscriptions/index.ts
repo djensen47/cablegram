@@ -49,6 +49,10 @@ export type { SubscribeInput, ListSubscriptionsInput } from './application/dtos.
 export { Subscribe } from './application/subscribe.js';
 export { ConfirmSubscription } from './application/confirm-subscription.js';
 export { Unsubscribe } from './application/unsubscribe.js';
+export {
+  MarkSubscriptionOutcome,
+  type SubscriptionOutcome,
+} from './application/mark-subscription-outcome.js';
 export { PublicUnsubscribe } from './application/public-unsubscribe.js';
 export { ListSubscriptions } from './application/list-subscriptions.js';
 export { ResolveRecipients } from './application/resolve-recipients.js';
