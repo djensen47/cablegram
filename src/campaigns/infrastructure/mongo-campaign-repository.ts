@@ -1,7 +1,7 @@
 import { inject, injectable } from 'inversify';
 import type { Collection, Db, Filter } from 'mongodb';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
-import { COLLECTIONS } from '../../shared/persistence/index.js';
+import { CAMPAIGN_COLLECTIONS } from './collections.js';
 import { Campaign, type CampaignId, type CampaignStats, type CampaignStatus } from '../domain/campaign.js';
 import type {
   CampaignRepository,
@@ -43,7 +43,7 @@ export class MongoCampaignRepository implements CampaignRepository {
   private readonly collection: Collection<CampaignDoc>;
 
   constructor(@inject(SHARED_TYPES.MongoDb) db: Db) {
-    this.collection = db.collection<CampaignDoc>(COLLECTIONS.campaigns);
+    this.collection = db.collection<CampaignDoc>(CAMPAIGN_COLLECTIONS.campaigns);
   }
 
   async create(campaign: Campaign): Promise<void> {

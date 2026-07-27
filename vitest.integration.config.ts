@@ -11,7 +11,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.integration.test.ts'],
-    globalSetup: ['./src/shared/testing/global-setup.ts'],
+    globalSetup: ['./src/integration-setup.ts'],
     // `mongodb-memory-server` downloads the `mongod` binary on first run
     // (cached afterwards) and starting it takes a few seconds; the default 5s
     // hook/test timeouts are too tight for that.

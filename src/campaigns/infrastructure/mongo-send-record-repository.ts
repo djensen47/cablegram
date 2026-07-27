@@ -1,7 +1,7 @@
 import { inject, injectable } from 'inversify';
 import type { Collection, Db } from 'mongodb';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
-import { COLLECTIONS } from '../../shared/persistence/index.js';
+import { CAMPAIGN_COLLECTIONS } from './collections.js';
 import { SendRecord, type RecipientOutcome, type SendRecordId } from '../domain/send-record.js';
 import type { SendRecordRepository } from '../application/send-record-repository.js';
 
@@ -34,7 +34,7 @@ export class MongoSendRecordRepository implements SendRecordRepository {
   private readonly collection: Collection<SendRecordDoc>;
 
   constructor(@inject(SHARED_TYPES.MongoDb) db: Db) {
-    this.collection = db.collection<SendRecordDoc>(COLLECTIONS.sendRecords);
+    this.collection = db.collection<SendRecordDoc>(CAMPAIGN_COLLECTIONS.sendRecords);
   }
 
   async create(record: SendRecord): Promise<void> {

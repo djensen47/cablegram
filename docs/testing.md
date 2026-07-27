@@ -41,7 +41,7 @@ Both were realistic options. Picked `mongodb-memory-server`:
 
 - `src/shared/testing/` — a genuine `shared/*` leaf module (ADR-005 #4: it imports no domain component),
   never imported by production code. `mongo-memory.ts` starts the standalone `mongod`.
-- `src/shared/testing/global-setup.ts` — a Vitest [`globalSetup`](https://vitest.dev/config/#globalsetup)
+- `src/integration-setup.ts` — a Vitest [`globalSetup`](https://vitest.dev/config/#globalsetup)
   hook, wired only into `vitest.integration.config.ts`. Starts **one** standalone `mongod` for the
   whole integration run (booting one costs a few seconds; sharing it across every contract test file
   avoids paying that per file), creates the indexes on it once via `ensureIndexes` (`shared/persistence`
@@ -49,6 +49,12 @@ Both were realistic options. Picked `mongodb-memory-server`:
   connection string to every test file via Vitest's `provide`/`inject` — not an environment variable,
   so it stays type-checked at both ends
   (`declare module 'vitest' { interface ProvidedContext { mongoUri: string } }`).
+
+  It sits in `src/`, **not** in `shared/testing/` alongside the rest, because it needs `ALL_INDEXES`
+  from `src/indexes.ts`, which imports every component facade — a `shared/*` leaf may not
+  (ADR-005 #4, [ADR-017](adrs/ADR-017-component-owned-collections.md)). At `src/` it is an `app`
+  element like `server.ts` and `function.ts`, which is exactly what it is. The payoff is that the
+  integration suite creates the **real** index set rather than a copy that could drift from production.
 - Each `*.integration.test.ts` file builds its **own** `MongoClient` from `inject('mongoUri')`,
   constructs the repository under test directly with the connected `Db` (`new MongoXRepository(db)` —
   no DI container needed, the class doesn't require one to be instantiated), and truncates its

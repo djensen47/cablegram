@@ -1,7 +1,7 @@
 import { inject, injectable } from 'inversify';
 import type { Collection, Db, Filter } from 'mongodb';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
-import { COLLECTIONS } from '../../shared/persistence/index.js';
+import { SUBSCRIPTION_COLLECTIONS } from './collections.js';
 import {
   Subscription,
   type MergeFields,
@@ -44,7 +44,7 @@ export class MongoSubscriptionRepository implements SubscriptionRepository {
   private readonly collection: Collection<SubscriptionDoc>;
 
   constructor(@inject(SHARED_TYPES.MongoDb) db: Db) {
-    this.collection = db.collection<SubscriptionDoc>(COLLECTIONS.subscriptions);
+    this.collection = db.collection<SubscriptionDoc>(SUBSCRIPTION_COLLECTIONS.subscriptions);
   }
 
   async create(subscription: Subscription): Promise<void> {

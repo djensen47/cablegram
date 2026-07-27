@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vi
 import { newId } from '../../shared/ids/index.js';
 import { SendRecord } from '../domain/send-record.js';
 import { MongoSendRecordRepository } from './mongo-send-record-repository.js';
+import { CAMPAIGN_COLLECTIONS } from './collections.js';
 
 describe('MongoSendRecordRepository (contract)', () => {
   let client: MongoClient;
@@ -19,7 +20,7 @@ describe('MongoSendRecordRepository (contract)', () => {
   });
 
   afterEach(async () => {
-    await db.collection('send_records').deleteMany({});
+    await db.collection(CAMPAIGN_COLLECTIONS.sendRecords).deleteMany({});
   });
 
   afterAll(async () => {

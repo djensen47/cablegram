@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vi
 import { newId } from '../../shared/ids/index.js';
 import { Subscription } from '../domain/subscription.js';
 import { MongoSubscriptionRepository } from './mongo-subscription-repository.js';
+import { SUBSCRIPTION_COLLECTIONS } from './collections.js';
 
 describe('MongoSubscriptionRepository (contract)', () => {
   let client: MongoClient;
@@ -20,7 +21,7 @@ describe('MongoSubscriptionRepository (contract)', () => {
   });
 
   afterEach(async () => {
-    await db.collection('subscriptions').deleteMany({});
+    await db.collection(SUBSCRIPTION_COLLECTIONS.subscriptions).deleteMany({});
   });
 
   afterAll(async () => {

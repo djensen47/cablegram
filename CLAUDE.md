@@ -82,6 +82,11 @@ suffices (proven by the standalone integration suite). One pooled `MongoClient`/
 (ADR-009); the app creates its own indexes at startup via `ensureIndexes` (`shared/persistence`) —
 there is no `prisma generate`/`db push`. The repository is the swap seam.
 
+**Each component owns its collections** ([ADR-017](docs/adrs/ADR-017-component-owned-collections.md)):
+names + index specs live in `<component>/infrastructure/collections.ts` and are exported from the
+facade; `src/indexes.ts` concatenates them into `ALL_INDEXES`. `ensureIndexes(db, specs)` knows **no**
+collection name — don't reintroduce a shared registry.
+
 ## Sending & events ([ADR-008](docs/adrs/ADR-008-email-delivery-postmark.md))
 
 - **Send:** `campaigns` resolves recipients (`subscriptions`), **filters against `deliverability`**
@@ -204,6 +209,21 @@ scope.
   only `email`/`tags` match case-insensitively. Nothing in `app.ts`/`server.ts`/`function.ts` imports
   `src/cli/`, so the function bundle is unchanged — keep it that way. A REPL/TUI is **not** in scope:
   a CLI is a client, a TUI is a product surface and would need its own ADR.
+- **Collections are `<singular component>_<aggregate>`, owned by one component**
+  ([ADR-017](docs/adrs/ADR-017-component-owned-collections.md)). `newsletter_newsletters`,
+  `subscription_subscriptions`, `template_templates`, `campaign_campaigns`, `campaign_send_records`,
+  `deliverability_suppressions`, `account_users`, `account_refresh_tokens`, `account_one_time_tokens`.
+  The convention is applied **uniformly, stutter included** — a rule with no exceptions beats four
+  avoided repetitions, and it means an anonymous name in a shell/slow-query log/backup always names its
+  owning context. Names + index specs live in `<component>/infrastructure/collections.ts`, exported from
+  the facade; `src/indexes.ts` concatenates them (app-level assembly, same spirit as `app.ts` mounting
+  routers). **`shared/persistence` knows no collection name** — it owns only the mechanism, which is what
+  makes it a true leaf; the old `shared/persistence/collections.ts` is deleted, don't bring it back.
+  Adding a collection means: declare it in the component, add one line to `src/indexes.ts` — and
+  `src/indexes.test.ts` fails if you forget (silently unindexed collections are the failure mode it
+  guards). Integration-test cleanup uses the constants, never string literals. The integration
+  `globalSetup` lives at **`src/integration-setup.ts`**, not `shared/testing/`, because it needs
+  `ALL_INDEXES` and a `shared/*` leaf may not import components.
 - **Postmark wire format** (request/response, webhook schema) is implemented in
   `src/shared/email/postmark-delivery-gateway.ts` and `src/campaigns/presentation/webhook-routes.ts` —
   treat that code (or live docs) as the source of truth, not memory, before restating a Postmark fact

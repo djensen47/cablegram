@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vi
 import { newId } from '../../shared/ids/index.js';
 import { Template } from '../domain/template.js';
 import { MongoTemplateRepository } from './mongo-template-repository.js';
+import { TEMPLATE_COLLECTIONS } from './collections.js';
 
 describe('MongoTemplateRepository (contract)', () => {
   let client: MongoClient;
@@ -19,7 +20,7 @@ describe('MongoTemplateRepository (contract)', () => {
   });
 
   afterEach(async () => {
-    await db.collection('templates').deleteMany({});
+    await db.collection(TEMPLATE_COLLECTIONS.templates).deleteMany({});
   });
 
   afterAll(async () => {

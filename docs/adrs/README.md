@@ -32,6 +32,7 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [014](ADR-014-passwordless-magic-link-login.md) | Passwordless Magic-Link Login | Accepted — implemented |
 | [015](ADR-015-public-token-unsubscribe.md) | Public Token Unsubscribe & RFC 8058 List-Unsubscribe | Accepted — implemented |
 | [016](ADR-016-cli-client.md) | A First-Party CLI — an API *client*, not a delivery mechanism | Accepted — implemented |
+| [017](ADR-017-component-owned-collections.md) | Component-Owned Collections & the `<component>_<aggregate>` naming rule | Accepted — implemented |
 
 ## How to read these
 

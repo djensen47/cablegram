@@ -4,6 +4,7 @@ import type { Db, MongoClient } from 'mongodb';
 import { buildContainer, TYPES } from './shared/di/index.js';
 import type { AppConfig } from './shared/config/index.js';
 import { ensureIndexes } from './shared/persistence/index.js';
+import { ALL_INDEXES } from './indexes.js';
 import { createApp } from './app.js';
 
 // Node-server entrypoint — used under Docker / DigitalOcean App Platform
@@ -24,7 +25,7 @@ const { port } = container.get<AppConfig>(TYPES.Config);
 // requests) and materialize the indexes the repositories rely on (ADR-012:
 // the native driver has no `prisma db push`, so the app owns index creation).
 await container.get<MongoClient>(TYPES.MongoClient).connect();
-await ensureIndexes(container.get<Db>(TYPES.MongoDb));
+await ensureIndexes(container.get<Db>(TYPES.MongoDb), ALL_INDEXES);
 
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`cablegram listening on :${info.port}`);
