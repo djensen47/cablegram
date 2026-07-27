@@ -36,7 +36,7 @@ Shared: `email` (Postmark ACL) · `auth` (JWT + generic opaque-token helpers) ·
 
 ```
 campaigns     → { newsletters, subscriptions, deliverability, templates, email }
-subscriptions → { newsletters }
+subscriptions → { newsletters, deliverability }   (deliverability only for imported hard bounces, ADR-022)
 newsletters   → { templates }        (only if it names a default template)
 accounts      → { shared/* only }    (user accounts + auth; depends on no domain component)
 deliverability, templates, email, auth, shared/* → leaves
@@ -298,6 +298,26 @@ scope.
   and `Subscribe` are on an explicit **ignore list** — deliberate drops (ADR-020), so recording them
   would be noise. Classification stays in the `shared/email` leaf (one place decides what we handle);
   the write stays in `campaigns` (a leaf owns no repository).
+- **Import ≠ subscribe, and `--on-conflict` has exactly two modes**
+  ([ADR-022](docs/adrs/ADR-022-subscriber-import.md)). `Subscribe` derives status from `doubleOptIn`,
+  so it can only ever make `pending`/`subscribed` — structurally unable to carry a migration.
+  `Subscription.import()` + the `ImportSubscriptions` use case take the status **verbatim** across the
+  whole vocabulary and preserve the source system's opt-in date as `createdAt` (the consent record).
+  **An import sends no mail, ever** — not even for `pending` rows; the use case has **no
+  `DeliveryGateway`**, which is the point. `POST /v1/newsletters/{id}/subscriptions/import` takes up to
+  1000 rows/batch (CLI batches 500, one `Idempotency-Key` per batch derived from file+index so a resume
+  replays). One batch = one indexed read (`findByNewsletterAndEmails`) + one `saveMany` bulk write —
+  batches of **independent single-document ops**, still no transactions (ADR-012). **`--on-conflict` is
+  `skip` (default) or `overwrite`. THERE IS NO MERGE** — a mode that is neither "leave the row alone"
+  nor "the file is the truth" can't be described in one sentence, so the conservative choice is the
+  *default*, not a third blended behaviour; don't reintroduce one. An imported **`bounced` ALWAYS goes
+  on the global suppression list** (no flag) — that's the ADR-018 mailbox-fact rule and it's driven by
+  the **file, not by `onConflict`** (a skipped row's mailbox is no less dead); an imported
+  **`complained` never does**. That write is why the DAG gained `subscriptions → deliverability`
+  (consumer-owned `SuppressionGateway`, reason pinned to `hard-bounce` in the adapter so a complaint
+  can't be routed onto the global list). CSV reserved columns are now `email`/`tags`/`status`/
+  `subscribedAt` (case-insensitive); everything else is still a merge field with casing preserved. An
+  unknown `status` **fails the row** — never defaulted. `--no-double-opt-in` is gone from `import`.
 - **Postmark wire format** (request/response, webhook schema) is implemented in
   `src/shared/email/postmark-delivery-gateway.ts` and `src/campaigns/presentation/webhook-routes.ts` —
   treat that code (or live docs) as the source of truth, not memory, before restating a Postmark fact
