@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CsvError, parseCsv } from './csv.js';
-import { toSubscribeBody } from './commands/subscriptions.js';
+import { toImportRow } from './commands/subscriptions.js';
 
 /**
  * The import path is the one place a CLI bug silently corrupts an operator's
@@ -61,54 +61,99 @@ describe('parseCsv', () => {
   });
 });
 
-describe('toSubscribeBody', () => {
+describe('toImportRow', () => {
   it('splits tags on semicolons, not commas', () => {
     // A comma would collide with the CSV delimiter — the exact paper cut that
     // makes an import quietly wrong.
-    const { body } = toSubscribeBody({ email: 'a@example.com', tags: 'vip; beta ;' });
+    const { row } = toImportRow({ email: 'a@example.com', tags: 'vip; beta ;' });
 
-    expect(body.tags).toEqual(['vip', 'beta']);
+    expect(row.tags).toEqual(['vip', 'beta']);
   });
 
   it('maps every other column into mergeFields', () => {
-    const { body } = toSubscribeBody({
+    const { row } = toImportRow({
       email: 'a@example.com',
       firstname: 'Ada',
       city: '',
     });
 
     // Empty cells are dropped rather than stored as empty strings.
-    expect(body.mergeFields).toEqual({ firstname: 'Ada' });
+    expect(row.mergeFields).toEqual({ firstname: 'Ada' });
   });
 
   it('preserves merge-field casing so {{firstName}} keeps working', () => {
     // Regression: lowercasing headers made a `firstName` column arrive as
     // `firstname`, silently breaking every {{firstName}} placeholder in a
     // template — a failure that only shows up in already-sent mail.
-    const { body } = toSubscribeBody({ email: 'a@example.com', firstName: 'Ada' });
+    const { row } = toImportRow({ email: 'a@example.com', firstName: 'Ada' });
 
-    expect(body.mergeFields).toEqual({ firstName: 'Ada' });
+    expect(row.mergeFields).toEqual({ firstName: 'Ada' });
   });
 
   it('still matches the reserved columns case-insensitively', () => {
-    const { body } = toSubscribeBody({ Email: 'a@example.com', Tags: 'vip' });
+    const { row } = toImportRow({
+      Email: 'a@example.com',
+      Tags: 'vip',
+      Status: 'unsubscribed',
+      SubscribedAt: '2019-04-02',
+    });
 
-    expect(body.email).toBe('a@example.com');
-    expect(body.tags).toEqual(['vip']);
+    expect(row.email).toBe('a@example.com');
+    expect(row.tags).toEqual(['vip']);
+    expect(row.status).toBe('unsubscribed');
+    expect(row.subscribedAt).toBe('2019-04-02T00:00:00.000Z');
     // The reserved columns must not leak into merge fields under their
     // original casing either.
-    expect(body.mergeFields).toBeUndefined();
+    expect(row.mergeFields).toBeUndefined();
   });
 
   it('flags an invalid address instead of sending it', () => {
-    const row = toSubscribeBody({ email: 'not-an-email' });
+    const parsed = toImportRow({ email: 'not-an-email' });
 
-    expect(row.error).toMatch(/not a valid email/);
+    expect(parsed.error).toMatch(/not a valid email/);
   });
 
-  it('omits tags and mergeFields entirely when there are none', () => {
-    const { body } = toSubscribeBody({ email: 'a@example.com' });
+  it('omits everything optional when the row carries none of it', () => {
+    const { row } = toImportRow({ email: 'a@example.com' });
 
-    expect(body).toEqual({ email: 'a@example.com', tags: undefined, mergeFields: undefined });
+    expect(row).toEqual({
+      email: 'a@example.com',
+      status: undefined,
+      tags: undefined,
+      mergeFields: undefined,
+      subscribedAt: undefined,
+    });
+  });
+
+  it('carries every status in the vocabulary through verbatim', () => {
+    for (const status of ['pending', 'subscribed', 'unsubscribed', 'bounced', 'complained']) {
+      expect(toImportRow({ email: 'a@example.com', status }).row.status).toBe(status);
+    }
+  });
+
+  it('accepts a status in any casing', () => {
+    // Spreadsheets title-case things; that must not fail an 18k-row migration.
+    expect(toImportRow({ email: 'a@example.com', status: 'Unsubscribed' }).row.status).toBe(
+      'unsubscribed',
+    );
+  });
+
+  it('fails a row with an unknown status rather than defaulting it', () => {
+    // Defaulting here would quietly turn someone's opt-out into a `subscribed`
+    // — the single worst thing an import can do.
+    const parsed = toImportRow({ email: 'a@example.com', status: 'cleaned' });
+
+    expect(parsed.error).toMatch(/not a valid status/);
+    expect(parsed.row.status).toBeUndefined();
+  });
+
+  it('leaves the status unset when the column is empty, for the batch default', () => {
+    expect(toImportRow({ email: 'a@example.com', status: '  ' }).row.status).toBeUndefined();
+  });
+
+  it('fails a row whose subscribedAt is not a date', () => {
+    const parsed = toImportRow({ email: 'a@example.com', subscribedAt: 'last tuesday' });
+
+    expect(parsed.error).toMatch(/not a valid date/);
   });
 });

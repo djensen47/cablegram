@@ -37,12 +37,21 @@ export interface NewsletterDto {
   updatedAt: string;
 }
 
-export type SubscriptionStatus =
-  | 'pending'
-  | 'subscribed'
-  | 'unsubscribed'
-  | 'bounced'
-  | 'complained';
+/**
+ * The membership lifecycle, mirrored from the API contract. A value (not just a
+ * type) because the import path has to *validate* a CSV cell against it and
+ * name the legal values in the error — the same reason the server keeps
+ * `SUBSCRIPTION_STATUSES` as a const array.
+ */
+export const SUBSCRIPTION_STATUSES = [
+  'pending',
+  'subscribed',
+  'unsubscribed',
+  'bounced',
+  'complained',
+] as const;
+
+export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
 
 export interface SubscriptionDto {
   id: string;
@@ -53,6 +62,17 @@ export interface SubscriptionDto {
   tags: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** What one `POST .../subscriptions/import` batch did (ADR-022). */
+export interface ImportResultDto {
+  received: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  /** Imported hard bounces added to the global suppression list. */
+  suppressed: number;
+  byStatus: Partial<Record<SubscriptionStatus, number>>;
 }
 
 export interface TemplateDto {
