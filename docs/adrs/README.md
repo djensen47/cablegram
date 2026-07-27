@@ -35,6 +35,7 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [017](ADR-017-component-owned-collections.md) | Component-Owned Collections & the `<component>_<aggregate>` naming rule | Accepted — implemented |
 | [018](ADR-018-suppression-scope.md) | Suppression Scope — global for mailbox facts, per-newsletter for consent | Accepted — implemented |
 | [019](ADR-019-per-recipient-outcome-documents.md) | Per-Recipient Outcome Documents (splitting the send record) | Accepted — implemented |
+| [020](ADR-020-soft-bounce-streak.md) | Soft-Bounce Streaks — counting transient failures without over-reacting | Accepted — implemented |
 
 ## How to read these
 

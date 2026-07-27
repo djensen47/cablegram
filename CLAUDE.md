@@ -224,6 +224,18 @@ scope.
   guards). Integration-test cleanup uses the constants, never string literals. The integration
   `globalSetup` lives at **`src/integration-setup.ts`**, not `shared/testing/`, because it needs
   `ALL_INDEXES` and a `shared/*` leaf may not import components.
+- **Soft bounces are counted, never suppressed** ([ADR-020](docs/adrs/ADR-020-soft-bounce-streak.md)).
+  Transient Postmark types now normalize to a `soft-bounce` event instead of being dropped — **because
+  Postmark retries internally first**, so a soft-bounce webhook means a whole retry cycle already
+  failed (don't add retry logic here; Postmark did it). `Subscription.consecutiveSoftBounces` streaks:
+  any **delivery resets it**, a re-subscribe clears it, and at `SOFT_BOUNCE_THRESHOLD` (default **3**,
+  low on purpose) the membership goes `bounced` **for that newsletter only — NEVER the global
+  suppression list**: a soft bounce isn't proof the mailbox is gone, and inferring a global fact from
+  one newsletter's evidence is the ADR-018 over-reach. `AutoResponder` is in neither the permanent nor
+  transient set (the mail arrived). Outcome status `soft-bounced` ranks **above `delivered`** so "we
+  stopped trying" can't be overwritten; `CampaignStats.softBounced` matches. Cost accepted: delivery
+  resets mean ~1 extra small write per delivered recipient, skipped via `recordDelivery()` returning
+  false when there's no streak to clear.
 - **Suppression is global ONLY for mailbox facts; complaints + unsubscribes are per-newsletter**
   ([ADR-018](docs/adrs/ADR-018-suppression-scope.md)). One newsletter is independent of another — that
   rule wins. **Hard bounce → BOTH** the global `deliverability` list (the mailbox is dead for everyone,

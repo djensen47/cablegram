@@ -7,7 +7,7 @@ import type { SubscriberGateway } from '../application/subscriber-gateway.js';
  * The adapter fulfilling `SubscriberGateway` over the `subscriptions` facade
  * (ADR-005 #3 + the ADR-011 DAG edge `campaigns → subscriptions`).
  *
- * A thin pass-through: the signal vocabulary (`bounced` | `complained`) is
+ * A thin pass-through: the signal vocabulary is
  * deliberately a subset of the subscriptions context's own outcome vocabulary,
  * so no translation is needed. `campaigns` cannot express `unsubscribed` here —
  * that comes from the subscriber, not from a delivery event.

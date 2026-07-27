@@ -74,8 +74,9 @@ describe('parseProviderEvent', () => {
     expect(event!.occurredAt).toEqual(new Date('2019-11-05T16:33:54.9070259Z'));
   });
 
-  it('drops a soft/transient bounce (must not suppress the address)', () => {
-    expect(parseProviderEvent(softBouncePayload)).toEqual([]);
+  it('normalizes a soft/transient bounce (and must never suppress the address)', () => {
+    const [event] = parseProviderEvent(softBouncePayload);
+    expect(event?.type).toBe('soft-bounce');
   });
 
   it('normalizes a SpamComplaint', () => {
@@ -111,7 +112,7 @@ describe('parseProviderEvent', () => {
 
   it('accepts an array of events defensively', () => {
     const events = parseProviderEvent([deliveryPayload, spamComplaintPayload, softBouncePayload]);
-    expect(events.map((e) => e.type)).toEqual(['delivered', 'spam-complaint']);
+    expect(events.map((e) => e.type)).toEqual(['delivered', 'spam-complaint', 'soft-bounce']);
   });
 });
 
@@ -137,13 +138,20 @@ describe('bounce classification', () => {
     },
   );
 
-  it.each(['Transient', 'SoftBounce', 'DnsError', 'AutoResponder', 'SMTPApiError'])(
-    'drops %s as transient',
+  it.each(['Transient', 'SoftBounce', 'DnsError', 'SMTPApiError'])(
+    'normalizes %s to soft-bounce',
     (type) => {
-      // A full mailbox or a greylisting server is not a reason to suppress.
-      expect(parseProviderEvent(bounce(type))).toEqual([]);
+      // No longer dropped (ADR-020). Postmark retries internally before
+      // reporting one, so a soft bounce means a whole retry cycle already
+      // failed — worth counting, though one is not proof the mailbox is gone.
+      const [event] = parseProviderEvent(bounce(type));
+      expect(event?.type).toBe('soft-bounce');
     },
   );
+
+  it('still drops AutoResponder — an out-of-office reply is not a failure', () => {
+    expect(parseProviderEvent(bounce('AutoResponder'))).toEqual([]);
+  });
 
   it('carries FirstOpen through as firstEngagement on an Open', () => {
     const [event] = parseProviderEvent({

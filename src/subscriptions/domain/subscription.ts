@@ -64,6 +64,16 @@ export interface SubscriptionProps {
   status: SubscriptionStatus;
   mergeFields: MergeFields;
   tags: string[];
+  /**
+   * How many campaigns in a row have soft-bounced for this membership, with no
+   * delivery in between (ADR-020). Reset to 0 by any successful delivery.
+   *
+   * Lives here rather than in `deliverability` because it is an observation
+   * about *this* newsletter's sends. Escalating it to a global fact would be
+   * inferring "the mailbox is dead everywhere" from one publication's evidence
+   * — the over-reach ADR-018 exists to prevent.
+   */
+  consecutiveSoftBounces: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -136,6 +146,7 @@ export class Subscription {
       status: input.doubleOptIn ? 'pending' : 'subscribed',
       mergeFields: input.mergeFields ?? {},
       tags: normalizeTags(input.tags),
+      consecutiveSoftBounces: 0,
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -184,6 +195,48 @@ export class Subscription {
    * a statement about every publication the operator runs. It is the strongest
    * per-newsletter signal there is, so it overrides anything except itself.
    */
+  /**
+   * A campaign to this address soft-bounced (ADR-020).
+   *
+   * Postmark retries internally before reporting one, so a single soft bounce
+   * already means a whole retry cycle failed — but it is still not proof the
+   * mailbox is gone (a full inbox drains, a downed server comes back). So one
+   * changes nothing; only repetition is a verdict.
+   *
+   * At `threshold` consecutive soft bounces the membership is marked `bounced`
+   * for **this newsletter only**. It is deliberately *not* escalated to the
+   * global suppression list: that would infer a mailbox-level fact from one
+   * newsletter's evidence (ADR-018). Another newsletter mailing the same dead
+   * address will reach the same conclusion from its own observations.
+   *
+   * Returns true when the streak crossed the threshold on this call.
+   */
+  recordSoftBounce(threshold: number, now: Date): boolean {
+    // An already-lapsed membership has nothing left to escalate.
+    if (this.props.status !== 'subscribed' && this.props.status !== 'pending') return false;
+
+    const streak = this.props.consecutiveSoftBounces + 1;
+    const escalate = streak >= threshold;
+    this.props = {
+      ...this.props,
+      consecutiveSoftBounces: streak,
+      status: escalate ? 'bounced' : this.props.status,
+      updatedAt: now,
+    };
+    return escalate;
+  }
+
+  /**
+   * Mail reached this address, so whatever was temporarily wrong is over — the
+   * streak resets. Returns false when there was nothing to reset, which lets
+   * the caller skip a pointless write on the overwhelmingly common path.
+   */
+  recordDelivery(now: Date): boolean {
+    if (this.props.consecutiveSoftBounces === 0) return false;
+    this.props = { ...this.props, consecutiveSoftBounces: 0, updatedAt: now };
+    return true;
+  }
+
   markComplained(now: Date): void {
     if (this.props.status === 'complained') return;
     this.props = { ...this.props, status: 'complained', updatedAt: now };
@@ -211,6 +264,9 @@ export class Subscription {
       status: input.doubleOptIn ? 'pending' : 'subscribed',
       mergeFields: input.mergeFields ?? this.props.mergeFields,
       tags: input.tags === undefined ? this.props.tags : normalizeTags(input.tags),
+      // A fresh start: whatever was wrong with the mailbox before is not
+      // evidence against the revived membership.
+      consecutiveSoftBounces: 0,
       updatedAt: input.now,
     };
   }
@@ -232,6 +288,9 @@ export class Subscription {
   }
   get tags(): readonly string[] {
     return this.props.tags;
+  }
+  get consecutiveSoftBounces(): number {
+    return this.props.consecutiveSoftBounces;
   }
   get createdAt(): Date {
     return this.props.createdAt;

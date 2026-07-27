@@ -17,6 +17,7 @@ export const OUTCOME_STATUSES = [
   'rejected',
   'accepted',
   'delivered',
+  'soft-bounced',
   'bounced',
   'complained',
 ] as const;
@@ -37,8 +38,13 @@ export const STATUS_PRIORITY: Record<OutcomeStatus, number> = {
   pending: 1,
   accepted: 2,
   delivered: 3,
-  bounced: 4,
-  complained: 5,
+  // Above `delivered` on purpose. The two are mutually exclusive in practice —
+  // Postmark either eventually delivers (Delivery webhook, no bounce) or gives
+  // up (SoftBounce webhook, no delivery) — but if both ever arrive, "we stopped
+  // trying" is the truthful outcome, so it must not be overwritten.
+  'soft-bounced': 4,
+  bounced: 5,
+  complained: 6,
 };
 
 export function priorityOf(status: OutcomeStatus): number {
@@ -113,7 +119,13 @@ export type OutcomeEffect =
  * fact about the **address** and goes on the global list; a complaint is a fact
  * about **this newsletter** and must not.
  */
-export type SubscriptionOutcomeSignal = 'bounced' | 'complained';
+export type SubscriptionOutcomeSignal =
+  | 'bounced'
+  | 'complained'
+  /** Increment this membership's consecutive-soft-bounce counter (ADR-020). */
+  | 'soft-bounce'
+  /** Reset that counter — the mailbox is demonstrably working again. */
+  | 'delivered';
 
 export interface EventEffect {
   readonly effect: OutcomeEffect;
@@ -150,10 +162,12 @@ export function effectOf(event: DeliveryEventInput): EventEffect {
 
   switch (event.type) {
     case 'delivered':
+      // Also resets the membership's soft-bounce streak (ADR-020): the mailbox
+      // accepted mail, so whatever was wrong with it is over.
       return {
         effect: { kind: 'raise', status: 'delivered' },
         suppress: null,
-        subscription: null,
+        subscription: 'delivered',
         dedupeKey: `${keyBase}:delivered`,
       };
     case 'hard-bounce':
@@ -164,6 +178,16 @@ export function effectOf(event: DeliveryEventInput): EventEffect {
         suppress: { address: event.address, reason: 'hard-bounce' },
         subscription: 'bounced',
         dedupeKey: `${keyBase}:hard-bounce`,
+      };
+    case 'soft-bounce':
+      // Never suppresses and never marks the membership bounced on its own —
+      // it is not proof the mailbox is gone. It increments a streak, and the
+      // subscriptions context decides when repetition becomes a verdict.
+      return {
+        effect: { kind: 'raise', status: 'soft-bounced' },
+        suppress: null,
+        subscription: 'soft-bounce',
+        dedupeKey: `${keyBase}:soft-bounce:${event.occurredAt?.toISOString() ?? 'na'}`,
       };
     case 'spam-complaint':
       // Per-newsletter ONLY. A complaint about one publication is not a

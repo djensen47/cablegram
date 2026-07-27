@@ -396,5 +396,94 @@ describe('subscriptions use cases', () => {
       expect(revived.status).toBe('subscribed');
     });
   });
+
+  // ADR-020. Postmark retries internally before reporting a soft bounce, so
+  // each one already represents a failed retry cycle — but one is still not
+  // proof the mailbox is gone. Only repetition is a verdict.
+  describe('soft-bounce streak (ADR-020)', () => {
+    async function subscribed(email = 'reader@dispatch.example') {
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email, doubleOptIn: false });
+      return container.get<MarkSubscriptionOutcome>(SUBSCRIPTION_TYPES.MarkSubscriptionOutcome);
+    }
+
+    async function statusOf(email = 'reader@dispatch.example') {
+      const rows = await container
+        .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+        .execute({ newsletterId, limit: 10 });
+      return rows.find((r) => r.email === email)?.status;
+    }
+
+    it('leaves the membership sendable below the threshold', async () => {
+      const mark = await subscribed();
+
+      await mark.execute(newsletterId, 'reader@dispatch.example', 'soft-bounce');
+      await mark.execute(newsletterId, 'reader@dispatch.example', 'soft-bounce');
+
+      // A full inbox drains and a downed server comes back — two is not a verdict.
+      expect(await statusOf()).toBe('subscribed');
+    });
+
+    it('marks bounced at the threshold (default 3)', async () => {
+      const mark = await subscribed();
+
+      for (let i = 0; i < 3; i += 1) {
+        await mark.execute(newsletterId, 'reader@dispatch.example', 'soft-bounce');
+      }
+
+      expect(await statusOf()).toBe('bounced');
+    });
+
+    it('resets the streak on a delivery, so it must be CONSECUTIVE', async () => {
+      const mark = await subscribed();
+
+      await mark.execute(newsletterId, 'reader@dispatch.example', 'soft-bounce');
+      await mark.execute(newsletterId, 'reader@dispatch.example', 'soft-bounce');
+      // The mailbox demonstrably works again — whatever was wrong is over.
+      await mark.execute(newsletterId, 'reader@dispatch.example', 'delivered');
+      await mark.execute(newsletterId, 'reader@dispatch.example', 'soft-bounce');
+      await mark.execute(newsletterId, 'reader@dispatch.example', 'soft-bounce');
+
+      // Four soft bounces total, but never three in a row.
+      expect(await statusOf()).toBe('subscribed');
+    });
+
+    it('skips the write when a delivery has no streak to clear', async () => {
+      const mark = await subscribed();
+
+      // Fires once per delivered recipient — ~18k times per send — so the
+      // common no-op path must not cost a write.
+      expect(await mark.execute(newsletterId, 'reader@dispatch.example', 'delivered')).toBe(false);
+    });
+
+    it('does not escalate an already-unsubscribed membership', async () => {
+      const mark = await subscribed();
+      await mark.execute(newsletterId, 'reader@dispatch.example', 'unsubscribed');
+
+      for (let i = 0; i < 5; i += 1) {
+        await mark.execute(newsletterId, 'reader@dispatch.example', 'soft-bounce');
+      }
+
+      // Opt-out intent outranks a delivery failure; nothing left to escalate.
+      expect(await statusOf()).toBe('unsubscribed');
+    });
+
+    it('clears the streak when the membership is revived', async () => {
+      const mark = await subscribed();
+      await mark.execute(newsletterId, 'reader@dispatch.example', 'soft-bounce');
+      await mark.execute(newsletterId, 'reader@dispatch.example', 'soft-bounce');
+      await mark.execute(newsletterId, 'reader@dispatch.example', 'unsubscribed');
+
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+      // A fresh start: the old streak is not evidence against the new membership.
+      await mark.execute(newsletterId, 'reader@dispatch.example', 'soft-bounce');
+
+      expect(await statusOf()).toBe('subscribed');
+    });
+
+  });
 });
 

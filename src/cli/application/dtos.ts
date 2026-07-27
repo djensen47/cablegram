@@ -72,6 +72,7 @@ export interface CampaignStatsDto {
   accepted: number;
   rejected: number;
   delivered: number;
+  softBounced: number;
   bounced: number;
   complained: number;
 }

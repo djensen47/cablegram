@@ -2,11 +2,20 @@ import { inject, injectable } from 'inversify';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
 import type { Clock } from '../../shared/clock/index.js';
 import { normalizeEmailAddress } from '../../shared/email-address/index.js';
+import { TYPES as DI_TYPES } from '../../shared/di/index.js';
+import type { AppConfig } from '../../shared/config/index.js';
 import { SUBSCRIPTION_TYPES } from '../types.js';
 import type { SubscriptionRepository } from './subscription-repository.js';
 
 /** The provider-driven outcomes that change a membership's status (ADR-018). */
-export type SubscriptionOutcome = 'unsubscribed' | 'bounced' | 'complained';
+export type SubscriptionOutcome =
+  | 'unsubscribed'
+  | 'bounced'
+  | 'complained'
+  /** One campaign soft-bounced — increments the streak (ADR-020). */
+  | 'soft-bounce'
+  /** Mail landed — resets the streak. */
+  | 'delivered';
 
 /**
  * Records a delivery outcome against **one newsletter's** membership, addressed
@@ -36,6 +45,7 @@ export class MarkSubscriptionOutcome {
     @inject(SUBSCRIPTION_TYPES.SubscriptionRepository)
     private readonly repository: SubscriptionRepository,
     @inject(SHARED_TYPES.Clock) private readonly clock: Clock,
+    @inject(DI_TYPES.Config) private readonly config: AppConfig,
   ) {}
 
   async execute(
@@ -51,8 +61,24 @@ export class MarkSubscriptionOutcome {
     );
     if (subscription === null) return false;
 
-    const before = subscription.status;
     const now = this.clock.now();
+
+    // The two counter signals report their own "did anything change?", because
+    // a status comparison cannot see a streak going 1 → 2.
+    if (outcome === 'soft-bounce') {
+      subscription.recordSoftBounce(this.config.deliverability.softBounceThreshold, now);
+      await this.repository.update(subscription);
+      return true;
+    }
+    if (outcome === 'delivered') {
+      // Skip the write on the overwhelmingly common path — most deliveries have
+      // no streak to clear, and this fires once per delivered recipient.
+      if (!subscription.recordDelivery(now)) return false;
+      await this.repository.update(subscription);
+      return true;
+    }
+
+    const before = subscription.status;
     switch (outcome) {
       case 'unsubscribed':
         subscription.unsubscribe(now);

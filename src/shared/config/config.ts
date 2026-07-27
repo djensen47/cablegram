@@ -30,6 +30,21 @@ export interface AppConfig {
   readonly email: {
     readonly provider: 'postmark';
   };
+  /**
+   * Deliverability tuning (ADR-020).
+   */
+  readonly deliverability: {
+    /**
+     * Consecutive soft bounces, with no delivery in between, before a
+     * membership is marked `bounced` for that newsletter.
+     *
+     * Low on purpose. Postmark retries internally before reporting a soft
+     * bounce at all, so each one already represents a failed retry cycle —
+     * three of them means three campaigns' worth of attempts, which is a dead
+     * mailbox by any reasonable reading.
+     */
+    readonly softBounceThreshold: number;
+  };
   readonly postmark: {
     /**
      * The **broadcast** server token, sent as `X-Postmark-Server-Token` on
@@ -137,6 +152,7 @@ const schema = z
     JWT_REFRESH_TTL_SECONDS: z.coerce.number().int().positive().default(2_592_000),
     // Email backend seam — only `postmark` is supported today (ADR-008).
     EMAIL_PROVIDER: z.enum(['postmark']).default('postmark'),
+    SOFT_BOUNCE_THRESHOLD: z.coerce.number().int().min(1).max(20).default(3),
     POSTMARK_SERVER_TOKEN: z.string().min(1),
     // Optional distinct token for transactional sends; falls back to the
     // broadcast token below when unset (a single-server Postmark setup).
@@ -207,6 +223,9 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     },
     email: {
       provider: e.EMAIL_PROVIDER,
+    },
+    deliverability: {
+      softBounceThreshold: e.SOFT_BOUNCE_THRESHOLD,
     },
     postmark: {
       serverToken: e.POSTMARK_SERVER_TOKEN,

@@ -40,12 +40,22 @@ export interface CampaignStats {
   /** Provider-rejected at send. */
   rejected: number;
   delivered: number;
+  /** Provider gave up after its own retries; not (yet) a permanent failure. */
+  softBounced: number;
   bounced: number;
   complained: number;
 }
 
 export function zeroStats(): CampaignStats {
-  return { recipients: 0, accepted: 0, rejected: 0, delivered: 0, bounced: 0, complained: 0 };
+  return {
+    recipients: 0,
+    accepted: 0,
+    rejected: 0,
+    delivered: 0,
+    softBounced: 0,
+    bounced: 0,
+    complained: 0,
+  };
 }
 
 /** The content source a send renders (a template reference or inline bodies). */

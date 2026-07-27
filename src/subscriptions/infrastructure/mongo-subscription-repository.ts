@@ -26,6 +26,7 @@ interface SubscriptionDoc {
   status: string;
   mergeFields: MergeFields;
   tags: string[];
+  consecutiveSoftBounces?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -111,6 +112,7 @@ function toDoc(subscription: Subscription): SubscriptionDoc {
     status: subscription.status,
     mergeFields: subscription.mergeFields,
     tags: [...subscription.tags],
+    consecutiveSoftBounces: subscription.consecutiveSoftBounces,
     createdAt: subscription.createdAt,
     updatedAt: subscription.updatedAt,
   };
@@ -126,7 +128,9 @@ function toDomain(doc: SubscriptionDoc): Subscription {
     email: doc.email,
     status: doc.status as SubscriptionStatus,
     mergeFields: fromStored(doc.mergeFields),
+    // Absent on rows written before the counter existed — treat as no streak.
     tags: doc.tags,
+    consecutiveSoftBounces: doc.consecutiveSoftBounces ?? 0,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });
