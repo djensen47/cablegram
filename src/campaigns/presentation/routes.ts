@@ -210,7 +210,7 @@ const listRecipientsRoute = createRoute({
   summary: 'List a send’s per-recipient outcomes (cursor-paginated)',
   description:
     'One row per recipient: delivery status, opens and clicks. Filter with `status`, or ' +
-    '`failuresOnly=true` for rejected + bounced + complained in one query.',
+    '`failuresOnly=true` for bounced + complained in one query.',
   security,
   request: { params: CampaignIdParamSchema, query: ListRecipientOutcomesQuerySchema },
   responses: {
@@ -304,7 +304,7 @@ export function createCampaignRoutes(container: Container): OpenAPIHono<AppEnv> 
     // expressed as a status set so the store filters on its index.
     const statuses =
       failuresOnly === true
-        ? (['rejected', 'bounced', 'complained'] as const)
+        ? (['bounced', 'complained'] as const)
         : status !== undefined
           ? ([status] as const)
           : undefined;

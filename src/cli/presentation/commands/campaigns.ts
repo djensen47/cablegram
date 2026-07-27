@@ -273,7 +273,7 @@ export function registerCampaignCommands(program: Command, ctx: () => CommandCon
   campaigns
     .command('report <id>')
     .description('Show a campaign’s send: live stats + per-recipient outcomes')
-    .option('--failures', 'only rejected, bounced or complained recipients')
+    .option('--failures', 'only bounced or complained recipients')
     .option('--status <status>', 'filter to one outcome status')
     .option('--limit <n>', 'recipients per page (1-100)', '20')
     .option('--cursor <cursor>', 'continue from a previous page')
@@ -337,7 +337,6 @@ function summaryOf(send: SendDto): Record<string, unknown> {
     submittedAt: send.submittedAt,
     recipients: send.stats.recipients,
     accepted: send.stats.accepted,
-    rejected: send.stats.rejected,
     delivered: send.stats.delivered,
     softBounced: send.stats.softBounced,
     bounced: send.stats.bounced,

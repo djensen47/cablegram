@@ -70,7 +70,6 @@ export type CampaignStatus = 'draft' | 'sending' | 'sent' | 'failed';
 export interface CampaignStatsDto {
   recipients: number;
   accepted: number;
-  rejected: number;
   delivered: number;
   softBounced: number;
   bounced: number;

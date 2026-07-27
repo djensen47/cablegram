@@ -14,7 +14,6 @@ export type RecipientOutcomeId = Id;
 
 export const OUTCOME_STATUSES = [
   'pending',
-  'rejected',
   'accepted',
   'delivered',
   'soft-bounced',
@@ -32,9 +31,14 @@ export type OutcomeStatus = (typeof OUTCOME_STATUSES)[number];
  * repository's conditional update filters on `statusPriority < n`, so the
  * ordering has to be a value the store can compare. Storing the label too
  * keeps queries and reports readable without a lookup.
+ *
+ * There is deliberately **no `rejected`** below `pending`. Postmark's Bulk API
+ * is asynchronous (ADR-008): the response is a submission ack, and a request it
+ * will not take is a 422 that throws — failing the whole *campaign*, never one
+ * recipient. Nothing could ever produce a per-recipient rejection, and a status
+ * beneath the starting one was unreachable through this filter anyway (#28).
  */
 export const STATUS_PRIORITY: Record<OutcomeStatus, number> = {
-  rejected: 0,
   pending: 1,
   accepted: 2,
   delivered: 3,
