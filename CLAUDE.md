@@ -275,8 +275,11 @@ scope.
   fails the whole **campaign**, not one recipient — so don't reintroduce a per-recipient rejection,
   and don't re-badge `SMTPApiError`/`TemplateRenderingFailed` as one (they're transient, ADR-020).
   Domain decides intent (`effectOf` → raise/count/ignore), repository does the atomic write. **Stats
-  are counted on read**, not rewritten per webhook — so a campaign *list* shows send-time snapshot
-  stats while `GET /campaigns/{id}/send` shows live ones; that asymmetry is intentional. Recipients are
+  are counted on read**, not rewritten per webhook, and **there is no stored `campaign.stats`**
+  (ADR-019 §7) — a campaign carries only `recipientCount`, written once at submit; every delivery
+  number lives on `GET /campaigns/{id}/send`, counted live. Don't reintroduce a denormalized stats
+  object: written once at `markSent` it can only ever hold `recipients === accepted === recipientCount`
+  plus four permanently-zero counters, which is what got it deleted. Recipients are
   **not** inlined on the send — they're cursor-paginated at `GET /campaigns/{id}/send/recipients`.
   `opens`/`clicks` are **totals** (dedupe key includes `occurredAt`; the old `<messageId>:open` key
   capped them at 1). Bounces suppress by **permanence, not the literal `HardBounce`** — 8 permanent
