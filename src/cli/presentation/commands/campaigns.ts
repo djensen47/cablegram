@@ -8,9 +8,10 @@ import type {
   SendDto,
   RecipientOutcomeDto,
   SubscriptionDto,
+  TestSendDto,
 } from '../../application/dtos.js';
 import type { CommandContext } from '../context.js';
-import { collect, FlagError, paginationFlags, parseFlags } from '../flags.js';
+import { collect, emailFlag, FlagError, paginationFlags, parseFlags } from '../flags.js';
 import { pruneUndefined } from './newsletters.js';
 import { shortDate, truncate, type Column } from '../output.js';
 import { confirmAction, promptText } from '../prompts.js';
@@ -21,6 +22,14 @@ import { confirmAction, promptText } from '../prompts.js';
  * v1 (sending is on-demand only) and a CLI-side timer would be exactly the
  * in-process scheduler ADR-009 rules out.
  */
+
+/**
+ * Mirrors the API's cap on a test send's target list (ADR-025). Hand-mirrored
+ * for the same reason the DTOs are: importing the server constant would be the
+ * `cli → campaigns` edge ADR-016 forbids. Catching an over-long list here saves
+ * a round trip; the server enforces the real invariant either way.
+ */
+const MAX_TEST_RECIPIENTS = 5;
 
 const columns: Column<CampaignDto>[] = [
   { header: 'id', value: (c) => c.id },
@@ -268,6 +277,53 @@ export function registerCampaignCommands(program: Command, ctx: () => CommandCon
         `Sent "${sent.name}" — ${sent.stats.recipients} recipient(s), ${sent.stats.accepted} accepted.`,
       );
       c.printer.dim(`Per-recipient outcomes arrive by webhook: cablegram campaigns report ${id}`);
+    });
+
+  campaigns
+    .command('test <id>')
+    .description('Deliver a campaign to a few addresses as a proof — records nothing')
+    .option('--to <email>', 'address to send the proof to (repeatable)', collect, [])
+    .option('--no-prefix', 'send the subject exactly as subscribers will see it (no [TEST] prefix)')
+    .action(async (id: string, raw) => {
+      const c = ctx();
+      const flags = parseFlags(
+        z.object({
+          to: z.array(emailFlag).max(MAX_TEST_RECIPIENTS).default([]),
+          // commander turns `--no-prefix` into `prefix: false`, defaulting true.
+          prefix: z.boolean().default(true),
+        }),
+        raw,
+      );
+
+      // One address is the common case, so an omitted `--to` prompts rather
+      // than erroring — the same treatment every other required argument gets.
+      const to =
+        flags.to.length > 0
+          ? flags.to
+          : [
+              await promptText(undefined, {
+                message: 'Send the test to',
+                flag: '--to',
+                placeholder: 'me@example.com',
+              }),
+            ];
+
+      const api = await c.api();
+      const result = await api.post<TestSendDto>(
+        `/v1/campaigns/${encodeURIComponent(id)}/test`,
+        { to, prefixSubject: flags.prefix },
+      );
+
+      c.printer.data(result);
+      if (result.sent.length > 0) {
+        c.printer.success(`Test sent to ${result.sent.join(', ')} — subject "${result.subject}".`);
+      } else {
+        c.printer.warn('Nothing was sent — every address given is on the suppression list.');
+      }
+      if (result.suppressed.length > 0) {
+        c.printer.dim(`Suppressed, not sent: ${result.suppressed.join(', ')}`);
+      }
+      c.printer.dim('Nothing was recorded: no send, no recipient outcomes, no stats change.');
     });
 
   campaigns
