@@ -34,8 +34,9 @@ cablegram gives you the moving parts of a newsletter platform as a plain JSON AP
 
 - **Newsletters** — your publications, each with its own sender identity (from-name/email, reply-to,
   sending domain / DKIM).
-- **Subscriptions** — who receives a given newsletter, with single or double opt-in, merge fields,
-  and tags for segmenting.
+- **Subscriptions** — who receives a given newsletter, with single or double opt-in, tags for
+  segmenting, and custom fields ([ADR-024](docs/adrs/ADR-024-custom-fields.md) — stored per
+  subscriber, but **not yet rendered into a campaign**, which sends one shared body).
 - **Templates** — reusable, Handlebars-rendered message bodies (`{{firstName}}`, `{{weekOf}}`, …).
 - **Campaigns** — a send: pick a newsletter, a template (or inline content), optionally a tag segment,
   then send now and read back per-recipient outcomes.
@@ -176,11 +177,12 @@ TPL=$(curl -sX POST localhost:3000/v1/templates -H "$A" -H "$J" -d '{
 }' | jq -r .id)
 
 # 3. Add a subscriber. doubleOptIn defaults to true (sends a confirmation);
-#    pass false for single opt-in (immediately subscribed). mergeFields feed the template.
+#    pass false for single opt-in (immediately subscribed). customFields are stored
+#    per subscriber — but note they are NOT rendered into a campaign yet (ADR-024).
 curl -sX POST "localhost:3000/v1/newsletters/$NL/subscriptions" -H "$A" -H "$J" -d '{
   "email": "reader@dispatch.example",
   "doubleOptIn": false,
-  "mergeFields": { "firstName": "Sam" },
+  "customFields": { "firstName": "Sam" },
   "tags": ["vip"]
 }'
 
@@ -251,7 +253,7 @@ confirmations for CI.
 `2` bad invocation · `3` not authenticated · `4` deployment unreachable · `130` cancelled.
 
 **CSV import** expects an `email` column; `tags` is semicolon-separated (a comma would collide with
-the delimiter), and every other column becomes a merge field with its **casing preserved**, so a
+the delimiter), and every other column becomes a custom field with its **casing preserved**, so a
 `firstName` column feeds `{{firstName}}`. Use `--dry-run` to validate a file before importing it.
 
 | variable | does |
@@ -336,7 +338,7 @@ cablegram subscriptions import "$NL" subscribers.csv --source mailchimp-export-2
 ```
 
 `email` · `tags` · `status` · `subscribedAt` · `source` are matched case-insensitively; **every other
-column becomes a merge field with its casing preserved**, so a `firstName` column feeds
+column becomes a custom field with its casing preserved**, so a `firstName` column feeds
 `{{firstName}}`. `tags` is semicolon-separated (a comma would collide with the delimiter). An unknown
 `status` fails the row rather than being defaulted.
 
@@ -348,7 +350,7 @@ nothing can rebuild afterwards, so import it the first time or lose it.
 `source` records where a record came from and is surfaced on the subscription DTO — it is the other
 half of the consent record, since `subscribedAt` alone cannot say whether a consent claim is one
 cablegram witnessed or one inherited from another provider. It is metadata, deliberately **not** a
-merge field, so it can never render into a campaign. An import with no `--source` still records
+custom field, so it can never render into a campaign. An import with no `--source` still records
 `import`, so an imported row is always identifiable as one.
 
 ### Templates

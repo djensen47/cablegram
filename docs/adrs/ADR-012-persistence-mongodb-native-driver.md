@@ -56,7 +56,7 @@ fix is to swap the implementation.
 - App-owned **string ids stored as `_id`** (no `ObjectId`); the normalized address is the suppression
   `_id`.
 - **Id-reference relations only** — no embedded documents, no Mongo-only query constructs past the
-  repository. `Json`-shaped fields (`mergeFields`, `stats`, `outcomes`) are plain nested BSON;
+  repository. `Json`-shaped fields (`customFields`, `stats`, `outcomes`) are plain nested BSON;
   scalar lists (`tags`, `segmentTags`, `appliedEvents`) are arrays.
 - **No transactions.** Every write is a single-document op. Pagination stays the id-ordered,
   exclusive-cursor sweep.

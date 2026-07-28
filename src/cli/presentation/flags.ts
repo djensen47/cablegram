@@ -67,7 +67,7 @@ export const userAgentFlag = z.string().trim().min(1).max(500);
 /**
  * Parses a `key=value` pair collected from a repeatable flag (`--field`).
  * Values are passed through `JSON.parse` when they look like JSON so numbers
- * and booleans survive as their own types in `mergeFields`, since the API
+ * and booleans survive as their own types in `customFields`, since the API
  * accepts arbitrary JSON there and merge values are not all strings.
  */
 export function parseKeyValue(pairs: string[] | undefined): Record<string, unknown> | undefined {

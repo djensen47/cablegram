@@ -48,11 +48,23 @@ export function isSubscriptionStatus(value: string): value is SubscriptionStatus
 }
 
 /**
- * Arbitrary per-subscription personalization data — the "merge model" a
- * template renders against (`{{firstName}}`, …). An opaque bag: the
- * subscriptions context never interprets it, it just stores and hands it back.
+ * Arbitrary per-subscription personalization data — what the subscriber told
+ * you about themselves, and the model a template renders against
+ * (`{{firstName}}`, …). An opaque bag: the subscriptions context never
+ * interprets it, it just stores and hands it back.
+ *
+ * Named for *whose* data it is (ADR-024). The old name, `mergeFields`, named the
+ * mechanism instead — and the line that actually matters here is the one between
+ * this and record metadata like `source` or `signupIp` (ADR-022/023): those are
+ * facts cablegram observed about the record, they have a fixed vocabulary, and
+ * they must never be renderable into a message. Anything in *this* bag can be.
+ *
+ * Two things about it are still undecided, and are called out rather than
+ * implied: it is **untyped and open** where every other vocabulary in the
+ * codebase is a closed set, and nothing currently renders it — the send path
+ * renders one shared body against an empty model (ADR-008). See ADR-024.
  */
-export type MergeFields = Record<string, unknown>;
+export type CustomFields = Record<string, unknown>;
 
 /**
  * Who did a consent-changing thing, as far as the operator could observe it
@@ -79,7 +91,7 @@ export interface SubscriptionProps {
   /** The subscriber address, normalized via the shared `email-address` module. */
   email: string;
   status: SubscriptionStatus;
-  mergeFields: MergeFields;
+  customFields: CustomFields;
   tags: string[];
   /**
    * How many campaigns in a row have soft-bounced for this membership, with no
@@ -101,7 +113,7 @@ export interface SubscriptionProps {
    * cablegram witnessed. If consent is ever challenged, "when did they opt in"
    * (`createdAt`) is only half the answer; "how do we know" is the other half.
    *
-   * Deliberately **not** a merge field: merge fields are the template rendering
+   * Deliberately **not** a custom field: custom fields are the template rendering
    * model, and provenance is metadata about the record rather than data about
    * the person — a `{{source}}` that can render into mail is a bug waiting to
    * happen. An opaque operator-supplied note; the domain never interprets it.
@@ -140,7 +152,7 @@ export interface CreateSubscriptionProps {
   id: SubscriptionId;
   newsletterId: string;
   email: string;
-  mergeFields?: MergeFields;
+  customFields?: CustomFields;
   tags?: string[];
   /** Double opt-in → the subscription starts `pending`; single opt-in → `subscribed`. */
   doubleOptIn: boolean;
@@ -151,7 +163,7 @@ export interface CreateSubscriptionProps {
 
 /** Fields that may change when a lapsed row is revived (a re-subscribe). */
 export interface ReviveSubscriptionProps {
-  mergeFields?: MergeFields;
+  customFields?: CustomFields;
   tags?: string[];
   doubleOptIn: boolean;
   evidence?: ConsentEvidence;
@@ -173,7 +185,7 @@ export interface ImportSubscriptionProps {
   email: string;
   /** The restored lifecycle state, verbatim — never derived. */
   status: SubscriptionStatus;
-  mergeFields?: MergeFields;
+  customFields?: CustomFields;
   tags?: string[];
   /**
    * The **original** opt-in date from the source system, when it is known. It
@@ -208,7 +220,7 @@ export interface ImportedConsentRecord {
 /** Fields an import overwrites on an existing row (`--on-conflict overwrite`). */
 export interface OverwriteSubscriptionProps {
   status: SubscriptionStatus;
-  mergeFields?: MergeFields;
+  customFields?: CustomFields;
   tags?: string[];
   subscribedAt?: Date;
   source: string;
@@ -262,7 +274,7 @@ export class Subscription {
       newsletterId: input.newsletterId,
       email: validEmail(input.email),
       status: input.doubleOptIn ? 'pending' : 'subscribed',
-      mergeFields: input.mergeFields ?? {},
+      customFields: input.customFields ?? {},
       tags: normalizeTags(input.tags),
       consecutiveSoftBounces: 0,
       signupIp: input.evidence?.ip,
@@ -293,7 +305,7 @@ export class Subscription {
       newsletterId: input.newsletterId,
       email: validEmail(input.email),
       status: input.status,
-      mergeFields: input.mergeFields ?? {},
+      customFields: input.customFields ?? {},
       tags: normalizeTags(input.tags),
       consecutiveSoftBounces: 0,
       source: input.source,
@@ -321,7 +333,7 @@ export class Subscription {
     this.props = {
       ...this.props,
       status: input.status,
-      mergeFields: input.mergeFields ?? this.props.mergeFields,
+      customFields: input.customFields ?? this.props.customFields,
       tags: input.tags === undefined ? this.props.tags : normalizeTags(input.tags),
       consecutiveSoftBounces: 0,
       source: input.source,
@@ -462,7 +474,7 @@ export class Subscription {
 
   /**
    * Revive a lapsed subscription (a re-subscribe, ADR-011): keep the same
-   * row/id, refresh the merge model and tags, and re-enter the lifecycle at
+   * row/id, refresh the custom-field model and tags, and re-enter the lifecycle at
    * `pending` (double opt-in) or `subscribed` (single opt-in).
    *
    * Legal from **every** lapsed state including `bounced` and `complained`
@@ -474,7 +486,7 @@ export class Subscription {
     this.props = {
       ...this.props,
       status: input.doubleOptIn ? 'pending' : 'subscribed',
-      mergeFields: input.mergeFields ?? this.props.mergeFields,
+      customFields: input.customFields ?? this.props.customFields,
       tags: input.tags === undefined ? this.props.tags : normalizeTags(input.tags),
       // A fresh start: whatever was wrong with the mailbox before is not
       // evidence against the revived membership.
@@ -509,8 +521,8 @@ export class Subscription {
   get status(): SubscriptionStatus {
     return this.props.status;
   }
-  get mergeFields(): MergeFields {
-    return this.props.mergeFields;
+  get customFields(): CustomFields {
+    return this.props.customFields;
   }
   get tags(): readonly string[] {
     return this.props.tags;

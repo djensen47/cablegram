@@ -11,7 +11,7 @@ import { SUBSCRIPTION_STATUSES, type Subscription } from '../domain/subscription
 
 const emailField = z.string().trim().email().max(320);
 const statusField = z.enum(SUBSCRIPTION_STATUSES).openapi({ example: 'subscribed' });
-const mergeFieldsField = z
+const customFieldsField = z
   .record(z.unknown())
   .openapi({ type: 'object', example: { firstName: 'Ada' } });
 const tagsField = z.array(z.string().trim().min(1).max(64)).openapi({ example: ['vip', 'beta'] });
@@ -43,7 +43,7 @@ export const SubscriptionSchema = z
     newsletterId: z.string().openapi({ example: '9f21-2b0e5d8a1c33-4a7f2c1e-6b1a' }),
     email: z.string().email().openapi({ example: 'reader@dispatch.example' }),
     status: statusField,
-    mergeFields: z.record(z.unknown()).openapi({ type: 'object', example: { firstName: 'Ada' } }),
+    customFields: z.record(z.unknown()).openapi({ type: 'object', example: { firstName: 'Ada' } }),
     tags: z.array(z.string()).openapi({ example: ['vip'] }),
     source: z
       .string()
@@ -81,7 +81,7 @@ export const SubscriptionSchema = z
 export const SubscribeSchema = z
   .object({
     email: emailField.openapi({ example: 'reader@dispatch.example' }),
-    mergeFields: mergeFieldsField.optional(),
+    customFields: customFieldsField.optional(),
     tags: tagsField.optional(),
     doubleOptIn: z
       .boolean()
@@ -119,7 +119,7 @@ const ImportRowSchema = z
     status: statusField
       .optional()
       .openapi({ description: 'Restored verbatim. Absent → the batch’s `defaultStatus`.' }),
-    mergeFields: mergeFieldsField.optional(),
+    customFields: customFieldsField.optional(),
     tags: tagsField.optional(),
     subscribedAt: z
       .string()
@@ -236,7 +236,7 @@ export function toSubscriptionResponse(subscription: Subscription): Subscription
     newsletterId: subscription.newsletterId,
     email: subscription.email,
     status: subscription.status,
-    mergeFields: subscription.mergeFields,
+    customFields: subscription.customFields,
     tags: [...subscription.tags],
     source: subscription.source ?? null,
     signupIp: subscription.signupIp ?? null,

@@ -64,11 +64,11 @@ cablegram collected the consent itself.
 
 Two details that carry the intent:
 
-- **It is not a merge field.** Letting a `source` column fall through to `mergeFields` — which was the
+- **It is not a custom field.** Letting a `source` column fall through to `customFields` — which was the
   first design, and was wrong — puts provenance into the *template rendering model*, where it becomes
   a `{{source}}` that can render into a campaign. Provenance is metadata about the record, not data
   about the person. `source` is therefore a reserved CSV column alongside `email`/`tags`/`status`/
-  `subscribedAt`. It is also the wrong *shape* as a merge field: "this batch came from Mailchimp" is a
+  `subscribedAt`. It is also the wrong *shape* as a custom field: "this batch came from Mailchimp" is a
   fact about the import, and expressing it per-row means stamping one string onto 18,000 rows.
 - **An import with no note still records `import`.** The property worth having is that an imported row
   is *always* identifiable as imported; one that holds only when the operator remembers a flag is not
@@ -171,7 +171,7 @@ export that would have re-subscribed everyone.
   no mail, so the flag was meaningless) and the default status is `subscribed` rather than `pending`.
   Acceptable: cablegram is not yet live and has no production data.
 - **`status`, `subscribedAt` and `source` are now reserved CSV columns**, so a file that used any of
-  them as a merge field changes meaning. All are matched case-insensitively, like `email` and `tags`;
+  them as a custom field changes meaning. All are matched case-insensitively, like `email` and `tags`;
   every other header still keeps its exact casing so `{{firstName}}` keeps working.
 - **`source` is a new nullable field on the subscription DTO**, and the first piece of per-record
   metadata that is deliberately *not* reachable from a template. If more provenance is ever needed

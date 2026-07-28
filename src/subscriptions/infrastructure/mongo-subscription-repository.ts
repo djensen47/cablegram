@@ -4,7 +4,7 @@ import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
 import { SUBSCRIPTION_COLLECTIONS } from './collections.js';
 import {
   Subscription,
-  type MergeFields,
+  type CustomFields,
   type SubscriptionStatus,
 } from '../domain/subscription.js';
 import type {
@@ -16,7 +16,7 @@ import type {
 
 /**
  * The stored document shape (ADR-012): the app string id is the `_id`;
- * `newsletterId` is a plain id reference (no embedded document); `mergeFields`
+ * `newsletterId` is a plain id reference (no embedded document); `customFields`
  * is a nested BSON object (an opaque scalar bag) and `tags` a scalar array.
  */
 interface SubscriptionDoc {
@@ -24,7 +24,7 @@ interface SubscriptionDoc {
   newsletterId: string;
   email: string;
   status: string;
-  mergeFields: MergeFields;
+  customFields: CustomFields;
   tags: string[];
   consecutiveSoftBounces?: number;
   /** Absent on natively-collected rows (ADR-022) — not every row has a source. */
@@ -148,12 +148,12 @@ export class MongoSubscriptionRepository implements SubscriptionRepository {
       ...(tags.length === 0 ? {} : { tags: { $all: [...tags] } }),
     };
     const docs = await this.collection
-      .find(filter, { projection: { _id: 1, email: 1, mergeFields: 1 } })
+      .find(filter, { projection: { _id: 1, email: 1, customFields: 1 } })
       .toArray();
     return docs.map((doc) => ({
       subscriptionId: doc._id,
       address: doc.email,
-      mergeModel: fromStored(doc.mergeFields),
+      customFields: fromStored(doc.customFields),
     }));
   }
 }
@@ -164,7 +164,7 @@ function toDoc(subscription: Subscription): SubscriptionDoc {
     newsletterId: subscription.newsletterId,
     email: subscription.email,
     status: subscription.status,
-    mergeFields: subscription.mergeFields,
+    customFields: subscription.customFields,
     tags: [...subscription.tags],
     consecutiveSoftBounces: subscription.consecutiveSoftBounces,
     ...defined({
@@ -192,7 +192,7 @@ function toDomain(doc: SubscriptionDoc): Subscription {
     newsletterId: doc.newsletterId,
     email: doc.email,
     status: doc.status as SubscriptionStatus,
-    mergeFields: fromStored(doc.mergeFields),
+    customFields: fromStored(doc.customFields),
     // Absent on rows written before the counter existed — treat as no streak.
     tags: doc.tags,
     consecutiveSoftBounces: doc.consecutiveSoftBounces ?? 0,
@@ -210,10 +210,10 @@ function toDomain(doc: SubscriptionDoc): Subscription {
   });
 }
 
-// Merge fields are stored as a JSON object; hydrate to the opaque merge model,
+// Custom fields are stored as a JSON object; hydrate to the opaque custom-field model,
 // defaulting anything unexpected (null / array) to an empty model.
-function fromStored(value: unknown): MergeFields {
+function fromStored(value: unknown): CustomFields {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as MergeFields)
+    ? (value as CustomFields)
     : {};
 }

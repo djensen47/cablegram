@@ -1,7 +1,7 @@
 import type {
   ConsentEvidence,
   ImportedConsentRecord,
-  MergeFields,
+  CustomFields,
   SubscriptionStatus,
 } from '../domain/subscription.js';
 
@@ -15,7 +15,7 @@ import type {
 export interface SubscribeInput {
   newsletterId: string;
   email: string;
-  mergeFields?: MergeFields;
+  customFields?: CustomFields;
   tags?: string[];
   /**
    * Per-newsletter opt-in toggle. `true` (the default) → the subscription is
@@ -46,7 +46,7 @@ export interface ImportSubscriptionRow {
   email: string;
   /** The restored status. Absent → the batch's `defaultStatus`. */
   status?: SubscriptionStatus;
-  mergeFields?: MergeFields;
+  customFields?: CustomFields;
   tags?: string[];
   /** The original opt-in date from the source system; becomes `createdAt`. */
   subscribedAt?: Date;

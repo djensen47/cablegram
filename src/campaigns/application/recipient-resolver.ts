@@ -9,13 +9,13 @@ import type { CampaignSegment } from '../domain/campaign.js';
  * `campaigns → subscriptions`.
  */
 
-/** A resolved send target: an address plus the per-recipient merge model. */
+/** A resolved send target: an address plus the per-recipient custom-field model. */
 export interface CampaignRecipient {
   /** The subscription's id — used to mint the per-recipient unsubscribe token
    * for the `List-Unsubscribe` header (ADR-015). */
   readonly subscriptionId: string;
   readonly address: string;
-  readonly mergeModel: Record<string, unknown>;
+  readonly customFields: Record<string, unknown>;
 }
 
 export interface RecipientResolver {
