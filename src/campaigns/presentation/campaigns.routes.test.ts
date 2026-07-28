@@ -205,6 +205,86 @@ describe('campaigns routes', () => {
     expect(page.meta.nextCursor).toBeNull();
   });
 
+  describe('test send (ADR-025)', () => {
+    async function draftCampaign(): Promise<string> {
+      const created = (await (
+        await createCampaign({ newsletterId, name: 'Proof', templateId })
+      ).json()) as { id: string };
+      return created.id;
+    }
+
+    function testSend(id: string, body: Record<string, unknown>) {
+      return app.request(`/v1/campaigns/${id}/test`, {
+        method: 'POST',
+        headers: auth,
+        body: JSON.stringify(body),
+      });
+    }
+
+    it('sends only to the addresses given and records nothing', async () => {
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+      const id = await draftCampaign();
+
+      const res = await testSend(id, { to: ['me@example.com'] });
+
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as { sent: string[]; subject: string; suppressed: string[] };
+      expect(json.sent).toEqual(['me@example.com']);
+      expect(json.subject).toBe('[TEST] Hello');
+      expect(json.suppressed).toEqual([]);
+      // The subscriber was NOT mailed — the address list is the recipient set.
+      expect(gateway.sent).toHaveLength(1);
+      expect(gateway.sent[0]?.recipients.map((r) => r.email)).toEqual(['me@example.com']);
+
+      // Nothing was written: still draft, and no send record to read.
+      const after = (await (await app.request(`/v1/campaigns/${id}`, { headers: auth })).json()) as {
+        status: string;
+        sendId: string | null;
+      };
+      expect(after.status).toBe('draft');
+      expect(after.sendId).toBeNull();
+      const send = await app.request(`/v1/campaigns/${id}/send`, { headers: auth });
+      expect(send.status).toBe(404);
+    });
+
+    it('sends the subject unprefixed when asked', async () => {
+      const id = await draftCampaign();
+      const res = await testSend(id, { to: ['me@example.com'], prefixSubject: false });
+      expect(((await res.json()) as { subject: string }).subject).toBe('Hello');
+    });
+
+    it('rejects an empty or over-long target list (400)', async () => {
+      const id = await draftCampaign();
+
+      expect((await testSend(id, { to: [] })).status).toBe(400);
+      expect(
+        (
+          await testSend(id, {
+            to: ['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com', 'e@x.com', 'f@x.com'],
+          })
+        ).status,
+      ).toBe(400);
+      expect((await testSend(id, { to: ['not-an-email'] })).status).toBe(400);
+      expect(gateway.sent).toHaveLength(0);
+    });
+
+    it('404s an unknown campaign', async () => {
+      const res = await testSend('nope', { to: ['me@example.com'] });
+      expect(res.status).toBe(404);
+    });
+
+    it('requires a JWT', async () => {
+      const id = await draftCampaign();
+      const res = await app.request(`/v1/campaigns/${id}/test`, {
+        method: 'POST',
+        body: JSON.stringify({ to: ['me@example.com'] }),
+      });
+      expect(res.status).toBe(401);
+    });
+  });
+
   it('deletes a campaign (204) then 404s a get', async () => {
     const created = (await (await createCampaign({ newsletterId, name: 'M', templateId })).json()) as {
       id: string;
@@ -236,6 +316,7 @@ describe('campaigns routes', () => {
     const doc = (await res.json()) as { paths: Record<string, unknown> };
     expect(doc.paths).toHaveProperty('/v1/campaigns');
     expect(doc.paths).toHaveProperty('/v1/campaigns/{id}/send');
+    expect(doc.paths).toHaveProperty('/v1/campaigns/{id}/test');
     expect(doc.paths).toHaveProperty('/webhooks/postmark');
   });
 });

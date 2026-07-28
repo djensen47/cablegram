@@ -30,6 +30,8 @@ export const CAMPAIGN_TYPES = {
   UpdateCampaign: Symbol.for('UpdateCampaign'),
   DeleteCampaign: Symbol.for('DeleteCampaign'),
   SendCampaign: Symbol.for('SendCampaign'),
+  /** The proof send: same render + gateway path, no persistence (ADR-025). */
+  SendTestCampaign: Symbol.for('SendTestCampaign'),
   GetSend: Symbol.for('GetSend'),
   ListRecipientOutcomes: Symbol.for('ListRecipientOutcomes'),
   ListUnhandledEvents: Symbol.for('ListUnhandledEvents'),

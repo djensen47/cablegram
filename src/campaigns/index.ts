@@ -74,6 +74,14 @@ export { ListCampaigns } from './application/list-campaigns.js';
 export { UpdateCampaign } from './application/update-campaign.js';
 export { DeleteCampaign } from './application/delete-campaign.js';
 export { SendCampaign } from './application/send-campaign.js';
+export {
+  SendTestCampaign,
+  MAX_TEST_RECIPIENTS,
+  TEST_SEND_SUBJECT_PREFIX,
+  TEST_SEND_TAG_PREFIX,
+  type SendTestCampaignInput,
+  type TestSendResult,
+} from './application/send-test-campaign.js';
 export { GetSend } from './application/get-send.js';
 export { ListRecipientOutcomes } from './application/list-recipient-outcomes.js';
 export { ListUnhandledEvents } from './application/list-unhandled-events.js';

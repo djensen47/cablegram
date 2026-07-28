@@ -195,16 +195,24 @@ CMP=$(curl -sX POST localhost:3000/v1/campaigns -H "$A" -H "$J" -d "{
   \"templateId\": \"$TPL\"
 }" | jq -r .id)
 
-# 5. Send it now. Recipients are resolved (subscribed AND not suppressed),
+# 5. Prove it first: deliver to your own inbox through the exact same render and
+#    delivery path as the real send (ADR-025). Records nothing — no send record,
+#    no outcomes, no stats, campaign stays draft — so repeat it freely while
+#    iterating on the template. Suppressed addresses are still dropped.
+#    Add "prefixSubject": false for a subject byte-identical to the real one.
+curl -sX POST "localhost:3000/v1/campaigns/$CMP/test" -H "$A" -H "$J" \
+  -d '{ "to": ["me@example.com"] }'
+
+# 6. Send it now. Recipients are resolved (subscribed AND not suppressed),
 #    rendered, and handed to Postmark in one Bulk call. Returns a send record.
 curl -sX POST "localhost:3000/v1/campaigns/$CMP/send" -H "$A"
 
-# 6. Read the send record back — per-recipient outcomes + aggregate stats,
+# 7. Read the send record back — per-recipient outcomes + aggregate stats,
 #    updated as Postmark webhook events arrive.
 curl -s "localhost:3000/v1/campaigns/$CMP/send" -H "$A" | jq '.stats'
 # { "recipients": 1, "accepted": 1, "delivered": 0, "bounced": 0, "complained": 0 }
 
-# 7. Manage the suppression list directly (hard bounces / complaints add to it automatically).
+# 8. Manage the suppression list directly (hard bounces / complaints add to it automatically).
 curl -sX POST localhost:3000/v1/suppressions -H "$A" -H "$J" \
   -d '{ "address": "bounced@dispatch.example", "reason": "manual-junk" }'
 ```
@@ -233,6 +241,7 @@ NL=$(cablegram --json newsletters create \
 cablegram subscriptions import "$NL" subscribers.csv --dry-run   # status breakdown, writes nothing
 cablegram subscriptions import "$NL" subscribers.csv             # preserves each row's status
 cablegram templates create --name "Weekly digest" --subject "Your {{weekOf}} digest" --html body.html
+cablegram campaigns test <campaign-id> --to me@example.com   # proof to your own inbox
 cablegram campaigns send <campaign-id> --dry-run    # recipient count, sends nothing
 cablegram campaigns send <campaign-id>              # confirms first; --yes to skip
 cablegram campaigns report <campaign-id> --failures
@@ -364,6 +373,7 @@ custom field, so it can never render into a campaign. An import with no `--sourc
 |---|---|---|
 | POST · GET | `/v1/campaigns` | Create / list (`?newsletterId=&status=`) |
 | GET · PATCH · DELETE | `/v1/campaigns/{id}` | Get / update (only while not yet sent) / delete |
+| POST | `/v1/campaigns/{id}/test` | Test send: same render + delivery path, up to 5 named addresses, records nothing |
 | POST | `/v1/campaigns/{id}/send` | Send now |
 | GET | `/v1/campaigns/{id}/send` | Send record: per-recipient outcomes + stats |
 
@@ -442,6 +452,12 @@ All configuration is environment variables (no config files on disk). See [`.env
 - **The Postmark webhook is Basic-Auth, not signed.** Postmark offers no HMAC/signature — the receiver
   checks `POSTMARK_WEBHOOK_SECRET` as a Basic-Auth password, which is why it sits outside `/v1`.
 - **No scheduling in v1.** Sending is on-demand only; there is no `scheduled` status and no timer.
+- **A test send is the same send, aimed elsewhere.** `POST /v1/campaigns/{id}/test` renders through
+  the exact same path as a real send (same renderer call, same `List-Unsubscribe` headers, same
+  broadcast stream) and records **nothing** — no send record, no outcomes, no stats, no state change
+  — so it is safe to repeat. It never reads the subscriber list, but the global suppression list
+  still applies, the subject is prefixed `[TEST] ` unless you pass `prefixSubject: false`, and it is
+  legal on an already-`sent` campaign ([ADR-025](docs/adrs/ADR-025-campaign-test-send.md)).
 
 ## Project layout
 

@@ -125,6 +125,20 @@ export interface CampaignDto {
   sentAt: string | null;
 }
 
+/**
+ * What a test send delivered (ADR-025). There is no resource behind it — a test
+ * send records nothing server-side, so this response is the whole record of it.
+ */
+export interface TestSendDto {
+  campaignId: string;
+  /** The subject as actually submitted, `[TEST] ` prefix included when applied. */
+  subject: string;
+  sent: string[];
+  /** Requested addresses dropped because they are on the global suppression list. */
+  suppressed: string[];
+  bulkRequestId: string | null;
+}
+
 export interface RecipientOutcomeDto {
   address: string;
   messageId: string | null;

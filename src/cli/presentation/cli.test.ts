@@ -313,6 +313,69 @@ describe('campaigns send', () => {
     expect(api.calls.some((c) => c.method === 'POST')).toBe(false);
   });
 
+  it('posts a test send to the addresses given, with the prefix on by default', async () => {
+    const { api, deps } = harness();
+    api.responses.set('POST /v1/campaigns/c1/test', {
+      campaignId: 'c1',
+      subject: '[TEST] July Update',
+      sent: ['me@example.com', 'inbox@example.net'],
+      suppressed: [],
+      bulkRequestId: 'req-1',
+    });
+
+    const code = await run(deps, [
+      'campaigns',
+      'test',
+      'c1',
+      '--to',
+      'me@example.com',
+      '--to',
+      'inbox@example.net',
+    ]);
+
+    expect(code).toBe(EXIT.ok);
+    expect(api.calls[0]).toMatchObject({
+      method: 'POST',
+      path: '/v1/campaigns/c1/test',
+      body: { to: ['me@example.com', 'inbox@example.net'], prefixSubject: true },
+    });
+    // No confirmation, and no subscriber-list read — a proof is not a send.
+    expect(api.calls).toHaveLength(1);
+    expect(stderr).toContain('[TEST] July Update');
+  });
+
+  it('turns --no-prefix into prefixSubject: false', async () => {
+    const { api, deps } = harness();
+    api.responses.set('POST /v1/campaigns/c1/test', {
+      campaignId: 'c1',
+      subject: 'July Update',
+      sent: ['me@example.com'],
+      suppressed: [],
+      bulkRequestId: 'req-1',
+    });
+
+    const code = await run(deps, [
+      'campaigns',
+      'test',
+      'c1',
+      '--to',
+      'me@example.com',
+      '--no-prefix',
+    ]);
+
+    expect(code).toBe(EXIT.ok);
+    expect(api.calls[0]?.body).toMatchObject({ prefixSubject: false });
+  });
+
+  it('rejects a bad or over-long --to list before calling the API', async () => {
+    const { api, deps } = harness();
+
+    expect(await run(deps, ['campaigns', 'test', 'c1', '--to', 'nope'])).toBe(EXIT.usage);
+    const tooMany = ['a', 'b', 'c', 'd', 'e', 'f'].flatMap((n) => ['--to', `${n}@x.com`]);
+    expect(await run(deps, ['campaigns', 'test', 'c1', ...tooMany])).toBe(EXIT.usage);
+    expect(api.calls).toHaveLength(0);
+  });
+
   it('rejects a campaign with two content sources before calling the API', async () => {
     const { api, deps } = harness();
 

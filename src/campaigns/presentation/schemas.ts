@@ -4,6 +4,7 @@ import { CAMPAIGN_STATUSES, type Campaign, type CampaignStats } from '../domain/
 import type { Send } from '../domain/send.js';
 import { OUTCOME_STATUSES, type RecipientOutcome } from '../domain/recipient-outcome.js';
 import type { UnhandledEventRecord } from '../application/unhandled-event-repository.js';
+import { MAX_TEST_RECIPIENTS, type TestSendResult } from '../application/send-test-campaign.js';
 
 /**
  * zod-OpenAPI schemas for the campaigns API. These are the single source of
@@ -78,6 +79,48 @@ export const UpdateCampaignSchema = z
   .openapi('UpdateCampaign');
 
 export const CampaignListSchema = listResponseSchema(CampaignSchema, 'CampaignList');
+
+/**
+ * A test send's target list (ADR-025). Capped at {@link MAX_TEST_RECIPIENTS} —
+ * the constant comes from the use case, so the edge cannot drift from the
+ * invariant it is guarding.
+ */
+export const SendTestCampaignSchema = z
+  .object({
+    to: z
+      .array(z.string().trim().email().max(320))
+      .min(1)
+      .max(MAX_TEST_RECIPIENTS)
+      .openapi({ example: ['me@example.com'] }),
+    prefixSubject: z.boolean().optional().default(true).openapi({
+      description:
+        'Prepend "[TEST] " to the subject so a proof is never mistaken for the real issue. ' +
+        'Pass false when the subject must be byte-identical to what subscribers will see.',
+      example: true,
+    }),
+  })
+  .openapi('SendTestCampaign');
+
+/**
+ * What a test send did. There is no persisted resource behind this — nothing
+ * about a test send is recorded (no `Send`, no recipient outcomes, no stats),
+ * so this response is the entire record of it.
+ */
+export const TestSendSchema = z
+  .object({
+    campaignId: z.string().openapi({ example: idExample }),
+    subject: z.string().openapi({ example: '[TEST] This month in review' }),
+    sent: z.array(z.string()).openapi({ example: ['me@example.com'] }),
+    suppressed: z.array(z.string()).openapi({
+      description: 'Requested addresses dropped because they are on the global suppression list.',
+      example: [],
+    }),
+    bulkRequestId: z
+      .string()
+      .nullable()
+      .openapi({ description: 'null when every requested address was suppressed.' }),
+  })
+  .openapi('TestSend');
 
 /** Query filters for the list route: pagination + newsletter/status filters. */
 export const ListCampaignsQuerySchema = paginationQuerySchema.extend({
@@ -175,6 +218,7 @@ export const PostmarkWebhookSchema = z
 
 export type CampaignResponse = z.infer<typeof CampaignSchema>;
 export type SendResponse = z.infer<typeof SendSchema>;
+export type TestSendResponse = z.infer<typeof TestSendSchema>;
 export type RecipientOutcomeResponse = z.infer<typeof RecipientOutcomeSchema>;
 export type UnhandledEventResponse = z.infer<typeof UnhandledEventSchema>;
 
@@ -209,6 +253,17 @@ export function toSendResponse(send: Send, stats: CampaignStats): SendResponse {
     stats,
     createdAt: send.createdAt.toISOString(),
     updatedAt: send.updatedAt.toISOString(),
+  };
+}
+
+/** Maps a test send's result to its wire DTO. */
+export function toTestSendResponse(result: TestSendResult): TestSendResponse {
+  return {
+    campaignId: result.campaignId,
+    subject: result.subject,
+    sent: [...result.sent],
+    suppressed: [...result.suppressed],
+    bulkRequestId: result.bulkRequestId,
   };
 }
 

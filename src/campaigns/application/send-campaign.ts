@@ -3,9 +3,7 @@ import { newId } from '../../shared/ids/index.js';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
 import type { AppConfig } from '../../shared/config/index.js';
 import type { Clock } from '../../shared/clock/index.js';
-import { unsubscribeToken } from '../../shared/auth/index.js';
-import { EMAIL_TYPES, type DeliveryGateway, type EmailHeader } from '../../shared/email/index.js';
-import { PUBLIC_UNSUBSCRIBE_PATH } from '../../subscriptions/index.js';
+import { EMAIL_TYPES, type DeliveryGateway } from '../../shared/email/index.js';
 import { CAMPAIGN_TYPES } from '../types.js';
 import type { Campaign, CampaignId } from '../domain/campaign.js';
 import { Send } from '../domain/send.js';
@@ -18,6 +16,7 @@ import type { NewsletterGateway } from './newsletter-gateway.js';
 import type { RecipientResolver } from './recipient-resolver.js';
 import type { SuppressionGateway } from './suppression-gateway.js';
 import type { MessageRenderer } from './message-renderer.js';
+import { unsubscribeHeaders } from './unsubscribe-headers.js';
 
 
 /**
@@ -132,7 +131,12 @@ export class SendCampaign {
             textBody: message.textBody,
           },
           recipients: allowed.map((r) => {
-            const headers = this.unsubscribeHeaders(campaign.newsletterId, r.subscriptionId, r.address);
+            const headers = unsubscribeHeaders(
+              this.config,
+              campaign.newsletterId,
+              r.subscriptionId,
+              r.address,
+            );
             return headers === undefined ? { email: r.address } : { email: r.address, headers };
           }),
           // Newsletters are broadcasts (ADR-008): broadcast stream + token.
@@ -161,34 +165,5 @@ export class SendCampaign {
       await this.campaigns.update(campaign);
       throw err;
     }
-  }
-
-  /**
-   * Build a recipient's RFC 8058 `List-Unsubscribe` headers (ADR-015). The URL
-   * **always** points at the API's own `POST /v1/unsubscribe` (built from
-   * `baseUrl`) — that is the machine one-click endpoint, and the token can only
-   * travel per-recipient in the header (a campaign is one bulk send with a shared
-   * body, ADR-008). Any operator `unsubscribe.url` page is reached by the API's
-   * `GET` forwarding this token, not by pointing the header there. Returns
-   * `undefined` when no `baseUrl` is set — nowhere to point, so headers are
-   * omitted. `email` rides along for the landing page to display.
-   */
-  private unsubscribeHeaders(
-    newsletterId: string,
-    subscriptionId: string,
-    email: string,
-  ): readonly EmailHeader[] | undefined {
-    if (this.config.baseUrl === null) return undefined;
-
-    const token = unsubscribeToken(this.config.unsubscribe.tokenSecret, newsletterId, subscriptionId);
-    const url = new URL(`${this.config.baseUrl}${PUBLIC_UNSUBSCRIBE_PATH}`);
-    url.searchParams.set('newsletterId', newsletterId);
-    url.searchParams.set('subscriptionId', subscriptionId);
-    url.searchParams.set('token', token);
-    url.searchParams.set('email', email);
-    return [
-      { name: 'List-Unsubscribe', value: `<${url.toString()}>` },
-      { name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' },
-    ];
   }
 }
