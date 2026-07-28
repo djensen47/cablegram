@@ -357,6 +357,29 @@ scope.
   dropped and `Hi {{firstName}}` sends "Hi " to everyone. Typing is theoretical until rendering exists,
   so **rendering is the decision that comes first** — and it's an ADR-008 change. Don't "fix" either by
   accident.
+- **A test send is the SAME send aimed elsewhere — its whole value is that it shares code, not that
+  it resembles the real path** ([ADR-025](docs/adrs/ADR-025-campaign-test-send.md), #36).
+  `POST /v1/campaigns/{id}/test` / `cablegram campaigns test <id> --to a@x.com` (repeatable, **max 5**,
+  de-duplicated, normalized). `SendTestCampaign` calls the *same*
+  `MessageRenderer.render(campaign.contentRef(), {})`, the *same* `unsubscribeHeaders(...)` (extracted
+  out of `SendCampaign` into `application/unsubscribe-headers.ts` for exactly this — **don't**
+  re-inline it), and the *same* `DeliveryGateway` with `category: 'broadcast'`. A re-implementation
+  would make a green test prove nothing, so **two tests are load-bearing**: a recorder around the
+  renderer asserts both paths pass identical arguments, and a throwing `RecipientResolver` asserts
+  gate 1 is never called. It **writes nothing** — no `Send`, no `RecipientOutcome`, no stats, no
+  `markSending`/`markSent`; the campaign is read and never saved, so it's repeatable and legal in
+  **any** status incl. `sent`. Gates are deliberately asymmetric: **gate 1 (subscribed) skipped — the
+  addresses ARE the recipient set — gate 2 (global suppression) KEPT** (an operator-triggered path is
+  not an exception to the deny list). The `List-Unsubscribe` header **is** included, HMAC-bound to a
+  **fresh synthetic `subscriptionId`** (`newId()`): the token verifies so Gmail renders the affordance,
+  and one-click lands on `PublicUnsubscribe`'s valid-token/no-row quiet-success path, so proof-mailing
+  yourself can't unsubscribe you. Subject gets `[TEST] ` unless `prefixSubject: false` (`--no-prefix`).
+  The provider tag is **`test:<campaignId>`, NEVER the bare id** — a bare id would let an open/bounce
+  on the proof land on the real campaign's outcomes; `test:<id>` isn't a campaign id so
+  `RecordDeliveryEvents` skips it (unknown *tags* are tolerated; only unknown *record types* become
+  ADR-021 unhandled rows). `MAX_TEST_RECIPIENTS` lives on the use case and the zod schema imports it;
+  the CLI hand-mirrors the 5 (ADR-016 forbids `cli → campaigns`). `--dry-run` still only counts —
+  different question, both kept.
 - **Postmark wire format** (request/response, webhook schema) is implemented in
   `src/shared/email/postmark-delivery-gateway.ts` and `src/campaigns/presentation/webhook-routes.ts` —
   treat that code (or live docs) as the source of truth, not memory, before restating a Postmark fact
