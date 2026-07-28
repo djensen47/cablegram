@@ -226,7 +226,7 @@ describe('campaigns — test send (ADR-025)', () => {
     expect(after.status).toBe('draft');
     expect(after.sendId).toBeNull();
     expect(after.sentAt).toBeNull();
-    expect(after.stats).toMatchObject({ recipients: 0, accepted: 0 });
+    expect(after.recipientCount).toBe(0);
 
     // Both read paths still say "this campaign has never been sent".
     await expect(
@@ -355,7 +355,7 @@ describe('campaigns — test send (ADR-025)', () => {
     const after = await container.get<GetCampaign>(CAMPAIGN_TYPES.GetCampaign).execute(campaignId);
     expect(after.status).toBe('sent');
     expect(after.sendId).toBe(sendId);
-    expect(after.stats).toMatchObject({ recipients: 1, accepted: 1 });
+    expect(after.recipientCount).toBe(1);
   });
 
   it('fails on unrenderable content exactly as a real send does', async () => {

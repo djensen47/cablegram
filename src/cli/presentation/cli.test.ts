@@ -249,7 +249,7 @@ describe('campaigns send', () => {
     newsletterId: 'n1',
     status: 'draft',
     segmentTags: [],
-    stats: { recipients: 0, accepted: 0, delivered: 0, bounced: 0, complained: 0 },
+    recipientCount: 0,
     sentAt: null,
   };
 
@@ -270,7 +270,7 @@ describe('campaigns send', () => {
     api.responses.set('POST /v1/campaigns/c1/send', {
       ...draft,
       status: 'sent',
-      stats: { ...draft.stats, recipients: 1, accepted: 1 },
+      recipientCount: 1,
     });
 
     const code = await run(deps, ['--yes', 'campaigns', 'send', 'c1']);

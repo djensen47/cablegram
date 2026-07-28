@@ -43,7 +43,12 @@ export const CampaignSchema = z
     segmentTags: z.array(z.string()).openapi({ example: ['vip'] }),
     status: z.enum(CAMPAIGN_STATUSES).openapi({ example: 'draft' }),
     sendId: z.string().nullable().openapi({ example: null }),
-    stats: StatsSchema,
+    recipientCount: z.number().int().openapi({
+      description:
+        'Addresses handed to the provider at send time. Delivery counts are not here — ' +
+        'they are live on GET /v1/campaigns/{id}/send.',
+      example: 0,
+    }),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
     sentAt: z.string().datetime().nullable(),
@@ -235,7 +240,7 @@ export function toCampaignResponse(campaign: Campaign): CampaignResponse {
     segmentTags: [...campaign.segmentTags],
     status: campaign.status,
     sendId: campaign.sendId,
-    stats: { ...campaign.stats },
+    recipientCount: campaign.recipientCount,
     createdAt: campaign.createdAt.toISOString(),
     updatedAt: campaign.updatedAt.toISOString(),
     sentAt: campaign.sentAt?.toISOString() ?? null,

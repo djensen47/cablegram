@@ -153,11 +153,11 @@ export class SendCampaign {
         await this.outcomes.markAccepted(sendId, this.clock.now());
       }
 
-      // The snapshot stored on the campaign is the send-time picture
-      // (recipients / accepted). Delivery outcomes arrive later by
+      // All the campaign keeps is how many addresses went out — already known
+      // here, so this costs no extra read. Delivery outcomes arrive later by
       // webhook and are counted from the outcomes collection on read, rather
-      // than rewritten onto the campaign ~50k times per send (ADR-019).
-      campaign.markSent(await this.outcomes.stats(sendId), this.clock.now());
+      // than rewritten onto the campaign ~50k times per send (ADR-019 §3).
+      campaign.markSent(allowed.length, this.clock.now());
       await this.campaigns.update(campaign);
       return campaign;
     } catch (err) {

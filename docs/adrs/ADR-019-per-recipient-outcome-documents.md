@@ -102,15 +102,19 @@ that pattern is what lost updates.
 ### 3. Stats are counted on read, not maintained on write
 
 `campaign.stats` was recomputed and rewritten on every webhook — 50k campaign writes per send. It is
-now a **snapshot taken at send time** (recipients / accepted — see §6, which drops `rejected`), and
-live delivery counts come from a grouped count over the outcomes when the send is read.
+gone (see §7); the campaign keeps a plain `recipientCount`, and live delivery counts come from a
+grouped count over the outcomes when the send is read.
 
-Counters were rejected: incrementing correctly requires knowing the *previous* status (pending→delivered
-is −1/+1), which is not derivable from a single atomic update, and a counter that drifts stays wrong
-forever.
+Counters were rejected: incrementing correctly requires knowing the *previous* status
+(pending→delivered is −1/+1). The previous status **is** obtainable atomically — `findOneAndUpdate`
+with `returnDocument: 'before'` returns the pre-image — so the first version of this section
+overstated it as "not derivable from a single atomic update." The real objections are the two that
+survive: applying the ∓1 is a **second write to a second document**, which ADR-012 has no transaction
+to pair with the first, and every one of ~50k webhooks would contend on the same campaign document.
 
-**Visible consequence:** a campaign *list* shows send-time stats, while reading a campaign's send shows
-live ones. This is the trade accepted in exchange for removing 50k writes per send.
+**Visible consequence:** a campaign *list* shows `recipientCount` only, while reading a campaign's
+send shows live delivery counts. This is the trade accepted in exchange for removing 50k writes per
+send.
 
 ### 4. Recipients are a paginated resource, not an inline array
 
@@ -167,6 +171,34 @@ the CLI. Both repositories' `accepted` derivation loses its subtrahend and becom
 run. Priorities are left numbered from 1, leaving the slot below `pending` free should a real
 pre-acceptance failure ever have a source.
 
+### 7. Addendum (2026-07-28): the stored `campaign.stats` snapshot is removed too
+
+§6 applied the permanently-zero argument to one field and stopped. The object holding it had the same
+defect, four times over.
+
+`campaign.stats` was written exactly once, by `markSent`, from a count taken moments after
+`markAccepted` had raised every recipient. So the stored value could only ever be:
+
+```
+{ recipients: N, accepted: N, delivered: 0, softBounced: 0, bounced: 0, complained: 0 }
+```
+
+`recipients` and `accepted` are necessarily equal and both equal `Send.recipientCount`. The other four
+are fed exclusively by webhooks arriving *after* the only write, and §3 is precisely the decision never
+to rewrite the campaign again — so nothing could raise them. `cablegram campaigns get` printed four
+hardcoded zeros to the operator.
+
+The field survived §3 as **residue**: it made sense when it was maintained on write, and removing the
+writes left it behind rather than prompting the question of whether it should still exist.
+
+Replaced by `recipientCount: number` on the campaign — one fact, written once at submit, which is all
+the list column ever needed. `CampaignStats` remains as the counted-on-read shape behind
+`GET /v1/campaigns/{id}/send`; it is now *only* that, and is never persisted. `applyStats()` is
+deleted (zero callers — it existed to re-stamp a snapshot there is no longer any reason to re-stamp).
+
+Breaking on the wire (`stats: {...}` → `recipientCount: number`) with no deprecation window, on the
+same grounds as §6 and ADR-024's rename: nothing is deployed and there are no consumers.
+
 ## Consequences
 
 - **A webhook costs 1 read + 1 write**, both single-document, instead of a 5 MB read-modify-write plus
@@ -176,7 +208,8 @@ pre-acceptance failure ever have a source.
   `mongod` — including 20 concurrent opens on one recipient and concurrent events across recipients.
   The in-memory double mirrors the *semantics* (dedupe, only-raise, "false when nothing changed"), not
   just the signatures, so it cannot pass where the real store would fail.
-- **Campaign list stats are a snapshot.** The most likely thing to be surprising; see §3.
+- **A campaign carries no delivery counts at all** — only `recipientCount`. Delivery numbers require
+  reading the send (§3, §7). The most likely thing to be surprising.
 - **Two API reads where there was one** for a full report. The CLI hides this behind one command.
 - **Outcome rows are never cleaned up.** 18k rows per send accumulate indefinitely. Not addressed
   here; a retention policy will eventually be needed, and `recipientCount` is stored on the send

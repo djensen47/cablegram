@@ -191,7 +191,7 @@ describe('import then send (ADR-022)', () => {
     expect(sent.status).toBe(200);
     expect(await sent.json()).toMatchObject({
       status: 'sent',
-      stats: { recipients: 1, accepted: 1 },
+      recipientCount: 1,
     });
 
     // Exactly one recipient: the unsubscribed, bounced, complained and pending
