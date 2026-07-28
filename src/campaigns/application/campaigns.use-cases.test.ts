@@ -148,7 +148,7 @@ describe('campaigns — the send integrator', () => {
     expect(gateway.sent[0]?.content.subject).toBe('This month in review');
 
     expect(sent.status).toBe('sent');
-    expect(sent.stats).toMatchObject({ recipients: 2, accepted: 2 });
+    expect(sent.recipientCount).toBe(2);
     expect(sent.sendId).not.toBeNull();
     expect(sent.sentAt).not.toBeNull();
   });
@@ -214,7 +214,7 @@ describe('campaigns — the send integrator', () => {
 
     expect(gateway.sent).toHaveLength(0);
     expect(sent.status).toBe('sent');
-    expect(sent.stats.recipients).toBe(0);
+    expect(sent.recipientCount).toBe(0);
   });
 
   it('rejects sending an unknown campaign', async () => {

@@ -119,7 +119,12 @@ export interface CampaignDto {
   segmentTags: string[];
   status: CampaignStatus;
   sendId: string | null;
-  stats: CampaignStatsDto;
+  /**
+   * Addresses handed to the provider at send time. Delivery counts are NOT
+   * here — they are live on `SendDto.stats` (`campaigns report`), because a
+   * campaign is never rewritten as webhooks arrive (ADR-019 §3).
+   */
+  recipientCount: number;
   createdAt: string;
   updatedAt: string;
   sentAt: string | null;

@@ -35,7 +35,7 @@ const columns: Column<CampaignDto>[] = [
   { header: 'id', value: (c) => c.id },
   { header: 'name', value: (c) => truncate(c.name, 28) },
   { header: 'status', value: (c) => c.status },
-  { header: 'recipients', value: (c) => String(c.stats.recipients) },
+  { header: 'recipients', value: (c) => String(c.recipientCount) },
   { header: 'sent', value: (c) => shortDate(c.sentAt) },
 ];
 
@@ -93,11 +93,7 @@ export function registerCampaignCommands(program: Command, ctx: () => CommandCon
           subject: campaign.subject,
           templateId: campaign.templateId,
           segmentTags: campaign.segmentTags,
-          recipients: campaign.stats.recipients,
-          delivered: campaign.stats.delivered,
-          softBounced: campaign.stats.softBounced,
-          bounced: campaign.stats.bounced,
-          complained: campaign.stats.complained,
+          recipients: campaign.recipientCount,
           sentAt: campaign.sentAt,
         },
         campaign,
@@ -237,8 +233,8 @@ export function registerCampaignCommands(program: Command, ctx: () => CommandCon
         return;
       }
 
-      // Count from the subscriber list, not from campaign.stats — stats are
-      // populated *by* the send, so before one they are all zero. This is an
+      // Count from the subscriber list, not from campaign.recipientCount —
+      // that is written *by* the send, so before one it is zero. This is an
       // estimate, and says so: the server applies the suppression list at send
       // time (ADR-008), which this count cannot see.
       const recipients = await api.listAll<SubscriptionDto>(
@@ -274,7 +270,7 @@ export function registerCampaignCommands(program: Command, ctx: () => CommandCon
 
       c.printer.data(sent);
       c.printer.success(
-        `Sent "${sent.name}" — ${sent.stats.recipients} recipient(s), ${sent.stats.accepted} accepted.`,
+        `Sent "${sent.name}" — ${sent.recipientCount} recipient(s) accepted.`,
       );
       c.printer.dim(`Per-recipient outcomes arrive by webhook: cablegram campaigns report ${id}`);
     });

@@ -26,11 +26,16 @@ export function isCampaignStatus(value: string): value is CampaignStatus {
 }
 
 /**
- * Aggregate delivery stats for a campaign's one send (ADR-008). Set from the
- * provider response at send time (`recipients`/`accepted`) and updated from the
- * send record as webhooks arrive (`delivered`/`bounced`/`complained`). A full
- * snapshot, recomputed from the authoritative send record — never incremented —
- * so it is order-independent.
+ * Aggregate delivery stats for a send, **counted from the outcomes collection
+ * on read** (ADR-019 §3) and never stored. `RecipientOutcomeRepository.stats()`
+ * builds it per request, so it cannot go stale and needs no repair path.
+ *
+ * It is deliberately *not* denormalized onto the campaign. A snapshot taken at
+ * send time can only ever read `{recipients: N, accepted: N, 0, 0, 0, 0}` —
+ * `markAccepted` raises every recipient at submit, and the four delivery
+ * counters are fed exclusively by webhooks that arrive later. Storing four
+ * permanently-zero fields is the defect ADR-019 §6 deleted `rejected` and
+ * `errorCode` for; the campaign keeps a plain `recipientCount` instead.
  *
  * There is no `rejected` counter. The Bulk submit is asynchronous and returns
  * an ack, not per-message results, so nothing could ever raise it above zero —
@@ -88,7 +93,13 @@ export interface CampaignProps {
   status: CampaignStatus;
   /** The id of this campaign's one `SendRecord`, set when a send begins. */
   sendId: string | null;
-  stats: CampaignStats;
+  /**
+   * How many addresses survived both send gates, denormalized from the send so
+   * a campaign *list* can show it without reading `campaign_sends`. Fixed at
+   * submit and never revised — delivery outcomes are counted from
+   * `campaign_recipient_outcomes` on read (`CampaignStats`), not stored here.
+   */
+  recipientCount: number;
   createdAt: Date;
   updatedAt: Date;
   sentAt: Date | null;
@@ -174,8 +185,9 @@ function validateContent(
  * The campaign aggregate (ADR-011): a broadcast a newsletter sends to a
  * query-time segment of its subscribers, resolving content from a template
  * reference or inline bodies. It owns the send state machine
- * (`draft → sending → sent | failed`) and the aggregate delivery stats; the
- * per-recipient outcomes live in the sibling `SendRecord`.
+ * (`draft → sending → sent | failed`) and the send-time `recipientCount`;
+ * delivery outcomes live in `campaign_recipient_outcomes` and are counted on
+ * read, never denormalized back onto the campaign (ADR-019 §3).
  *
  * Constructed only through `create` (new) or `reconstitute` (from storage), so
  * an instance is always valid.
@@ -200,7 +212,7 @@ export class Campaign {
       segmentTags: normalizeTags(input.segmentTags),
       status: 'draft',
       sendId: null,
-      stats: zeroStats(),
+      recipientCount: 0,
       createdAt: input.now,
       updatedAt: input.now,
       sentAt: null,
@@ -249,25 +261,17 @@ export class Campaign {
     if (!this.isEditable) {
       throw new CampaignStateError(`cannot send a campaign in status "${this.props.status}"`);
     }
-    this.props = { ...this.props, status: 'sending', sendId, stats: zeroStats(), updatedAt: now };
+    this.props = { ...this.props, status: 'sending', sendId, recipientCount: 0, updatedAt: now };
   }
 
-  /** Complete the send: record the accepted stats and mark `sent`. */
-  markSent(stats: CampaignStats, now: Date): void {
-    this.props = { ...this.props, status: 'sent', stats, sentAt: now, updatedAt: now };
+  /** Complete the send: record how many addresses went out, and mark `sent`. */
+  markSent(recipientCount: number, now: Date): void {
+    this.props = { ...this.props, status: 'sent', recipientCount, sentAt: now, updatedAt: now };
   }
 
   /** Abandon an in-flight send: mark `failed` so it may be retried. */
   markFailed(now: Date): void {
     this.props = { ...this.props, status: 'failed', updatedAt: now };
-  }
-
-  /**
-   * Replace the aggregate stats from the authoritative send record (a full
-   * recompute driven by webhooks) — idempotent and order-independent.
-   */
-  applyStats(stats: CampaignStats, now: Date): void {
-    this.props = { ...this.props, stats, updatedAt: now };
   }
 
   /** The content source a send renders. */
@@ -318,8 +322,8 @@ export class Campaign {
   get sendId(): string | null {
     return this.props.sendId;
   }
-  get stats(): CampaignStats {
-    return this.props.stats;
+  get recipientCount(): number {
+    return this.props.recipientCount;
   }
   get createdAt(): Date {
     return this.props.createdAt;

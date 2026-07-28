@@ -2,7 +2,7 @@ import { inject, injectable } from 'inversify';
 import type { Collection, Db, Filter } from 'mongodb';
 import { TYPES as SHARED_TYPES } from '../../shared/di/index.js';
 import { CAMPAIGN_COLLECTIONS } from './collections.js';
-import { Campaign, type CampaignId, type CampaignStats, type CampaignStatus } from '../domain/campaign.js';
+import { Campaign, type CampaignId, type CampaignStatus } from '../domain/campaign.js';
 import type {
   CampaignRepository,
   ListCampaignsOptions,
@@ -25,7 +25,7 @@ interface CampaignDoc {
   segmentTags: string[];
   status: string;
   sendId: string | null;
-  stats: CampaignStats;
+  recipientCount: number;
   createdAt: Date;
   updatedAt: Date;
   sentAt: Date | null;
@@ -87,7 +87,7 @@ function toDoc(campaign: Campaign): CampaignDoc {
     segmentTags: [...campaign.segmentTags],
     status: campaign.status,
     sendId: campaign.sendId,
-    stats: campaign.stats,
+    recipientCount: campaign.recipientCount,
     createdAt: campaign.createdAt,
     updatedAt: campaign.updatedAt,
     sentAt: campaign.sentAt,
@@ -95,9 +95,9 @@ function toDoc(campaign: Campaign): CampaignDoc {
 }
 
 function toDomain(doc: CampaignDoc): Campaign {
-  // `status` is only ever written from the closed `CampaignStatus` set and
-  // `stats` from a `CampaignStats` object, so a stored document is trusted at
-  // the repository boundary (same stance as sibling repositories).
+  // `status` is only ever written from the closed `CampaignStatus` set, so a
+  // stored document is trusted at the repository boundary (same stance as
+  // sibling repositories).
   return Campaign.reconstitute({
     id: doc._id,
     newsletterId: doc.newsletterId,
@@ -109,7 +109,7 @@ function toDomain(doc: CampaignDoc): Campaign {
     segmentTags: doc.segmentTags,
     status: doc.status as CampaignStatus,
     sendId: doc.sendId,
-    stats: doc.stats,
+    recipientCount: doc.recipientCount,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
     sentAt: doc.sentAt,

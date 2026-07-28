@@ -88,10 +88,14 @@ describe('campaigns routes', () => {
   it('creates a campaign (201, draft) with a template reference', async () => {
     const res = await createCampaign({ newsletterId, name: 'March', templateId });
     expect(res.status).toBe(201);
-    const json = (await res.json()) as { status: string; templateId: string; stats: { recipients: number } };
+    const json = (await res.json()) as {
+      status: string;
+      templateId: string;
+      recipientCount: number;
+    };
     expect(json.status).toBe('draft');
     expect(json.templateId).toBe(templateId);
-    expect(json.stats.recipients).toBe(0);
+    expect(json.recipientCount).toBe(0);
   });
 
   it('rejects a campaign with neither template nor inline content (400)', async () => {
@@ -158,9 +162,9 @@ describe('campaigns routes', () => {
 
     const res = await app.request(`/v1/campaigns/${created.id}/send`, { method: 'POST', headers: auth });
     expect(res.status).toBe(200);
-    const json = (await res.json()) as { status: string; stats: { recipients: number; accepted: number } };
+    const json = (await res.json()) as { status: string; recipientCount: number };
     expect(json.status).toBe('sent');
-    expect(json.stats).toMatchObject({ recipients: 1, accepted: 1 });
+    expect(json.recipientCount).toBe(1);
     expect(gateway.sent).toHaveLength(1);
   });
 

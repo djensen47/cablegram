@@ -48,10 +48,10 @@ describe('MongoCampaignRepository (contract)', () => {
     expect(found?.name).toBe('March Dispatch');
     expect(found?.templateId).toBe('tpl-1');
     expect(found?.status).toBe('draft');
-    expect(found?.stats).toEqual(campaign.stats);
+    expect(found?.recipientCount).toBe(campaign.recipientCount);
   });
 
-  it('updates in place, including a status transition and stats', async () => {
+  it('updates in place, including a status transition and recipientCount', async () => {
     const campaign = make();
     await repo.create(campaign);
 
@@ -59,15 +59,11 @@ describe('MongoCampaignRepository (contract)', () => {
     await repo.update(campaign);
     expect((await repo.findById(campaign.id))?.status).toBe('sending');
 
-    campaign.markSent(
-      { recipients: 2, accepted: 2, delivered: 0,
-      softBounced: 0, bounced: 0, complained: 0 },
-      new Date('2026-01-03T00:00:00Z'),
-    );
+    campaign.markSent(2, new Date('2026-01-03T00:00:00Z'));
     await repo.update(campaign);
     const sent = await repo.findById(campaign.id);
     expect(sent?.status).toBe('sent');
-    expect(sent?.stats.accepted).toBe(2);
+    expect(sent?.recipientCount).toBe(2);
     expect(sent?.sentAt).toEqual(new Date('2026-01-03T00:00:00Z'));
   });
 
