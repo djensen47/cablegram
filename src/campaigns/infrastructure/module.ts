@@ -15,6 +15,7 @@ import { ListCampaigns } from '../application/list-campaigns.js';
 import { UpdateCampaign } from '../application/update-campaign.js';
 import { DeleteCampaign } from '../application/delete-campaign.js';
 import { SendCampaign } from '../application/send-campaign.js';
+import { SendTestCampaign } from '../application/send-test-campaign.js';
 import { GetSend } from '../application/get-send.js';
 import { ListRecipientOutcomes } from '../application/list-recipient-outcomes.js';
 import { ListUnhandledEvents } from '../application/list-unhandled-events.js';
@@ -61,6 +62,7 @@ export const campaignModule = new ContainerModule((bind) => {
   bind<UpdateCampaign>(CAMPAIGN_TYPES.UpdateCampaign).to(UpdateCampaign);
   bind<DeleteCampaign>(CAMPAIGN_TYPES.DeleteCampaign).to(DeleteCampaign);
   bind<SendCampaign>(CAMPAIGN_TYPES.SendCampaign).to(SendCampaign);
+  bind<SendTestCampaign>(CAMPAIGN_TYPES.SendTestCampaign).to(SendTestCampaign);
   bind<GetSend>(CAMPAIGN_TYPES.GetSend).to(GetSend);
   bind<ListRecipientOutcomes>(CAMPAIGN_TYPES.ListRecipientOutcomes).to(ListRecipientOutcomes);
   bind<ListUnhandledEvents>(CAMPAIGN_TYPES.ListUnhandledEvents).to(ListUnhandledEvents);

@@ -23,6 +23,7 @@ import type { ListCampaigns } from '../application/list-campaigns.js';
 import type { UpdateCampaign } from '../application/update-campaign.js';
 import type { DeleteCampaign } from '../application/delete-campaign.js';
 import type { SendCampaign } from '../application/send-campaign.js';
+import type { SendTestCampaign } from '../application/send-test-campaign.js';
 import type { GetSend } from '../application/get-send.js';
 import type { ListRecipientOutcomes } from '../application/list-recipient-outcomes.js';
 import {
@@ -32,11 +33,14 @@ import {
   CreateCampaignSchema,
   ListCampaignsQuerySchema,
   SendSchema,
+  SendTestCampaignSchema,
+  TestSendSchema,
   RecipientOutcomeListSchema,
   ListRecipientOutcomesQuerySchema,
   UpdateCampaignSchema,
   toCampaignResponse,
   toSendResponse,
+  toTestSendResponse,
   toRecipientOutcomeResponse,
 } from './schemas.js';
 
@@ -183,6 +187,33 @@ const sendRoute = createRoute({
   },
 });
 
+const testSendRoute = createRoute({
+  method: 'post',
+  path: '/{id}/test',
+  tags: ['campaigns'],
+  summary: 'Send a campaign to a few named addresses, as a proof',
+  description:
+    'Renders through the exact same path as a real send (same renderer call, same List-Unsubscribe ' +
+    'headers, same broadcast stream) and delivers only to the addresses given — the subscriber list ' +
+    'is never read. Records nothing: no send, no recipient outcomes, no stats, no state change, so ' +
+    'it is safe to repeat while iterating on a template. The global suppression list still applies. ' +
+    'Legal in any status, including sent.',
+  security,
+  request: {
+    params: CampaignIdParamSchema,
+    body: { content: { 'application/json': { schema: SendTestCampaignSchema } }, required: true },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: TestSendSchema } },
+      description: 'What the test send delivered (and what it dropped as suppressed)',
+    },
+    400: badRequestResponse,
+    404: notFoundResponse,
+    ...authedResponses,
+  },
+});
+
 const getSendRoute = createRoute({
   method: 'get',
   path: '/{id}/send',
@@ -292,6 +323,19 @@ export function createCampaignRoutes(container: Container): OpenAPIHono<AppEnv> 
     try {
       const campaign = await container.get<SendCampaign>(CAMPAIGN_TYPES.SendCampaign).execute(id);
       return c.json(toCampaignResponse(campaign), 200);
+    } catch (err) {
+      rethrowDomainError(err);
+    }
+  });
+
+  app.openapi(testSendRoute, async (c) => {
+    const { id } = c.req.valid('param');
+    const { to, prefixSubject } = c.req.valid('json');
+    try {
+      const result = await container
+        .get<SendTestCampaign>(CAMPAIGN_TYPES.SendTestCampaign)
+        .execute({ campaignId: id, addresses: to, prefixSubject });
+      return c.json(toTestSendResponse(result), 200);
     } catch (err) {
       rethrowDomainError(err);
     }
