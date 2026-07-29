@@ -37,10 +37,14 @@ Shared: `email` (Postmark ACL) · `auth` (JWT + generic opaque-token helpers) ·
 ```
 campaigns     → { newsletters, subscriptions, deliverability, templates, email }
 subscriptions → { newsletters, deliverability }   (deliverability only for imported hard bounces, ADR-022)
-newsletters   → { templates }        (only if it names a default template)
 accounts      → { shared/* only }    (user accounts + auth; depends on no domain component)
-deliverability, templates, email, auth, shared/* → leaves
+newsletters, deliverability, templates, email, auth, shared/* → leaves
 ```
+
+ADR-011 permits `newsletters → templates` **only if** a newsletter names a default template. It
+doesn't: there is no `defaultTemplateId` on the aggregate and `src/newsletters/` imports nothing from
+`templates`, so the edge does not exist in code and `newsletters` is a leaf. Adding a default template
+is what would create it.
 
 Keep it acyclic. `email`, `auth` (and every `shared/*`) import **no** domain component.
 
@@ -215,7 +219,8 @@ scope.
   a CLI is a client, a TUI is a product surface and would need its own ADR.
 - **Collections are `<singular component>_<aggregate>`, owned by one component**
   ([ADR-017](docs/adrs/ADR-017-component-owned-collections.md)). `newsletter_newsletters`,
-  `subscription_subscriptions`, `template_templates`, `campaign_campaigns`, `campaign_send_records`,
+  `subscription_subscriptions`, `template_templates`, `campaign_campaigns`, `campaign_sends`,
+  `campaign_recipient_outcomes`,
   `deliverability_suppressions`, `campaign_unhandled_events`, `account_users`,
   `account_refresh_tokens`, `account_one_time_tokens`.
   The convention is applied **uniformly, stutter included** — a rule with no exceptions beats four
