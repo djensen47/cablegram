@@ -24,8 +24,12 @@ packages:
     functions:
       - name: api
         runtime: 'nodejs:24'
-        # Built by `npm run build` (tsc); the compiled entrypoint exports `main`.
-        main: 'dist/function.js'
+        # NOTE: there is deliberately no `main:` here. In OpenWhisk, `main`
+        # names the exported ENTRY FUNCTION, not a file — it defaults to
+        # `main`, and `src/function.ts` exports exactly that. (An earlier
+        # revision set it to `dist/function.js`, a path, which the runtime
+        # would have read as a function name and failed to load the action.)
+        # Which file to load comes from the action's package.json, not here.
         web: raw
         limits:
           # DO Functions are ephemeral/short-lived by design (ADR-009) — this
