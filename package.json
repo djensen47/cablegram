@@ -1,11 +1,23 @@
 {
   "name": "cablegram",
-  "version": "0.0.0",
-  "private": true,
+  "version": "1.0.0",
   "description": "Headless newsletter manager/sender — APIs only.",
+  "license": "MIT",
+  "author": "Dave Jensen",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/djensen47/cablegram.git"
+  },
   "type": "module",
   "engines": {
     "node": ">=24"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./function": "./dist/function.js",
+    "./package.json": "./package.json"
   },
   "bin": {
     "cablegram": "dist/cli/main.js"
@@ -13,6 +25,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.build.json && chmod +x dist/cli/main.js",
+    "prepack": "npm run build",
     "start": "node dist/server.js",
     "cli": "tsx src/cli/main.ts",
     "typecheck": "tsc --noEmit",
