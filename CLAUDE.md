@@ -111,6 +111,15 @@ Stateless & ephemeral everywhere: no background workers, no long in-request loop
 memory state between requests. Config from env vars. Mongo is the only durable state; pool at module
 scope.
 
+## Releasing ([ADR-026](docs/adrs/ADR-026-release-and-distribution.md))
+
+Published to **npm** (`dist/` only: `cablegram/function` + the `cablegram` bin; no `"."` export,
+ADR-004). Deploying is a **separate repo** that installs the package — releasing builds an artifact,
+it never deploys one. **release-please** derives the version + `CHANGELOG.md` from conventional
+commits and proposes them as a PR; merging it tags, then the *same* workflow run
+(`.github/workflows/release-please.yml`) re-runs the green gate and publishes via **OIDC trusted
+publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/releasing.md).
+
 ## Testing
 
 - `npm test` — unit: use cases + routes, repositories rebound to `InMemory<X>Repository` (ADR-003). No DB.
@@ -388,6 +397,20 @@ scope.
   ADR-021 unhandled rows). `MAX_TEST_RECIPIENTS` lives on the use case and the zod schema imports it;
   the CLI hand-mirrors the 5 (ADR-016 forbids `cli → campaigns`). `--dry-run` still only counts —
   different question, both kept.
+- **Versions are derived, never typed — and two release credentials are invisible to the code**
+  ([ADR-026](docs/adrs/ADR-026-release-and-distribution.md)). **Never hand-edit `version`,
+  `CHANGELOG.md`, or a git tag**, and never run `npm version` / `npm publish` from a working tree:
+  release-please owns all four, and `.release-please-manifest.json` — *not* `package.json` — is the
+  recorded last-released version. **PR titles must be valid conventional commits** and PRs must be
+  **squash-merged**: the title becomes the commit that decides the bump, so a merge commit changes what
+  gets parsed. `refactor:` is deliberately **not** hidden from the changelog (ADR-024's DTO rename and
+  ADR-019 §7's field removal were both `refactor:` and both consumer-visible). Publishing and the
+  release PR live in **one** workflow on purpose — GitHub won't fire a workflow from a `GITHUB_TOKEN`
+  event, so a tag-triggered `publish.yml` would never run and a `GITHUB_TOKEN`-opened release PR gets no
+  CI (hence the `RELEASE_PLEASE_TOKEN` PAT). npm auth is **OIDC trusted publishing**, registered against
+  **this workflow's filename** — renaming `.github/workflows/release-please.yml` silently breaks
+  publishing, and there is no npm token to fall back on. Releasing publishes a tarball; it **deploys
+  nothing** (a separate repo consumes the package).
 - **Postmark wire format** (request/response, webhook schema) is implemented in
   `src/shared/email/postmark-delivery-gateway.ts` and `src/campaigns/presentation/webhook-routes.ts` —
   treat that code (or live docs) as the source of truth, not memory, before restating a Postmark fact

@@ -26,6 +26,7 @@ DigitalOcean Functions · **single-tenant, multi-user, multi-newsletter**.
 - [Scripts](#scripts)
 - [Testing](#testing)
 - [Deployment](#deployment)
+- [Releasing](#releasing)
 - [Notes](#notes)
 
 ## What it is
@@ -524,7 +525,29 @@ docker run --rm -p 3000:3000 \
 # .env.example's values, unlike Node's process.loadEnvFile used by `npm run dev`)
 ```
 
-CI (`.github/workflows/ci.yml`) runs `typecheck`/`lint`/`test` on every PR.
+CI (`.github/workflows/ci.yml`) runs `typecheck`/`lint`/`test`/`build` on every PR.
+
+## Releasing
+
+cablegram is published to **npm** as [`cablegram`](https://www.npmjs.com/package/cablegram) — the
+tarball is `dist/`, exposing the DO Functions entrypoint (`cablegram/function`) and the `cablegram`
+CLI binary. There is deliberately no `"."` library export: cablegram has no library surface
+(ADR-004). Deploying is a *separate* repo's job — it installs the package and re-exports the handler.
+
+Releases are automated by [release-please](https://github.com/googleapis/release-please)
+([ADR-026](docs/adrs/ADR-026-release-and-distribution.md)). **Never hand-edit `version`,
+`CHANGELOG.md`, or a tag.**
+
+1. Merge PRs whose **titles are valid conventional commits** — they're squash-merged, so the title
+   is what determines the next version (`feat:` minor · `fix:`/`refactor:` patch · `!` major).
+2. release-please opens a `chore(main): release <version>` PR bumping the version and writing the
+   changelog. Review the version and the notes.
+3. Merge it. The same workflow tags `v<version>`, cuts the GitHub release, re-runs the full green
+   gate, and publishes to npm with a provenance attestation — authenticated by **OIDC trusted
+   publishing**, so no npm token exists in this repo.
+
+The runbook — one-time setup, forcing a version, and what a missing credential looks like — is
+[`docs/releasing.md`](docs/releasing.md).
 
 ## Notes
 
