@@ -17,7 +17,14 @@
     "CHANGELOG.md"
   ],
   "exports": {
-    "./function": "./dist/function.js",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./function": {
+      "types": "./dist/function.d.ts",
+      "default": "./dist/function.js"
+    },
     "./package.json": "./package.json"
   },
   "bin": {
