@@ -113,8 +113,9 @@ scope.
 
 ## Releasing ([ADR-026](docs/adrs/ADR-026-release-and-distribution.md))
 
-Published to **npm** (`dist/` only: `cablegram/function` + the `cablegram` bin; no `"."` export,
-ADR-004). Deploying is a **separate repo** that installs the package — releasing builds an artifact,
+Published to **npm** (`dist/` only, with `.d.ts`: the `"."` library barrel + `cablegram/function` +
+the `cablegram` bin — [ADR-027](docs/adrs/ADR-027-library-entrypoint.md)).
+Deploying is a **separate repo** that installs the package — releasing builds an artifact,
 it never deploys one. **release-please** derives the version + `CHANGELOG.md` from conventional
 commits and proposes them as a PR; merging it tags, then the *same* workflow run
 (`.github/workflows/release-please.yml`) re-runs the green gate and publishes via **OIDC trusted
@@ -411,6 +412,24 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   **this workflow's filename** — renaming `.github/workflows/release-please.yml` silently breaks
   publishing, and there is no npm token to fall back on. Releasing publishes a tarball; it **deploys
   nothing** (a separate repo consumes the package).
+- **`src/index.ts` is a published API contract, and the open-path gate is mount-relative**
+  ([ADR-027](docs/adrs/ADR-027-library-entrypoint.md), #44). The package's `"."` export exists so a
+  long-running host (Docker, in a VPC — **DO Functions can't join one**, which is why) can
+  `host.route('/newsletter', createApp(container))`. The barrel exports **five values + three types**
+  and the rule is *enough to bootstrap and mount the API, nothing that reaches past it* — no use
+  cases, entities, repositories or DTOs (a host calling `SendCampaign` would be the second delivery
+  mechanism ADR-004/016 forbid; it talks to the mounted HTTP API instead). `src/index.test.ts`
+  **freezes the export list** — adding a symbol is a `feat:`, removing one is breaking. `declaration:
+  true` (no `declarationMap` — `files` ships `dist` only, so a map would dangle). **`OPEN_V1_PATHS` is
+  matched against `v1Path(c)`, not `c.req.path`**: under a mount the raw path carries the host prefix,
+  so exact-matching it 401'd *every* open route — login, refresh, magic link, one-click unsubscribe.
+  The prefix is **discovered** from the gate middleware's own `c.req.routePath` (Hono flattens a
+  mounted app's routes to `<prefix>/v1/*`), **never configured** — a `basePath` option would be a
+  second place to state the mount and would drift into a 401. Two hazards are the **host's**, by
+  decision, not bugs to fix here: `BASE_URL` **must include the mount prefix** (unsubscribe headers are
+  a plain concat, and an unset `BASE_URL` **silently omits** them), and `createApp` brings its own
+  logging middleware + `/health`, so a host with top-level logging double-logs. Runbook:
+  [`docs/embedding.md`](docs/embedding.md).
 - **Postmark wire format** (request/response, webhook schema) is implemented in
   `src/shared/email/postmark-delivery-gateway.ts` and `src/campaigns/presentation/webhook-routes.ts` —
   treat that code (or live docs) as the source of truth, not memory, before restating a Postmark fact

@@ -42,6 +42,7 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [024](ADR-024-custom-fields.md) | Custom Fields — naming the bag, and naming what is still undecided | Accepted — implemented |
 | [025](ADR-025-campaign-test-send.md) | Campaign Test Send — a proof that is the same send | Accepted — implemented |
 | [026](ADR-026-release-and-distribution.md) | Release & Distribution — release-please, npm, trusted publishing | Accepted — implemented |
+| [027](ADR-027-library-entrypoint.md) | A Library Entrypoint — mounting cablegram inside a host service | Accepted — implemented |
 
 ## How to read these
 
@@ -61,3 +62,5 @@ New decisions use `_TEMPLATE.md`.
   integration) and why `mongodb-memory-server` was picked over testcontainers.
 - [`../releasing.md`](../releasing.md) — how ADR-026 is actually operated (the release PR flow, the
   one-time npm trusted-publisher setup, and what a missing credential looks like).
+- [`../embedding.md`](../embedding.md) — how ADR-027 is actually consumed (mounting the app in a host
+  service, and the two things — `BASE_URL`, duplicate logging — the host owns).

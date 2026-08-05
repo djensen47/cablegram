@@ -167,8 +167,12 @@ commit-derived versions. That is a monorepo decision, not a today decision.
 
 ## Related
 
-- [ADR-004](ADR-004-headless-api-only.md) — why the published package exposes `./function` and the
-  `cablegram` bin, but no `"."` library entry: there is no library surface to release.
+- [ADR-027](ADR-027-library-entrypoint.md) — **supersedes this ADR's original note that there is no
+  `"."` entry.** There is one now: a barrel a host service mounts (issue #44). The reason given here —
+  "there is no library surface to release" — is precisely what changed; ADR-027 fixes what that
+  surface may contain.
+- [ADR-004](ADR-004-headless-api-only.md) — why the published package exposes the HTTP app, the
+  `./function` handler and the `cablegram` bin, and nothing that reaches past the API surface.
 - [ADR-009](ADR-009-deployment-digitalocean-functions.md) — the deployment targets this package feeds.
 - [ADR-016](ADR-016-cli-client.md) — the CLI ships inside the same tarball, as `bin`.
 - [`../releasing.md`](../releasing.md) — the runbook: one-time setup, the everyday flow, and what
