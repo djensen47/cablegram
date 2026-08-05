@@ -41,6 +41,7 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [023](ADR-023-consent-record.md) | The Consent Record — timestamps and evidence for each consent moment | Accepted — implemented |
 | [024](ADR-024-custom-fields.md) | Custom Fields — naming the bag, and naming what is still undecided | Accepted — implemented |
 | [025](ADR-025-campaign-test-send.md) | Campaign Test Send — a proof that is the same send | Accepted — implemented |
+| [026](ADR-026-release-and-distribution.md) | Release & Distribution — release-please, npm, trusted publishing | Accepted — implemented |
 
 ## How to read these
 
@@ -58,3 +59,5 @@ New decisions use `_TEMPLATE.md`.
   the in-app index bootstrap, the DO Functions caveats, CI).
 - [`../testing.md`](../testing.md) — the two test suites (fast in-memory default, real-Mongo
   integration) and why `mongodb-memory-server` was picked over testcontainers.
+- [`../releasing.md`](../releasing.md) — how ADR-026 is actually operated (the release PR flow, the
+  one-time npm trusted-publisher setup, and what a missing credential looks like).

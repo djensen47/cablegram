@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   verify:
-    name: typecheck, lint, test
+    name: typecheck, lint, test, build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,3 +35,10 @@ jobs:
 
       - name: Test
         run: npm test
+
+      # Part of the gate, not a nicety: `typecheck` compiles tsconfig.json (all of
+      # src/), `build` compiles tsconfig.build.json, which excludes tests. Only this
+      # step catches test-only code leaking into the published bundle — and since
+      # ADR-026 publishes dist/ to npm, that bundle is now shipped to consumers.
+      - name: Build
+        run: npm run build

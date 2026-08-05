@@ -1,0 +1,83 @@
+name: Release Please
+
+# Runs on every push to main and does one of two things (ADR-026):
+#   1. There are releasable commits since the last release -> open/update a release PR
+#      that bumps package.json + the manifest and writes CHANGELOG.md.
+#   2. That release PR was itself merged -> tag, cut the GitHub release, publish to npm.
+# Nothing here reads a database or a Postmark token: releasing builds an artifact, it
+# does not deploy one (the consuming repo deploys — see docs/deployment.md).
+on:
+  push:
+    branches: [main]
+
+# Never cancel a release in flight — a half-run publish is worse than a queued one.
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # release commit, tag, GitHub release
+  pull-requests: write # open/update the release PR
+  id-token: write # mint the OIDC token npm trusted publishing needs
+
+jobs:
+  release-please:
+    name: release PR, then publish on merge
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          # A PAT, not GITHUB_TOKEN. GitHub deliberately refuses to trigger
+          # workflows from events raised by GITHUB_TOKEN, so the release PR would
+          # sit there with no CI run. See docs/releasing.md for the scopes.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # Everything below runs only on the push that actually cut a release. It lives
+      # in this job rather than a tag-triggered publish.yml for the same reason as the
+      # PAT above: the tag is created by the action, and a tag push would not cascade.
+      # `checkout` with no ref takes github.sha — the merged release commit, which is
+      # the commit that was just tagged and therefore exactly what gets published.
+      - if: ${{ steps.release.outputs.release_created }}
+        uses: actions/checkout@v4
+
+      - if: ${{ steps.release.outputs.release_created }}
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - if: ${{ steps.release.outputs.release_created }}
+        name: Install dependencies
+        run: npm ci
+
+      # The full green gate from CLAUDE.md, re-run against the release commit. `build`
+      # is not optional here: the tarball is `dist/`, so this is the step that proves
+      # the thing being published actually compiles (tsconfig.build.json, tests excluded).
+      - if: ${{ steps.release.outputs.release_created }}
+        name: Typecheck
+        run: npm run typecheck
+
+      - if: ${{ steps.release.outputs.release_created }}
+        name: Lint (includes eslint-plugin-boundaries, ADR-005)
+        run: npm run lint
+
+      - if: ${{ steps.release.outputs.release_created }}
+        name: Test
+        run: npm test
+
+      - if: ${{ steps.release.outputs.release_created }}
+        name: Build
+        run: npm run build
+
+      # No NODE_AUTH_TOKEN and no npm secret in this repo: auth is npm trusted
+      # publishing (OIDC), configured at npmjs.com against this org + repo + THIS
+      # WORKFLOW FILENAME. Renaming this file breaks publishing until the trusted
+      # publisher is updated to match. `prepack` rebuilds as a backstop against a
+      # stale dist/; --provenance is explicit though OIDC implies it.
+      - if: ${{ steps.release.outputs.release_created }}
+        name: Publish to npm
+        run: npm publish --provenance --access public
