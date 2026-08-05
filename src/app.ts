@@ -31,7 +31,8 @@ import {
  * setup, the login/refresh/logout exchange, and the password-reset + magic-link
  * flows — the endpoints a caller reaches before, or in order to obtain, a token.
  * Everything else under `/v1` is gated. This is an exact-match set: every new
- * open route must be listed here explicitly.
+ * open route must be listed here explicitly. Matched against `v1Path(c)` — the
+ * path with any host mount prefix removed — not the raw request path.
  */
 const OPEN_V1_PATHS = new Set([
   '/v1/setup',
@@ -47,6 +48,29 @@ const OPEN_V1_PATHS = new Set([
   // by the HMAC token in the query, not a JWT.
   PUBLIC_UNSUBSCRIBE_PATH,
 ]);
+
+/**
+ * The request path as cablegram's own routing sees it — the host's mount prefix
+ * removed (ADR-027).
+ *
+ * `OPEN_V1_PATHS` is an exact-match set of *cablegram's* paths, but an embedding
+ * host mounts this app under a prefix of its choosing, and `c.req.path` then
+ * carries that prefix (`/newsletter/v1/auth/login`). Matching the raw path would
+ * close every open route the moment the app is mounted anywhere but the root —
+ * nobody could log in, and RFC 8058 one-click unsubscribe would 401.
+ *
+ * Hono flattens a mounted app's routes onto the host's router, so this
+ * middleware's own registered pattern (`routePath`) carries the same prefix and
+ * ends in the `'*'` it was registered with: `/newsletter/v1/*`. Everything
+ * before that `'*'` is the absolute base of the `/v1` mount; what follows it in
+ * the request path is the route within. If the pattern is ever not a wildcard
+ * mount, fall back to the raw path — the un-mounted behaviour.
+ */
+function v1Path(c: { req: { path: string; routePath: string } }): string {
+  const pattern = c.req.routePath;
+  if (!pattern.endsWith('/*')) return c.req.path;
+  return `/v1/${c.req.path.slice(pattern.length - 1)}`;
+}
 
 /**
  * Assembles the single Hono app from the composition root. The same app runs
@@ -86,7 +110,7 @@ export function createApp(container: Container): OpenAPIHono<AppEnv> {
   // the open bootstrap/auth endpoints, which need no credential to reach.
   const authenticate = jwtAuth(container.get<AccessTokenService>(AUTH_TYPES.AccessTokenService));
   v1.use('*', async (c, next) =>
-    OPEN_V1_PATHS.has(c.req.path) ? next() : authenticate(c, next),
+    OPEN_V1_PATHS.has(v1Path(c)) ? next() : authenticate(c, next),
   );
 
   // Open auth surface: /v1/setup, /v1/auth/{login,refresh,logout}.
