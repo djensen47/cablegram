@@ -4,7 +4,7 @@
  * This is how cablegram is consumed: a long-running host service builds the
  * container, opens the pool, ensures the indexes, and mounts the Hono app under
  * a path prefix of its own choosing (ADR-028 — containers are the deployment
- * target; the DO Functions handler this replaces is gone). It is not a second
+ * target; the serverless handler this replaces is gone). It is not a second
  * delivery mechanism in the ADR-004 sense — it is the same Hono app, hosted.
  *
  * ```ts

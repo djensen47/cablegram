@@ -3,7 +3,7 @@
 Per [ADR-028](adrs/ADR-028-containers-only.md): cablegram runs as a **long-running container**, in
 one of two shapes — standalone (`src/server.ts`, the `Dockerfile`'s `CMD`) or mounted inside a host
 service ([ADR-027](adrs/ADR-027-library-entrypoint.md)). Both are the same Hono app; they differ only
-in who owns the process. The DigitalOcean Functions target is retired — see the end of this file.
+in who owns the process. The serverless target is retired — see the end of this file.
 
 The runtime constraints still come from [ADR-009](adrs/ADR-009-deployment-digitalocean-functions.md),
 which is superseded as a *target* but not as a discipline.
@@ -52,13 +52,15 @@ imports the package and mounts the app under a path prefix, instead of running i
 container. Same app, same constraints — the host just owns the process. See
 [`embedding.md`](embedding.md).
 
-## What happened to DigitalOcean Functions
+## What happened to the serverless target
 
 Retired ([ADR-028](adrs/ADR-028-containers-only.md)). `src/function.ts` and `project.yml` are gone,
 and so is the `cablegram/function` export. Three reasons, the last decisive: the config was never
-verified against a real `doctl serverless deploy`; the in-repo build was already abandoned for App
-Platform's `build.sh` restriction (ADR-026); and **DO Functions components cannot join a VPC**, so
-they cannot reach a privately-addressed MongoDB.
+verified against a real deploy; the in-repo build was already abandoned for App Platform's `build.sh`
+restriction (ADR-026); and the provider it targeted — DigitalOcean Functions — **cannot join a VPC**,
+so it cannot reach a privately-addressed MongoDB. That last one is DO's limitation specifically, not
+a property of serverless: re-targeting a provider whose functions attach to a private network is a
+new decision (a new adapter, a new export), not a revert.
 
 **ADR-009's runtime constraints did not go with it** — stateless, no background workers, no long
 in-request loops, no local disk, config from env, pool at module scope. A container is replicated and

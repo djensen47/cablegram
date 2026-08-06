@@ -11,7 +11,7 @@ TypeScript · **Hono** HTTP ([ADR-006](docs/adrs/ADR-006-http-delivery-hono.md))
 DB-portable ([ADR-012](docs/adrs/ADR-012-persistence-mongodb-native-driver.md)) · **Postmark** email behind a
 gateway ([ADR-008](docs/adrs/ADR-008-email-delivery-postmark.md)) · deploys as a **long-running
 container**, standalone or mounted in a host ([ADR-028](docs/adrs/ADR-028-containers-only.md),
-superseding ADR-009's Functions target) ·
+superseding ADR-009's serverless target) ·
 **single-tenant** ([ADR-010](docs/adrs/ADR-010-single-tenant.md)) · **headless**
 ([ADR-004](docs/adrs/ADR-004-headless-api-only.md)).
 
@@ -111,9 +111,11 @@ collection name — don't reintroduce a shared registry.
 ## Deployment ([ADR-028](docs/adrs/ADR-028-containers-only.md), constraints from ADR-009)
 
 A **long-running container** — standalone (`dist/server.js`) or mounted inside a host service
-(ADR-027). **DigitalOcean Functions is retired** (it can't join a VPC, so it can't reach a private
-Mongo); `src/function.ts`, `project.yml` and the `./function` export are **gone — don't bring them
-back**. ADR-009's constraints are **not** retired: stateless & ephemeral everywhere, no background
+(ADR-027). **The serverless target is retired**; `src/function.ts`, `project.yml` and the
+`./function` export are **gone — don't bring them back**. (The fact that decided it is specific, not
+general: a *DigitalOcean* Functions component can't join a VPC, so it can't reach a private Mongo.
+Other providers' functions can — so a future FaaS target is a new decision, not a revert, and don't
+generalize this into "serverless can't reach a database".) ADR-009's constraints are **not** retired: stateless & ephemeral everywhere, no background
 workers, no long in-request loops, no local disk / in-memory state between requests. Config from env
 vars. Mongo is the only durable state; pool at module scope. A container is replicated and restarted,
 so a timer or in-process state is still wrong.
@@ -154,8 +156,8 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   Scheduled sends + their time trigger are **deferred to Phase 2** — do not reintroduce a
   `dispatch-due` endpoint or an in-process timer — **a container makes `setInterval` possible and it
   is still wrong** (two replicas = two timers, a deploy = a missed tick; ADR-028 §3). The design lives
-  in [ADR-009](docs/adrs/ADR-009-deployment-digitalocean-functions.md); its DO-native trigger plan went
-  with the Functions target.
+  in [ADR-009](docs/adrs/ADR-009-deployment-digitalocean-functions.md); its provider-native trigger
+  plan went with the serverless target.
 - **No Prisma.** Persistence is the **native MongoDB driver** ([ADR-012](docs/adrs/ADR-012-persistence-mongodb-native-driver.md));
   Prisma was removed and **ADR-007 is historical**. Do not reintroduce `prisma` / `@prisma/client` or
   `prisma generate` / `db push`, and don't follow ADR-007's Prisma mechanics. No replica set is
@@ -320,8 +322,8 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   TTL/retention, and is a single-document write (ADR-012). A log line was rejected on purpose: a log
   answers "what happened in this request", not "is Postmark sending us anything we're dropping?", and
   the record is what `GET /v1/webhooks/unhandled` reads back — a diary, not observability. (The
-  original reason was sharper — DO Functions' activation logs couldn't be searched at all — and went
-  with that target, ADR-028; the decision didn't.) Keys: a bare `RecordType`; `Bounce:<Type>` for a bounce type in neither the permanent
+  original reason was sharper — the old serverless host's activation logs couldn't be searched at all
+  — and went with that target, ADR-028; the decision didn't.) Keys: a bare `RecordType`; `Bounce:<Type>` for a bounce type in neither the permanent
   nor transient table (the case that catches Postmark's table moving); `<RecordType>:__no-address` when
   a handled type carried no address; `__unparseable` for a non-object/type-less body. `AutoResponder`
   and `Subscribe` are on an explicit **ignore list** — deliberate drops (ADR-020), so recording them
@@ -426,7 +428,8 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   nothing** (a separate repo consumes the package).
 - **`src/index.ts` is a published API contract, and the open-path gate is mount-relative**
   ([ADR-027](docs/adrs/ADR-027-library-entrypoint.md), #44). The package's `"."` export exists so a
-  long-running host (a container in a VPC — **DO Functions can't join one**, which is why; ADR-028) can
+  long-running host (a container in a VPC — the retired serverless target couldn't join one, which is
+  why; ADR-028) can
   `host.route('/newsletter', createApp(container))`. The barrel exports **five values + three types**
   and the rule is *enough to bootstrap and mount the API, nothing that reaches past it* — no use
   cases, entities, repositories or DTOs (a host calling `SendCampaign` would be the second delivery

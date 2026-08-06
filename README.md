@@ -514,9 +514,9 @@ one of two shapes: standalone (below) or mounted inside a host service
 (pooled at module scope), and the app creates its own indexes at startup. See
 [`docs/deployment.md`](docs/deployment.md) for build details.
 
-The DigitalOcean Functions target was retired in ADR-028 — Functions components cannot join a VPC, so
-they cannot reach a private MongoDB. ADR-009's runtime constraints (stateless, no workers, no long
-in-request loops) still hold.
+The serverless target was retired in ADR-028: the provider it was written for (DigitalOcean
+Functions) cannot join a VPC, so it cannot reach a private MongoDB. ADR-009's runtime constraints
+(stateless, no workers, no long in-request loops) still hold.
 
 ```bash
 docker build -t cablegram .
@@ -560,5 +560,5 @@ The runbook — one-time setup, forcing a version, and what a missing credential
 - `npm audit` reports advisories in **dev-only** tooling (the eslint-plugin-boundaries handlebars
   chain; the vitest/vite/esbuild dev-server chain). None are in the runtime dependencies and none ship
   to production, so they are not force-fixed (that would break linter/test majors).
-- The DigitalOcean Functions entrypoint (`src/function.ts`, `project.yml`) was **removed** in
+- The serverless entrypoint (`src/function.ts`, `project.yml`) was **removed** in
   [ADR-028](docs/adrs/ADR-028-containers-only.md). Its constraints live on; its adapter does not.

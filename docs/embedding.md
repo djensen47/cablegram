@@ -5,10 +5,10 @@ API inside a long-running Node service, alongside that host's own routes. It is 
 shapes cablegram runs in ([ADR-028](adrs/ADR-028-containers-only.md)); the other is
 standalone, `node dist/server.js` in its own container ([`deployment.md`](deployment.md)).
 
-Reach for it when the host wants one deployable and one hostname. The case it exists for:
-**DigitalOcean Functions components cannot join a VPC**, so the original serverless target could not
-reach a privately-addressed MongoDB at all; a long-running `services:` component can, and would
-rather mount cablegram than run a second service beside it.
+Reach for it when the host wants one deployable and one hostname. The case it exists for: the
+original serverless target could not reach a privately-addressed MongoDB at all (DigitalOcean
+Functions components cannot join a VPC), while a long-running service can — and would rather mount
+cablegram than run a second service beside it.
 
 ## The whole of it
 
@@ -112,7 +112,7 @@ The tarball ships `.d.ts` and the export carries a `types` condition, so a TypeS
 ## Related
 
 - [ADR-027](adrs/ADR-027-library-entrypoint.md) — the decision, and what may go in the barrel.
-- [ADR-028](adrs/ADR-028-containers-only.md) — why a container, and what the retired Functions target
-  left behind (its constraints, not its adapter).
+- [ADR-028](adrs/ADR-028-containers-only.md) — why a container, and what the retired serverless
+  target left behind (its constraints, not its adapter).
 - [`deployment.md`](deployment.md) — the standalone container shape, env vars, index bootstrap.
 - [`releasing.md`](releasing.md) — how a version of this package comes into existence (ADR-026).

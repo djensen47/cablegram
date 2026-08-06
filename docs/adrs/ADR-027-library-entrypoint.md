@@ -118,7 +118,7 @@ Two things a mount does not and cannot fix, documented in [`../embedding.md`](..
 
 ## Consequences
 
-- The deployment blocked by DO Functions' VPC restriction is unblocked. Combined with ADR-028, the
+- The deployment the serverless target could not reach is unblocked. Combined with ADR-028, the
   package now describes exactly one thing — an app you host — in two shapes that differ only in who
   owns the process.
 - **The public API surface is now something to defend.** Five values and three types are versioned

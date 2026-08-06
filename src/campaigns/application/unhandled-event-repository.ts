@@ -26,8 +26,8 @@ export interface RecordUnhandledEvent {
  * worth answering is "is Postmark sending us anything we're dropping?", and
  * that one is a query over accumulated state, which is also what lets an
  * operator read it back over the API. (The original forcing reason was
- * sharper still: on the retired DO Functions target, activation logs could not
- * be searched or alerted on at all — ADR-028. The decision outlived it.)
+ * sharper still: on the retired serverless target, activation logs could not be
+ * searched or alerted on at all — ADR-028. The decision outlived it.)
  *
  * The shape is deliberately **per distinct key, not per event**: one row per
  * kind of surprise, upserted. That keeps it bounded to a handful of documents

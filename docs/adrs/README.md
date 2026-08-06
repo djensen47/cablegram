@@ -9,7 +9,8 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
   superseding Prisma in ADR-007).
 - **DB-agnostic in the code, MongoDB in production** — repositories stay DB-neutral (ADR-012).
 - **Postmark** as the default email backend, behind a pluggable `DeliveryGateway` (ADR-008).
-- Deploys to **DigitalOcean Functions / App Platform**, with an **eventual Docker image** (ADR-009).
+- Deploys as a **long-running container**, standalone or mounted inside a host service (ADR-028,
+  superseding ADR-009's serverless target; its runtime constraints stand).
 - **Single-tenant** (ADR-010).
 
 ## Index
@@ -43,7 +44,7 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [025](ADR-025-campaign-test-send.md) | Campaign Test Send — a proof that is the same send | Accepted — implemented |
 | [026](ADR-026-release-and-distribution.md) | Release & Distribution — release-please, npm, trusted publishing | Accepted — implemented |
 | [027](ADR-027-library-entrypoint.md) | A Library Entrypoint — mounting cablegram inside a host service | Accepted — implemented |
-| [028](ADR-028-containers-only.md) | Containers Only — retiring the DigitalOcean Functions target | Accepted — implemented |
+| [028](ADR-028-containers-only.md) | Containers Only — retiring the serverless function target | Accepted — implemented |
 
 ## How to read these
 
@@ -60,8 +61,8 @@ New decisions use `_TEMPLATE.md`.
 
 ## Also see
 
-- [`../deployment.md`](../deployment.md) — how ADR-009 is actually shipped (Docker image build,
-  the in-app index bootstrap, the DO Functions caveats, CI).
+- [`../deployment.md`](../deployment.md) — how the app is actually shipped (Docker image build, the
+  in-app index bootstrap, what the retired serverless target left behind, CI).
 - [`../testing.md`](../testing.md) — the two test suites (fast in-memory default, real-Mongo
   integration) and why `mongodb-memory-server` was picked over testcontainers.
 - [`../releasing.md`](../releasing.md) — how ADR-026 is actually operated (the release PR flow, the

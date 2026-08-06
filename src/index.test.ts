@@ -63,8 +63,8 @@ describe('the library entrypoint', () => {
   });
 
   it('exposes no provider-specific entrypoint', () => {
-    // The DO Functions handler was the package's only entrypoint until
-    // ADR-028 retired the target. What replaced it is provider-neutral: a
+    // A serverless handler was the package's only entrypoint until ADR-028
+    // retired that target. What replaced it is provider-neutral: a
     // barrel any long-running host mounts. A new `./<provider>` export would
     // be the old shape growing back.
     expect(Object.keys(pkg.exports).sort()).toEqual(['.', './package.json']);
