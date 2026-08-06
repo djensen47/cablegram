@@ -7,8 +7,8 @@ import { ensureIndexes } from './shared/persistence/index.js';
 import { ALL_INDEXES } from './indexes.js';
 import { createApp } from './app.js';
 
-// Node-server entrypoint — used under Docker / DigitalOcean App Platform
-// (ADR-009). For DO Functions, see function.ts.
+// Standalone Node-server entrypoint — cablegram running as its own container
+// (ADR-028). To mount it inside a host service instead, see index.ts.
 
 // Load .env in local dev if present; in deployed envs the platform injects vars.
 try {

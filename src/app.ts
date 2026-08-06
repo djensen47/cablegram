@@ -74,8 +74,8 @@ function v1Path(c: { req: { path: string; routePath: string } }): string {
 
 /**
  * Assembles the single Hono app from the composition root. The same app runs
- * on DigitalOcean Functions and under a Node server — only the entrypoint
- * differs (ADR-006, ADR-009).
+ * standalone under a Node server and mounted inside a host service — only the
+ * entrypoint differs (ADR-006, ADR-028).
  *
  * An `OpenAPIHono` so the API contract is generated from the same zod schemas
  * that validate requests (ADR-004): `GET /openapi.json` and `GET /health` are

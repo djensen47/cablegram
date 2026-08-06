@@ -9,8 +9,9 @@ distillation. When a rule here and an ADR disagree, the ADR wins — fix this fi
 TypeScript · **Hono** HTTP ([ADR-006](docs/adrs/ADR-006-http-delivery-hono.md)) · **Inversify** DI
 ([ADR-003](docs/adrs/ADR-003-dependency-injection.md)) · **MongoDB native driver**, code kept
 DB-portable ([ADR-012](docs/adrs/ADR-012-persistence-mongodb-native-driver.md)) · **Postmark** email behind a
-gateway ([ADR-008](docs/adrs/ADR-008-email-delivery-postmark.md)) · deploys on **DigitalOcean
-Functions → Docker** ([ADR-009](docs/adrs/ADR-009-deployment-digitalocean-functions.md)) ·
+gateway ([ADR-008](docs/adrs/ADR-008-email-delivery-postmark.md)) · deploys as a **long-running
+container**, standalone or mounted in a host ([ADR-028](docs/adrs/ADR-028-containers-only.md),
+superseding ADR-009's Functions target) ·
 **single-tenant** ([ADR-010](docs/adrs/ADR-010-single-tenant.md)) · **headless**
 ([ADR-004](docs/adrs/ADR-004-headless-api-only.md)).
 
@@ -65,13 +66,15 @@ Interfaces live with their **consumer** (in `application/`); implementations rea
 Inversify, **one composition root** in `shared/di`; each component/module exports a `ContainerModule`.
 Inject **interfaces only**. Naming: bare `Thing` interface (no `I`), `<Qualifier>Thing` impl
 (`PostmarkDeliveryGateway`, `MongoSubscriptionRepository`, `DefaultClock`). Tokens in `types.ts`
-(`TYPES`); tests **rebind** to mocks. Build the container at **module scope** (ephemeral functions).
+(`TYPES`); tests **rebind** to mocks. Build the container at **module scope** — one process, one
+object graph, one pool.
 
 ## HTTP
 
 Thin handlers: validate input at the edge (zod) → call a use case from the container → map to a
 response DTO. **Never** serialize domain entities or driver documents; use explicit DTOs. Use cases never
-see the Hono `Context`. One Hono app, two entrypoints (DO function adapter · `@hono/node-server`).
+see the Hono `Context`. One Hono app, two hosts (`@hono/node-server` standalone · mounted by a host
+service, ADR-027).
 Mutating POST routes under `/v1` honor an opt-in `Idempotency-Key` header (replay-safe retries; a
 reused key with a different body is a 409). Every request gets structured, one-line stdout logging.
 
@@ -105,16 +108,20 @@ collection name — don't reintroduce a shared registry.
 - Suppression is enforced in the `campaigns` send use case, **not** in the `email` adapter (it's a
   leaf). cablegram owns its **own** authoritative suppression list.
 
-## Deployment ([ADR-009](docs/adrs/ADR-009-deployment-digitalocean-functions.md))
+## Deployment ([ADR-028](docs/adrs/ADR-028-containers-only.md), constraints from ADR-009)
 
-Stateless & ephemeral everywhere: no background workers, no long in-request loops, no local disk / in-
-memory state between requests. Config from env vars. Mongo is the only durable state; pool at module
-scope.
+A **long-running container** — standalone (`dist/server.js`) or mounted inside a host service
+(ADR-027). **DigitalOcean Functions is retired** (it can't join a VPC, so it can't reach a private
+Mongo); `src/function.ts`, `project.yml` and the `./function` export are **gone — don't bring them
+back**. ADR-009's constraints are **not** retired: stateless & ephemeral everywhere, no background
+workers, no long in-request loops, no local disk / in-memory state between requests. Config from env
+vars. Mongo is the only durable state; pool at module scope. A container is replicated and restarted,
+so a timer or in-process state is still wrong.
 
 ## Releasing ([ADR-026](docs/adrs/ADR-026-release-and-distribution.md))
 
-Published to **npm** (`dist/` only, with `.d.ts`: the `"."` library barrel + `cablegram/function` +
-the `cablegram` bin — [ADR-027](docs/adrs/ADR-027-library-entrypoint.md)).
+Published to **npm** (`dist/` only, with `.d.ts`: the `"."` library barrel +
+the `cablegram` bin, and **nothing else** — [ADR-027](docs/adrs/ADR-027-library-entrypoint.md)).
 Deploying is a **separate repo** that installs the package — releasing builds an artifact,
 it never deploys one. **release-please** derives the version + `CHANGELOG.md` from conventional
 commits and proposes them as a PR; merging it tags, then the *same* workflow run
@@ -145,8 +152,10 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
 - **No scheduled campaigns (v1).** Sending is on-demand only (`POST /v1/campaigns/{id}/send`); a
   campaign's lifecycle is `draft → sending → sent | failed` (no `scheduled` status, no `scheduledAt`).
   Scheduled sends + their time trigger are **deferred to Phase 2** — do not reintroduce a
-  `dispatch-due` endpoint or an in-process timer; the design + the DO-native trigger plan live in
-  [ADR-009](docs/adrs/ADR-009-deployment-digitalocean-functions.md).
+  `dispatch-due` endpoint or an in-process timer — **a container makes `setInterval` possible and it
+  is still wrong** (two replicas = two timers, a deploy = a missed tick; ADR-028 §3). The design lives
+  in [ADR-009](docs/adrs/ADR-009-deployment-digitalocean-functions.md); its DO-native trigger plan went
+  with the Functions target.
 - **No Prisma.** Persistence is the **native MongoDB driver** ([ADR-012](docs/adrs/ADR-012-persistence-mongodb-native-driver.md));
   Prisma was removed and **ADR-007 is historical**. Do not reintroduce `prisma` / `@prisma/client` or
   `prisma generate` / `db push`, and don't follow ADR-007's Prisma mechanics. No replica set is
@@ -224,8 +233,8 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   args, and are skipped entirely without a TTY (error, never hang). `CABLEGRAM_TOKEN` is used as-is —
   **never refreshed or persisted**; a stored session refreshes + retries once on 401 and persists the
   rotated pair. CSV import preserves header casing (a `firstName` column must feed `{{firstName}}`);
-  only `email`/`tags` match case-insensitively. Nothing in `app.ts`/`server.ts`/`function.ts` imports
-  `src/cli/`, so the function bundle is unchanged — keep it that way. A REPL/TUI is **not** in scope:
+  only `email`/`tags` match case-insensitively. Nothing in `app.ts`/`server.ts`/`index.ts` imports
+  `src/cli/`, so the server bundle and the published library surface are unchanged — keep it that way. A REPL/TUI is **not** in scope:
   a CLI is a client, a TUI is a product surface and would need its own ADR.
 - **Collections are `<singular component>_<aggregate>`, owned by one component**
   ([ADR-017](docs/adrs/ADR-017-component-owned-collections.md)). `newsletter_newsletters`,
@@ -308,9 +317,11 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   readable at `GET /v1/webhooks/unhandled` (JWT) / `cablegram webhooks unhandled`. Keyed by the **kind**
   of event, **never one row per event** — one `updateOne` upsert on `_id: <key>` (`$inc` count, `$set`
   lastSeenAt, `$setOnInsert` sample+firstSeenAt), so it's bounded to a handful of rows forever, needs no
-  TTL/retention, and is a single-document write (ADR-012). A log line was rejected on purpose:
-  DO Functions' activation logs can't be searched or alerted on, so it would be a diary, not
-  observability. Keys: a bare `RecordType`; `Bounce:<Type>` for a bounce type in neither the permanent
+  TTL/retention, and is a single-document write (ADR-012). A log line was rejected on purpose: a log
+  answers "what happened in this request", not "is Postmark sending us anything we're dropping?", and
+  the record is what `GET /v1/webhooks/unhandled` reads back — a diary, not observability. (The
+  original reason was sharper — DO Functions' activation logs couldn't be searched at all — and went
+  with that target, ADR-028; the decision didn't.) Keys: a bare `RecordType`; `Bounce:<Type>` for a bounce type in neither the permanent
   nor transient table (the case that catches Postmark's table moving); `<RecordType>:__no-address` when
   a handled type carried no address; `__unparseable` for a non-object/type-less body. `AutoResponder`
   and `Subscribe` are on an explicit **ignore list** — deliberate drops (ADR-020), so recording them
@@ -354,8 +365,9 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   evidence, which beats blank only in the sense of being worse. The **one** auto-capture is
   `POST /v1/unsubscribe` (public token route, the only caller that is genuinely the recipient), via
   `requestEvidence()` — leftmost `X-Forwarded-For`, validated as an IP, junk dropped, treated as
-  corroboration not proof. On DO Functions there's no socket at all (`__ow_headers`), so a header is the
-  only possible source. The trail is **replaced wholesale, never half-kept**: `resubscribe()` clears it,
+  corroboration not proof. A header is the only possible source: a Fetch `Request` has no peer
+  address, and a deployed container sits behind a load balancer (an embedded one behind its host), so
+  the socket peer would be a proxy, not the subscriber. The trail is **replaced wholesale, never half-kept**: `resubscribe()` clears it,
   `unsubscribe()` is idempotent *including* evidence (first opt-out wins), import `overwrite` replaces
   all eight. All eight are importable + **reserved CSV columns** (an unreserved `signupIp` would become a
   renderable custom field). `optionalJsonBody` (`shared/http`) exists because Hono 500s on an empty body
@@ -414,12 +426,14 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   nothing** (a separate repo consumes the package).
 - **`src/index.ts` is a published API contract, and the open-path gate is mount-relative**
   ([ADR-027](docs/adrs/ADR-027-library-entrypoint.md), #44). The package's `"."` export exists so a
-  long-running host (Docker, in a VPC — **DO Functions can't join one**, which is why) can
+  long-running host (a container in a VPC — **DO Functions can't join one**, which is why; ADR-028) can
   `host.route('/newsletter', createApp(container))`. The barrel exports **five values + three types**
   and the rule is *enough to bootstrap and mount the API, nothing that reaches past it* — no use
   cases, entities, repositories or DTOs (a host calling `SendCampaign` would be the second delivery
   mechanism ADR-004/016 forbid; it talks to the mounted HTTP API instead). `src/index.test.ts`
-  **freezes the export list** — adding a symbol is a `feat:`, removing one is breaking. `declaration:
+  **freezes the export list** — adding a symbol is a `feat:`, removing one is breaking — **and the
+  `exports` map** (exactly `"."` + `"./package.json"`; a new `./<provider>` entry is the retired
+  Functions shape growing back, ADR-028). `declaration:
   true` (no `declarationMap` — `files` ships `dist` only, so a map would dangle). **`OPEN_V1_PATHS` is
   matched against `v1Path(c)`, not `c.req.path`**: under a mount the raw path carries the host prefix,
   so exact-matching it 401'd *every* open route — login, refresh, magic link, one-click unsubscribe.

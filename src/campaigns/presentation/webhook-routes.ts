@@ -120,9 +120,9 @@ const unhandledRoute = createRoute({
  * receiver above, which is Basic-Auth'd because Postmark calls it.
  *
  * It exists because the receiver's "always 200" contract (ADR-008) used to mean
- * an unrecognized payload left no trace at all, and a log line is not a fix on
- * DigitalOcean Functions, where activation logs cannot be searched or alerted
- * on. Queryable state can answer the question; a diary cannot.
+ * an unrecognized payload left no trace at all, and a log line is not a fix:
+ * queryable state can answer "is Postmark sending us anything we're dropping?",
+ * and can be read back here; a diary cannot.
  */
 export function createUnhandledEventRoutes(container: Container): OpenAPIHono<AppEnv> {
   const app = new OpenAPIHono<AppEnv>({ defaultHook: throwOnInvalid });

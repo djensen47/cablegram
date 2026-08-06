@@ -62,12 +62,12 @@ describe('the library entrypoint', () => {
     });
   });
 
-  it('still exposes the Functions handler alongside it', () => {
-    // Two supported consumption modes, not a replacement (ADR-009 + ADR-027).
-    expect(pkg.exports['./function']).toEqual({
-      types: './dist/function.d.ts',
-      default: './dist/function.js',
-    });
+  it('exposes no provider-specific entrypoint', () => {
+    // The DO Functions handler was the package's only entrypoint until
+    // ADR-028 retired the target. What replaced it is provider-neutral: a
+    // barrel any long-running host mounts. A new `./<provider>` export would
+    // be the old shape growing back.
+    expect(Object.keys(pkg.exports).sort()).toEqual(['.', './package.json']);
   });
 });
 

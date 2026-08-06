@@ -24,10 +24,10 @@ export interface IdempotencyStore {
 
 /**
  * The default `IdempotencyStore` (ADR-009): a plain `Map`, held at module/
- * container scope so it survives across requests within one warm process —
- * durable for the whole lifetime of Docker's long-lived process, best-effort
- * under DO Functions' statelessness (a cold start loses it, no worse than a
- * client's retry landing on a fresh instance with no prior key). Not a
+ * container scope so it survives across requests within one process — durable
+ * for that process's lifetime, best-effort across a restart or a second replica
+ * (either loses it, no worse than a client's retry landing on a fresh instance
+ * with no prior key). Not a
  * correctness requirement — the guarantee `Idempotency-Key` provides is "don't
  * double-execute the mutation right now, on this instance," which is exactly
  * what this store can promise.

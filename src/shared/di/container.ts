@@ -16,8 +16,8 @@ import { TYPES } from './types.js';
 
 /**
  * The single composition root (ADR-003). Built once at module scope by each
- * entrypoint so warm serverless invocations reuse it (ADR-009). Concrete
- * implementations are named only here.
+ * entrypoint — and by an embedding host (ADR-027) — so one process holds one
+ * object graph and one Mongo pool. Concrete implementations are named only here.
  *
  * This is the one deliberate exception to the "shared modules are leaves" rule
  * (ADR-005 #4): the composition root — and only it — imports domain components,

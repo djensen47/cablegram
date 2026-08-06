@@ -25,9 +25,11 @@ barrel, and `declaration: false` meant the tarball shipped zero `.d.ts` files.
 
 ### Why this is an ADR and not a packaging tweak
 
-Adding a root export commits cablegram to a **second supported consumption mode**, and a published
-export map is a promise: the symbols named in it are versioned API under ADR-026's conventional
-commits, where before them nothing outside `./function` was. The decision worth recording is not
+Adding a root export commits cablegram to a **supported consumption mode**, and a published export
+map is a promise: the symbols named in it are versioned API under ADR-026's conventional commits,
+where before them nothing outside `./function` was. ([ADR-028](ADR-028-containers-only.md), decided
+alongside this one, retires that Functions entrypoint — so this barrel does not join the export map,
+it replaces what was there.) The decision worth recording is not
 "add an entry to `exports`" — it is **what that entry may contain**, and the answer has to be a rule
 rather than a list, because the pressure to widen it will come one convenient symbol at a time.
 
@@ -36,7 +38,8 @@ The obvious alternatives were both worse:
 - **`./server` only** — publish the existing Node-server entrypoint and let the host run cablegram as
   its own VPC-attached service. Smallest commitment, but it answers a different question: the host
   gets a second deployable and a second hostname, not a mounted API. It also does not remove the
-  need for types.
+  need for types. (`dist/server.js` remains the *standalone* shape — ADR-028 §2 — it is just not
+  what an export map is for.)
 - **Granular subpaths** (`./app`, `./di`, `./indexes`, `./persistence`) — the same library
   commitment with none of the framing, and it exports the *internal module layout*, so moving a file
   becomes a breaking change. A barrel is the seam; the layout behind it stays ours.
@@ -72,21 +75,21 @@ and removing one requires editing it and meaning it (a breaking change).
 
 ### 2. `declaration: true`, no `declarationMap`
 
-The tarball ships `.d.ts` for the whole build and the export map carries a `types` condition on both
-`"."` and `./function`. No declaration maps: `files` publishes `dist` only, so a map would point at a
-`../src/*.ts` that is not in the tarball.
+The tarball ships `.d.ts` for the whole build and the export map carries a `types` condition. No
+declaration maps: `files` publishes `dist` only, so a map would point at a `../src/*.ts` that is not
+in the tarball.
 
-### 3. Both entrypoints, both conditioned
+### 3. One entrypoint, conditioned
 
 ```json
 "exports": {
-  ".":            { "types": "./dist/index.d.ts",    "default": "./dist/index.js" },
-  "./function":   { "types": "./dist/function.d.ts", "default": "./dist/function.js" },
+  ".":              { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
   "./package.json": "./package.json"
 }
 ```
 
-Two supported consumption modes, not a replacement. ADR-009's Functions target is unchanged.
+That is the whole map — `./function` is gone with the target it served (ADR-028), and the `cablegram`
+bin (ADR-016) ships alongside it as `bin`, not as an export.
 
 ### 4. The open-path gate matches the *mount-relative* path
 
@@ -115,8 +118,9 @@ Two things a mount does not and cannot fix, documented in [`../embedding.md`](..
 
 ## Consequences
 
-- The deployment blocked by DO Functions' VPC restriction is unblocked without abandoning ADR-009's
-  Functions target — the host repo picks a shape, and both ship from the same package.
+- The deployment blocked by DO Functions' VPC restriction is unblocked. Combined with ADR-028, the
+  package now describes exactly one thing — an app you host — in two shapes that differ only in who
+  owns the process.
 - **The public API surface is now something to defend.** Five values and three types are versioned
   promises; the frozen-list test is the mechanism, and every widening request should be answered with
   §1's rule rather than with the convenience of the moment.
@@ -134,8 +138,10 @@ Two things a mount does not and cannot fix, documented in [`../embedding.md`](..
 - [ADR-026](ADR-026-release-and-distribution.md) — release & distribution; its *Related* note that
   the package exposes no `"."` entry is superseded by this ADR (the reason it gave — "there is no
   library surface" — is what changed).
-- [ADR-009](ADR-009-deployment-digitalocean-functions.md) — the Functions/Docker targets this adds a
-  host to, and the module-scope pool + index bootstrap an embedding host must reproduce.
+- [ADR-028](ADR-028-containers-only.md) — decided with this one: containers only, and the retirement
+  of the `./function` entrypoint this barrel replaces.
+- [ADR-009](ADR-009-deployment-digitalocean-functions.md) — superseded as a target, but still the
+  source of the module-scope pool + index bootstrap an embedding host must reproduce.
 - [ADR-004](ADR-004-headless-api-only.md) — headless: the mounted thing is the HTTP API, which is why
   the barrel stops at it.
 - [ADR-016](ADR-016-cli-client.md) — the same boundary from the client side (a consumer speaks the

@@ -1,8 +1,7 @@
 # syntax=docker/dockerfile:1
 
-# cablegram — Docker runtime image (ADR-009: the guaranteed deployment
-# target; DigitalOcean Functions is a best-effort second target, see
-# docs/deployment.md).
+# cablegram — Docker runtime image (ADR-028: a long-running container is the
+# deployment target; see docs/deployment.md).
 #
 # Multi-stage: install -> `tsc` build -> slim runtime that only carries
 # production dependencies + compiled JS. Runs `node dist/server.js` via

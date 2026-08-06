@@ -1,12 +1,14 @@
 # Embedding cablegram in a host service
 
 Per [ADR-027](adrs/ADR-027-library-entrypoint.md): the package's `"."` export mounts the cablegram
-API inside a long-running Node service, alongside that host's own routes. This is the second
-supported consumption mode — `cablegram/function` (ADR-009) is unchanged.
+API inside a long-running Node service, alongside that host's own routes. It is one of the two
+shapes cablegram runs in ([ADR-028](adrs/ADR-028-containers-only.md)); the other is
+standalone, `node dist/server.js` in its own container ([`deployment.md`](deployment.md)).
 
-Reach for it when the Functions target can't be used. The case it exists for: **DigitalOcean
-Functions components cannot join a VPC**, so a function cannot reach a privately-addressed MongoDB;
-a `services:` component (Dockerfile, long-running) can.
+Reach for it when the host wants one deployable and one hostname. The case it exists for:
+**DigitalOcean Functions components cannot join a VPC**, so the original serverless target could not
+reach a privately-addressed MongoDB at all; a long-running `services:` component can, and would
+rather mount cablegram than run a second service beside it.
 
 ## The whole of it
 
@@ -22,7 +24,7 @@ const container = buildContainer({
   BASE_URL: 'https://app.example.com/newsletter',
 });
 
-// Once, at startup: open the pool (ADR-009) and materialize the indexes the
+// Once, at startup: open the pool and materialize the indexes the
 // repositories rely on (ADR-012 — the native driver has no `db push`).
 await container.get<MongoClient>(TYPES.MongoClient).connect();
 await ensureIndexes(container.get<Db>(TYPES.MongoDb), ALL_INDEXES);
@@ -87,9 +89,10 @@ them — they're absolute URLs into *your* front end, so they follow your routin
 `createApp` installs its own `requestId` + `requestLogging` middleware and serves `GET /health`
 (mounted: `GET /newsletter/health`). A host with top-level request logging will emit **two** lines
 per mounted request — one structured cablegram line, one of the host's. This is left as-is
-deliberately (ADR-027 §5): the app must keep working standalone under `cablegram/function`, and the
-cost is duplicate log lines, not wrong behaviour. If it matters, filter on the cablegram line's
-`"event":"request"` shape, or scope your own logger to paths outside the mount.
+deliberately (ADR-027 §5): the app must keep working standalone (`node dist/server.js`), where it is
+the only thing logging, and the cost here is duplicate log lines rather than wrong behaviour. If it
+matters, filter on the cablegram line's `"event":"request"` shape, or scope your own logger to paths
+outside the mount.
 
 The webhook receiver moves with the mount too: Postmark must be pointed at
 `https://app.example.com/newsletter/webhooks/postmark` (Basic-Auth, ADR-008 — outside `/v1`).
@@ -103,11 +106,13 @@ a test.
 
 ## Types
 
-The tarball ships `.d.ts` and both exports carry a `types` condition, so a TypeScript consumer on
+The tarball ships `.d.ts` and the export carries a `types` condition, so a TypeScript consumer on
 `moduleResolution: "nodenext"` gets full types with no `@types` package and no `skipLibCheck` tricks.
 
 ## Related
 
 - [ADR-027](adrs/ADR-027-library-entrypoint.md) — the decision, and what may go in the barrel.
-- [`deployment.md`](deployment.md) — the Docker and DO Functions targets, env vars, index bootstrap.
+- [ADR-028](adrs/ADR-028-containers-only.md) — why a container, and what the retired Functions target
+  left behind (its constraints, not its adapter).
+- [`deployment.md`](deployment.md) — the standalone container shape, env vars, index bootstrap.
 - [`releasing.md`](releasing.md) — how a version of this package comes into existence (ADR-026).

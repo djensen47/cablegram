@@ -24,7 +24,7 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [006](ADR-006-http-delivery-hono.md) | HTTP Delivery with Hono | Accepted |
 | [007](ADR-007-persistence-prisma-mongodb.md) | Persistence — Prisma + MongoDB, DB-portable | Superseded by 012 |
 | [008](ADR-008-email-delivery-postmark.md) | Email Delivery — Postmark Bulk behind a gateway | Accepted |
-| [009](ADR-009-deployment-digitalocean-functions.md) | Deployment — DigitalOcean Functions → Docker | Accepted |
+| [009](ADR-009-deployment-digitalocean-functions.md) | Deployment — DigitalOcean Functions → Docker | Superseded by 028 (target only; its constraints stand) |
 | [010](ADR-010-single-tenant.md) | Single-Tenant model | Accepted |
 | [011](ADR-011-bounded-contexts.md) | Bounded Contexts & Component Topology | Accepted |
 | [012](ADR-012-persistence-mongodb-native-driver.md) | Persistence — MongoDB Native Driver behind the repository seam | Accepted |
@@ -43,6 +43,7 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [025](ADR-025-campaign-test-send.md) | Campaign Test Send — a proof that is the same send | Accepted — implemented |
 | [026](ADR-026-release-and-distribution.md) | Release & Distribution — release-please, npm, trusted publishing | Accepted — implemented |
 | [027](ADR-027-library-entrypoint.md) | A Library Entrypoint — mounting cablegram inside a host service | Accepted — implemented |
+| [028](ADR-028-containers-only.md) | Containers Only — retiring the DigitalOcean Functions target | Accepted — implemented |
 
 ## How to read these
 
@@ -51,6 +52,9 @@ through 005 fix the foundational architecture (layers, component structure, DI, 
 boundary enforcement); ADR-006 through 011 pin cablegram's stack and domain choices. ADR-011 names
 the five bounded contexts — the one call the earlier ADRs leave open — and is now ratified. ADR-012
 supersedes ADR-007, swapping Prisma for the MongoDB native driver behind the same repository seam.
+ADR-028 supersedes ADR-009 the same way — but only its *target*: the runtime constraints ADR-009
+established (stateless, no workers, no in-request loops) are still binding and are re-derived there
+for containers.
 
 New decisions use `_TEMPLATE.md`.
 

@@ -1,12 +1,11 @@
 /**
  * The library entrypoint (ADR-027) — the `"."` export of the published package.
  *
- * cablegram has two supported consumption modes, and this is the second one:
- * a long-running host service builds the container, opens the pool, ensures the
- * indexes, and mounts the Hono app under a path prefix of its own choosing.
- * (The first is `cablegram/function`, the DigitalOcean Functions handler —
- * ADR-009.) Both run the *same* app; only the host differs, so this is not a
- * second delivery mechanism in the ADR-004 sense.
+ * This is how cablegram is consumed: a long-running host service builds the
+ * container, opens the pool, ensures the indexes, and mounts the Hono app under
+ * a path prefix of its own choosing (ADR-028 — containers are the deployment
+ * target; the DO Functions handler this replaces is gone). It is not a second
+ * delivery mechanism in the ADR-004 sense — it is the same Hono app, hosted.
  *
  * ```ts
  * import { buildContainer, createApp, TYPES, ensureIndexes, ALL_INDEXES } from 'cablegram';

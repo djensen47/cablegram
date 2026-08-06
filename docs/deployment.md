@@ -1,11 +1,14 @@
 # Deployment
 
-Per [ADR-009](adrs/ADR-009-deployment-digitalocean-functions.md): one Hono app, two entrypoints. Docker
-(`src/server.ts`) is the **shipped, guaranteed path**. DigitalOcean Functions (`src/function.ts`,
-`project.yml`) is a **best-effort second target** — documented honestly below, including what's still
-open, rather than asserted as working.
+Per [ADR-028](adrs/ADR-028-containers-only.md): cablegram runs as a **long-running container**, in
+one of two shapes — standalone (`src/server.ts`, the `Dockerfile`'s `CMD`) or mounted inside a host
+service ([ADR-027](adrs/ADR-027-library-entrypoint.md)). Both are the same Hono app; they differ only
+in who owns the process. The DigitalOcean Functions target is retired — see the end of this file.
 
-## Docker (shipped)
+The runtime constraints still come from [ADR-009](adrs/ADR-009-deployment-digitalocean-functions.md),
+which is superseded as a *target* but not as a discipline.
+
+## Docker (standalone)
 
 ```bash
 docker build -t cablegram .
@@ -27,8 +30,8 @@ specific to copy between stages or pin with `binaryTargets`. The image is corres
 
 **Schema / index sync** (ADR-012): MongoDB has no migration files, and there is no `prisma db push`
 anymore. The app owns index creation: `ensureIndexes(db)` (`src/shared/persistence`) runs **once at
-startup** in each entrypoint (`server.ts` connects the pool and calls it before serving;
-`function.ts` runs it lazily on the first warm invocation). `createIndexes` is idempotent, so a
+startup** — `server.ts` connects the pool and calls it before serving, and an embedding host makes
+the same two calls itself ([`embedding.md`](embedding.md)). `createIndexes` is idempotent, so a
 restart/redeploy re-asserting the same indexes is a no-op. The database itself is provisioned
 separately (e.g. MongoDB Atlas, or a plain `mongod`); this repo does not provision infrastructure.
 **No replica set is required** — every write is a single document and nothing uses transactions
@@ -42,30 +45,24 @@ instance, not per request.
 **Health check**: the image's `HEALTHCHECK` and the app's `GET /health` route are what "serves traffic"
 means for this image — no separate readiness endpoint.
 
-## DigitalOcean Functions (best-effort, unverified)
+## Mounted inside a host service
 
-`project.yml` declares a single `cablegram/api` raw web action wrapping the whole app, matching
-`src/function.ts`'s existing `__ow_*`-field contract (DigitalOcean's raw web-action invocation shape,
-per DO's Functions reference docs — as opposed to non-raw web actions, which parse the body into
-top-level `args` by content type). `runtime: nodejs:24`, `web: raw`, generous per-invocation
-`limits.timeout`/`limits.memory` (Functions are ephemeral, not long-running — ADR-009).
+The other supported shape ([ADR-027](adrs/ADR-027-library-entrypoint.md)): a long-running host
+imports the package and mounts the app under a path prefix, instead of running it as its own
+container. Same app, same constraints — the host just owns the process. See
+[`embedding.md`](embedding.md).
 
-**What's genuinely unverified** (this file documents the approach; it has not been deployed):
+## What happened to DigitalOcean Functions
 
-1. **Size.** DigitalOcean Functions cap a deployed action at **48 MB**. This app's dependency graph
-   (the MongoDB native driver, Inversify, Hono, zod, handlebars, `@hono/*`) is not confirmed to fit,
-   though it is lighter now that Prisma's generated client and native query-engine binary are gone
-   (ADR-012) — the largest, most serverless-hostile dependency has been removed.
-2. **Build model mismatch.** DO's documented Node.js build runs `npm install` (then `npm run build`,
-   if present) **inside the action's own directory**. That fits a single-file action; it does not map
-   cleanly onto a package-by-component monorepo whose action is really "the whole compiled app plus
-   its shared `node_modules`." `project.yml` above assumes the repo root can serve as that build
-   context, which DigitalOcean's docs don't explicitly confirm or deny for this project layout.
+Retired ([ADR-028](adrs/ADR-028-containers-only.md)). `src/function.ts` and `project.yml` are gone,
+and so is the `cablegram/function` export. Three reasons, the last decisive: the config was never
+verified against a real `doctl serverless deploy`; the in-repo build was already abandoned for App
+Platform's `build.sh` restriction (ADR-026); and **DO Functions components cannot join a VPC**, so
+they cannot reach a privately-addressed MongoDB.
 
-Given these open items, **do not rely on the DO Functions path without first running
-`doctl serverless deploy --remote-build --verbose-build` against a scratch namespace and confirming the
-resulting action boots and serves `/health`.** If it doesn't fit, Docker remains the shipped path with
-no loss of functionality — the two entrypoints share every line of business logic (ADR-009).
+**ADR-009's runtime constraints did not go with it** — stateless, no background workers, no long
+in-request loops, no local disk, config from env, pool at module scope. A container is replicated and
+restarted, so they are still binding; ADR-028 §3 re-derives them.
 
 ## CI
 
