@@ -13,9 +13,9 @@ export const requestId = createMiddleware<AppEnv>(async (c, next) => {
 /**
  * One structured (JSON, one line per event) log entry to stdout — the shape
  * every request/error log line shares. Plain `console.log`/`stdout` is the
- * only log sink an ephemeral function has (ADR-009: no local disk, no
- * in-process aggregator); JSON lines are what a platform's log collector
- * (DO's, or `docker logs`) expects to parse and index by field.
+ * only sink the app writes to (ADR-009: no local disk, no in-process
+ * aggregator); JSON lines are what a platform's log collector — or plain
+ * `docker logs` — expects to parse and index by field.
  */
 export function logLine(fields: Record<string, unknown>): void {
   console.log(JSON.stringify({ time: new Date().toISOString(), ...fields }));

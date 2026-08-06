@@ -14,5 +14,3 @@ README.md
 CLAUDE.md
 Dockerfile
 .dockerignore
-project.yml
-packages

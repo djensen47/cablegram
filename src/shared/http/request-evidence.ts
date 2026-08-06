@@ -22,9 +22,11 @@ export interface RequestEvidence {
 }
 
 /**
- * There is no socket to read. On DigitalOcean Functions the entrypoint rebuilds
- * a `Request` from OpenWhisk's `__ow_headers` (ADR-009), so a forwarding header
- * is the only thing that can carry a client address at all.
+ * A forwarding header is the only thing that can carry a client address here. A
+ * Fetch `Request` has no peer address by construction, and where the runtime
+ * could surface one it would be the wrong address anyway: a deployed container
+ * sits behind a load balancer, and an embedded one behind its host (ADR-027),
+ * so the socket peer is a proxy rather than the subscriber.
  *
  * `X-Forwarded-For` is a list, appended to by each hop: the **leftmost** entry is
  * the original client, which is what we want — and also the only entry a client

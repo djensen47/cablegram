@@ -4,8 +4,8 @@ A **headless newsletter manager/sender** — a MailChimp-shaped capability expos
 API, no UI**. You bring the front end (or none); cablegram owns publications, subscribers, templates,
 campaigns, and suppression, and sends through an ESP (Postmark) that owns the fan-out.
 
-Stack: TypeScript · Hono · Inversify · MongoDB (native driver) · Postmark · deploys on Docker /
-DigitalOcean Functions · **single-tenant, multi-user, multi-newsletter**.
+Stack: TypeScript · Hono · Inversify · MongoDB (native driver) · Postmark · runs as a container,
+standalone or mounted in a host service · **single-tenant, multi-user, multi-newsletter**.
 
 > The *why* behind every choice lives in the [ADRs](docs/adrs/README.md); the terse operative rules
 > live in [`CLAUDE.md`](CLAUDE.md). This README is the human starting point — read it first.
@@ -466,8 +466,8 @@ All configuration is environment variables (no config files on disk). See [`.env
 src/
   shared/        technical modules — leaves (config, auth, email, ids, clock, di, http, persistence)
   app.ts         Hono app assembly (route mounting + the JWT gate)
-  server.ts      Node entrypoint (Docker / App Platform)
-  function.ts    DigitalOcean Functions entrypoint
+  index.ts       library entrypoint — the package's "." export, mounted by a host (ADR-027)
+  server.ts      standalone Node entrypoint (the Docker image's CMD)
   cli/           the `cablegram` CLI — an HTTP client of /v1, not a delivery mechanism (ADR-016)
   <component>/   domain components (ADR-011):
                  newsletters · subscriptions · deliverability · templates · campaigns · accounts
@@ -508,10 +508,15 @@ Full details, and what's not yet covered (a wired end-to-end suite is the top ga
 
 ## Deployment
 
-Docker is the shipped, guaranteed target; DigitalOcean Functions is a best-effort second target. Both
-entrypoints share every line of business logic; Mongo is the only durable state (pooled at module
-scope), and the app creates its own indexes at startup. See [`docs/deployment.md`](docs/deployment.md)
-for build details and the Functions caveats.
+cablegram runs as a **long-running container** ([ADR-028](docs/adrs/ADR-028-containers-only.md)) in
+one of two shapes: standalone (below) or mounted inside a host service
+([`docs/embedding.md`](docs/embedding.md)). Both are the same app; Mongo is the only durable state
+(pooled at module scope), and the app creates its own indexes at startup. See
+[`docs/deployment.md`](docs/deployment.md) for build details.
+
+The serverless target was retired in ADR-028: the provider it was written for (DigitalOcean
+Functions) cannot join a VPC, so it cannot reach a private MongoDB. ADR-009's runtime constraints
+(stateless, no workers, no long in-request loops) still hold.
 
 ```bash
 docker build -t cablegram .
@@ -530,9 +535,10 @@ CI (`.github/workflows/ci.yml`) runs `typecheck`/`lint`/`test`/`build` on every 
 ## Releasing
 
 cablegram is published to **npm** as [`cablegram`](https://www.npmjs.com/package/cablegram) — the
-tarball is `dist/`, exposing the DO Functions entrypoint (`cablegram/function`) and the `cablegram`
-CLI binary. There is deliberately no `"."` library export: cablegram has no library surface
-(ADR-004). Deploying is a *separate* repo's job — it installs the package and re-exports the handler.
+tarball is `dist/` (with `.d.ts`), exposing two things: the library entrypoint (`cablegram`,
+[ADR-027](docs/adrs/ADR-027-library-entrypoint.md)) and the `cablegram` CLI binary. Deploying is a
+*separate* repo's job — it installs the package and mounts or runs the app (see
+[`docs/embedding.md`](docs/embedding.md)).
 
 Releases are automated by [release-please](https://github.com/googleapis/release-please)
 ([ADR-026](docs/adrs/ADR-026-release-and-distribution.md)). **Never hand-edit `version`,
@@ -554,5 +560,5 @@ The runbook — one-time setup, forcing a version, and what a missing credential
 - `npm audit` reports advisories in **dev-only** tooling (the eslint-plugin-boundaries handlebars
   chain; the vitest/vite/esbuild dev-server chain). None are in the runtime dependencies and none ship
   to production, so they are not force-fixed (that would break linter/test majors).
-- DigitalOcean Functions' exact request/response contract is confirmed against DO docs at deploy;
-  `src/function.ts` bridges it and is marked accordingly (ADR-009).
+- The serverless entrypoint (`src/function.ts`, `project.yml`) was **removed** in
+  [ADR-028](docs/adrs/ADR-028-containers-only.md). Its constraints live on; its adapter does not.

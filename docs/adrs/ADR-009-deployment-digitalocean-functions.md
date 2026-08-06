@@ -2,7 +2,15 @@
 
 ## Status
 
-Accepted — 2026-07-19. The Docker target is a stated future goal. Scheduling (see Consequences) is
+**Superseded by [ADR-028](ADR-028-containers-only.md) — 2026-08-05 — as a choice of _target_ only.**
+DigitalOcean Functions is retired (it cannot join a VPC, so it cannot reach a private MongoDB); the
+Docker/container target below is now the only one. **The runtime constraints this ADR establishes —
+stateless and ephemeral everywhere, no background workers, no long in-request loops, no local disk or
+in-memory state between requests, config from env, one pooled client at module scope — are NOT
+superseded and remain binding**; ADR-028 §3 re-derives them for containers. The `project.yml` and
+`src/function.ts` this ADR describes no longer exist.
+
+Originally accepted — 2026-07-19. The Docker target was a stated future goal. Scheduling (see Consequences) is
 **deferred to Phase 2**: the v1 build ships send-on-demand only; an earlier external-trigger endpoint
 was removed, and the design sketch below is retained for when scheduling is built properly.
 

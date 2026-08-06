@@ -23,7 +23,12 @@
     "outDir": "dist",
     "rootDir": "src",
     "sourceMap": true,
-    "declaration": false
+    // The package has a library entrypoint (ADR-027), so the tarball must ship
+    // types for it. Emitted for the whole build rather than just `index.ts` —
+    // `tsc` cannot declaration-emit one file's transitive graph selectively.
+    // No `declarationMap`: the tarball ships `dist` only (`files`), so a
+    // declaration map would point at a `../src/*.ts` that is not published.
+    "declaration": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]
