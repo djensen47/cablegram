@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/djensen47/cablegram/compare/v1.0.0...v2.0.0) (2026-08-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **pkg:** replace the DO Functions entrypoint with a mountable library entrypoint ([#45](https://github.com/djensen47/cablegram/issues/45))
+
+### Features
+
+* **pkg:** replace the DO Functions entrypoint with a mountable library entrypoint ([#45](https://github.com/djensen47/cablegram/issues/45)) ([c3a470a](https://github.com/djensen47/cablegram/commit/c3a470a092324054c084d4bfe93abf85aa48ceba))
+
 ## 1.0.0 (2026-08-05)
 
 
