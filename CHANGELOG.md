@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/djensen47/cablegram/compare/v2.0.0...v2.1.0) (2026-10-19)
+
+
+### Features
+
+* **cli:** send an X-App: cablegram header on every API request ([#47](https://github.com/djensen47/cablegram/issues/47)) ([b532dad](https://github.com/djensen47/cablegram/commit/b532dad4cef1d1c58d47cafe6cccb1bee338f73b))
+
 ## [2.0.0](https://github.com/djensen47/cablegram/compare/v1.0.0...v2.0.0) (2026-08-06)
 
 
