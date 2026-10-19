@@ -258,6 +258,26 @@ describe('FetchApiClient', () => {
     expect(headers.authorization).toBe('Bearer ci-token');
   });
 
+  it('identifies itself with X-App on every request, including anonymous and refresh calls', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(json({ tokenType: 'Bearer' }))
+      .mockResolvedValueOnce(json({ error: { code: 'unauthorized' } }, 401))
+      .mockResolvedValueOnce(
+        json({ tokenType: 'Bearer', accessToken: 'access-2', refreshToken: 'refresh-2', expiresIn: 900 }),
+      )
+      .mockResolvedValueOnce(json({ id: 'n1' }));
+    const client = new FetchApiClient(credentials(), inMemoryStore(), () => NOW, fetchImpl);
+
+    await client.post('/v1/auth/login', { email: 'a@b.co' }, { anonymous: true });
+    await client.get('/v1/newsletters/n1');
+
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+    for (const [, init] of fetchImpl.mock.calls) {
+      expect((init.headers as Record<string, string>)['x-app']).toBe('cablegram');
+    }
+  });
+
   it('passes an idempotency key through as a header', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(json({ id: 'c1' }));
     const client = new FetchApiClient(credentials(), inMemoryStore(), () => NOW, fetchImpl);

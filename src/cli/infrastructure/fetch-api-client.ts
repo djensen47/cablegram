@@ -114,7 +114,7 @@ export class FetchApiClient implements ApiClient {
       if (value !== undefined) url.searchParams.set(key, String(value));
     }
 
-    const headers: Record<string, string> = { accept: 'application/json' };
+    const headers: Record<string, string> = { accept: 'application/json', 'x-app': 'cablegram' };
     if (req.body !== undefined) headers['content-type'] = 'application/json';
     if (req.anonymous !== true && this.credentials.accessToken !== undefined) {
       headers.authorization = `Bearer ${this.credentials.accessToken}`;
