@@ -278,6 +278,46 @@ describe('FetchApiClient', () => {
     }
   });
 
+  it('keeps the mount prefix of a base URL with a path (ADR-027)', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(json({ error: { code: 'unauthorized' } }, 401))
+      .mockResolvedValueOnce(
+        json({ tokenType: 'Bearer', accessToken: 'access-2', refreshToken: 'refresh-2', expiresIn: 900 }),
+      )
+      .mockResolvedValueOnce(json({ data: [], meta: { nextCursor: null } }));
+    const client = new FetchApiClient(
+      credentials({ baseUrl: 'https://api.example.com/newsletter' }),
+      inMemoryStore(),
+      () => NOW,
+      fetchImpl,
+    );
+
+    await client.listAll('/v1/newsletters');
+
+    const urls = fetchImpl.mock.calls.map(([url]) => new URL(String(url)));
+    expect(urls.map((u) => u.pathname)).toEqual([
+      '/newsletter/v1/newsletters',
+      '/newsletter/v1/auth/refresh',
+      '/newsletter/v1/newsletters',
+    ]);
+    expect(urls[2]!.searchParams.get('limit')).toBe('100');
+  });
+
+  it('tolerates a trailing slash on a prefixed base URL', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(json({ id: 'u1' }));
+    const client = new FetchApiClient(
+      { baseUrl: 'https://api.example.com/newsletter/' },
+      inMemoryStore(),
+      () => NOW,
+      fetchImpl,
+    );
+
+    await client.post('/v1/setup', { email: 'a@b.co' }, { anonymous: true });
+
+    expect(String(fetchImpl.mock.calls[0]![0])).toBe('https://api.example.com/newsletter/v1/setup');
+  });
+
   it('passes an idempotency key through as a header', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(json({ id: 'c1' }));
     const client = new FetchApiClient(credentials(), inMemoryStore(), () => NOW, fetchImpl);
