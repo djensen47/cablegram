@@ -109,7 +109,11 @@ export class FetchApiClient implements ApiClient {
   }
 
   private async send(method: string, req: ApiRequest): Promise<Response> {
-    const url = new URL(req.path, this.credentials.baseUrl);
+    // Concatenate, never `new URL(path, base)`: every path is absolute, and an
+    // absolute path replaces the base's own path, so a deployment mounted under
+    // a prefix (ADR-027, e.g. `https://host/newsletter`) lost it and every
+    // request went to the host's `/v1/...` instead.
+    const url = new URL(this.credentials.baseUrl.replace(/\/+$/, '') + req.path);
     for (const [key, value] of Object.entries(req.query ?? {})) {
       if (value !== undefined) url.searchParams.set(key, String(value));
     }
