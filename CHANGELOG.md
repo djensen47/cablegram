@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.1](https://github.com/djensen47/cablegram/compare/v2.1.0...v2.1.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **cli:** keep the mount prefix of a base URL with a path ([#49](https://github.com/djensen47/cablegram/issues/49)) ([1554363](https://github.com/djensen47/cablegram/commit/1554363bbc9689dbe956b21b749f57d8dde801f7))
+
 ## [2.1.0](https://github.com/djensen47/cablegram/compare/v2.0.0...v2.1.0) (2026-10-19)
 
 
