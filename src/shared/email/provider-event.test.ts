@@ -55,6 +55,21 @@ const clickPayload = {
   OriginalLink: 'https://example.com',
 };
 
+// A recipient opting out through Postmark's own unsubscribe link (ADR-029).
+// Field names pinned against Postmark's SubscriptionChange webhook docs; the
+// ManualSuppression + Recipient pairing is the one cablegram claims.
+const optOutPayload = {
+  RecordType: 'SubscriptionChange',
+  MessageID: 'fff',
+  MessageStream: 'broadcast',
+  Recipient: 'leaver@example.com',
+  ChangedAt: '2026-11-02T16:33:54.9070259Z',
+  Origin: 'Recipient',
+  SuppressSending: true,
+  SuppressionReason: 'ManualSuppression',
+  Tag: 'campaign-42',
+};
+
 describe('parseProviderEvent', () => {
   it('normalizes a Delivery webhook', () => {
     const [event] = parseProviderEvent(deliveryPayload).events;
@@ -96,7 +111,7 @@ describe('parseProviderEvent', () => {
   });
 
   it('emits no event for an unrecognized RecordType', () => {
-    const parsed = parseProviderEvent({ RecordType: 'SubscriptionChange', Recipient: 'x@example.com' });
+    const parsed = parseProviderEvent({ RecordType: 'SomeFutureRecordType', Recipient: 'x@example.com' });
     expect(parsed.events).toEqual([]);
   });
 
@@ -177,8 +192,8 @@ describe('unhandled classification', () => {
     parseProviderEvent(payload).unhandled.map((u) => u.key);
 
   it('buckets an unrecognized RecordType under its own name', () => {
-    expect(keys({ RecordType: 'SubscriptionChange', Recipient: 'x@example.com' })).toEqual([
-      'SubscriptionChange',
+    expect(keys({ RecordType: 'SomeFutureRecordType', Recipient: 'x@example.com' })).toEqual([
+      'SomeFutureRecordType',
     ]);
   });
 
@@ -234,8 +249,69 @@ describe('unhandled classification', () => {
   });
 
   it('separates handled and unhandled items in one defensive array', () => {
-    const parsed = parseProviderEvent([deliveryPayload, { RecordType: 'SubscriptionChange' }]);
+    const parsed = parseProviderEvent([deliveryPayload, { RecordType: 'SomeFutureRecordType' }]);
     expect(parsed.events.map((e) => e.type)).toEqual(['delivered']);
-    expect(parsed.unhandled.map((u) => u.key)).toEqual(['SubscriptionChange']);
+    expect(parsed.unhandled.map((u) => u.key)).toEqual(['SomeFutureRecordType']);
+  });
+});
+
+describe('SubscriptionChange classification (ADR-029)', () => {
+  const keys = (payload: unknown): string[] =>
+    parseProviderEvent(payload).unhandled.map((u) => u.key);
+
+  it('normalizes a recipient opt-out to `unsubscribed`, carrying the tag and ChangedAt', () => {
+    const parsed = parseProviderEvent(optOutPayload);
+    expect(parsed.unhandled).toEqual([]);
+    expect(parsed.events).toEqual([
+      {
+        type: 'unsubscribed',
+        email: 'leaver@example.com',
+        messageId: 'fff',
+        occurredAt: new Date('2026-11-02T16:33:54.9070259Z'),
+        tag: 'campaign-42',
+        firstEngagement: null,
+      },
+    ]);
+  });
+
+  it('ignores the bounce and complaint cases — their own webhooks already carry them', () => {
+    for (const reason of ['HardBounce', 'SpamComplaint']) {
+      const parsed = parseProviderEvent({ ...optOutPayload, SuppressionReason: reason });
+      expect(parsed.events).toEqual([]);
+      expect(parsed.unhandled).toEqual([]);
+    }
+  });
+
+  it('reports an operator suppression made in Postmark, keyed by reason and origin', () => {
+    // Not the subscriber's act, so it is not recorded as their opt-out.
+    expect(keys({ ...optOutPayload, Origin: 'Customer' })).toEqual([
+      'SubscriptionChange:ManualSuppression:Customer',
+    ]);
+    expect(keys({ ...optOutPayload, Origin: 'Admin' })).toEqual([
+      'SubscriptionChange:ManualSuppression:Admin',
+    ]);
+  });
+
+  it('reports a reactivation — it carries no tag, so no newsletter to apply it to', () => {
+    expect(
+      keys({ ...optOutPayload, SuppressSending: false, SuppressionReason: null, Tag: null }),
+    ).toEqual(['SubscriptionChange:Reactivation']);
+  });
+
+  it('reports a pairing it does not recognize instead of guessing', () => {
+    // The safety net: if Postmark labels a real opt-out differently, it lands
+    // in the unhandled report rather than vanishing.
+    expect(keys({ ...optOutPayload, SuppressionReason: 'SomethingNew' })).toEqual([
+      'SubscriptionChange:SomethingNew:Recipient',
+    ]);
+    expect(keys({ RecordType: 'SubscriptionChange', Recipient: 'x@example.com' })).toEqual([
+      'SubscriptionChange:__no-reason:__no-origin',
+    ]);
+  });
+
+  it('reports a recipient opt-out that carried no address', () => {
+    const { Recipient: _omit, ...noAddress } = optOutPayload;
+    void _omit;
+    expect(keys(noAddress)).toEqual(['SubscriptionChange:__no-address']);
   });
 });

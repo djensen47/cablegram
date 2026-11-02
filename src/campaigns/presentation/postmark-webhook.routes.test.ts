@@ -145,7 +145,7 @@ describe('unrecognized events are recorded, not dropped', () => {
   it('counts one row per record type, however many events arrive', async () => {
     for (let i = 0; i < 3; i += 1) {
       const res = await post(app, webhookAuth, {
-        RecordType: 'SubscriptionChange',
+        RecordType: 'SomeFutureRecordType',
         Recipient: `reader${i}@dispatch.example`,
       });
       expect(res.status).toBe(200);
@@ -155,7 +155,7 @@ describe('unrecognized events are recorded, not dropped', () => {
     // The whole point of keying by type: three events, one row. At 50k webhooks
     // per send, one row per *event* would be the growth problem all over again.
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ key: 'SubscriptionChange', count: 3 });
+    expect(rows[0]).toMatchObject({ key: 'SomeFutureRecordType', count: 3 });
     // The sample is the FIRST payload seen, so the row stays stable over time.
     expect(rows[0]!.sample).toContain('reader0@dispatch.example');
     expect(rows[0]!.firstSeenAt).toBeDefined();

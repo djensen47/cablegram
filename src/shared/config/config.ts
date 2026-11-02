@@ -107,15 +107,27 @@ export interface AppConfig {
    * cablegram's own public origin (ADR-015), e.g. `https://api.example.com`. The
    * first URL the API needs to point at **itself** (unlike the account-mail bases,
    * which point at an operator front-end). It is used to build the absolute
-   * `List-Unsubscribe` link when no operator `unsubscribe.url` is configured —
-   * the link then points at the built-in `GET /v1/unsubscribe` page. When both
-   * this and `unsubscribe.url` are unset, campaign sends omit the
-   * `List-Unsubscribe` headers — sending is unaffected. No trailing slash
-   * (normalized here).
+   * `List-Unsubscribe` link, which always targets `POST /v1/unsubscribe`.
+   * **Required** when `unsubscribe.handling` is `cablegram` (ADR-029): a send
+   * with nowhere to point the header used to omit it silently. Optional under
+   * `provider`. No trailing slash (normalized here).
    */
   readonly baseUrl: string | null;
-  /** Public, token-authenticated unsubscribe settings (ADR-015). */
+  /** Public, token-authenticated unsubscribe settings (ADR-015, ADR-029). */
   readonly unsubscribe: {
+    /**
+     * Who owns the unsubscribe link in a campaign (ADR-029).
+     *
+     * - `cablegram` (default): every send carries cablegram's own per-recipient
+     *   `List-Unsubscribe` headers, pointing at `POST /v1/unsubscribe`.
+     * - `provider`: cablegram adds no unsubscribe headers and leaves the link to
+     *   the email provider (Postmark's managed unsubscribe on a broadcast stream).
+     *   Opt-outs come back through the provider's webhook instead.
+     *
+     * Named for the role, not the vendor, so it still reads correctly behind a
+     * different `DeliveryGateway`.
+     */
+    readonly handling: UnsubscribeHandling;
     /**
      * HMAC secret for the stateless per-subscription unsubscribe token. In
      * Postmark-token style it **falls back to the JWT secret** when unset, so a
@@ -135,6 +147,10 @@ export interface AppConfig {
     readonly url: string | null;
   };
 }
+
+/** Who owns the unsubscribe link in a campaign (ADR-029). */
+export const UNSUBSCRIBE_HANDLING_MODES = ['cablegram', 'provider'] as const;
+export type UnsubscribeHandling = (typeof UNSUBSCRIBE_HANDLING_MODES)[number];
 
 /** Strip a single trailing slash so `${base}/v1/...` never doubles up. */
 function trimTrailingSlash(url: string): string {
@@ -172,10 +188,13 @@ const schema = z
     MAGIC_LINK_URL_BASE: z.string().url().optional(),
     PASSWORD_RESET_TTL_SECONDS: z.coerce.number().int().positive().default(3_600),
     MAGIC_LINK_TTL_SECONDS: z.coerce.number().int().positive().default(900),
-    // The API's own public origin — used to build the built-in unsubscribe
-    // page's link when no operator UNSUBSCRIBE_URL is set (ADR-015); when both
-    // are unset, campaign sends omit the List-Unsubscribe headers.
+    // The API's own public origin — the List-Unsubscribe header points at
+    // ${BASE_URL}/v1/unsubscribe (ADR-015). Required under
+    // UNSUBSCRIBE_HANDLING=cablegram; see the refinement below.
     BASE_URL: z.string().url().optional(),
+    // Who owns the unsubscribe link (ADR-029). `cablegram` keeps today's
+    // behaviour, so an existing deployment is unchanged by default.
+    UNSUBSCRIBE_HANDLING: z.enum(UNSUBSCRIBE_HANDLING_MODES).default('cablegram'),
     // Optional dedicated HMAC secret for unsubscribe tokens; falls back to
     // JWT_SECRET below when unset (a single-secret deployment is unchanged).
     UNSUBSCRIBE_TOKEN_SECRET: z.string().min(1).optional(),
@@ -183,23 +202,36 @@ const schema = z
     // point here (carrying the token + email); the page POSTs to /v1/unsubscribe.
     UNSUBSCRIBE_URL: z.string().url().optional(),
   })
-  // When links are enabled, both front-end base URLs must be present — the email
-  // has nowhere to point otherwise.
   .superRefine((e, ctx) => {
-    if (!e.EMAIL_LINK_ENABLED) return;
-    if (!e.PASSWORD_RESET_URL_BASE) {
+    // When cablegram owns the unsubscribe link, the header needs an absolute URL
+    // to point at. This used to be silent — an unset BASE_URL simply dropped the
+    // header from every send (ADR-029) — so it is now a startup error instead.
+    if (e.UNSUBSCRIBE_HANDLING === 'cablegram' && !e.BASE_URL) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['PASSWORD_RESET_URL_BASE'],
-        message: 'is required when EMAIL_LINK_ENABLED is true',
+        path: ['BASE_URL'],
+        message:
+          'is required when UNSUBSCRIBE_HANDLING is cablegram (the default); ' +
+          'set it, or set UNSUBSCRIBE_HANDLING=provider',
       });
     }
-    if (!e.MAGIC_LINK_URL_BASE) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['MAGIC_LINK_URL_BASE'],
-        message: 'is required when EMAIL_LINK_ENABLED is true',
-      });
+    // When links are enabled, both front-end base URLs must be present — the
+    // email has nowhere to point otherwise.
+    if (e.EMAIL_LINK_ENABLED) {
+      if (!e.PASSWORD_RESET_URL_BASE) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PASSWORD_RESET_URL_BASE'],
+          message: 'is required when EMAIL_LINK_ENABLED is true',
+        });
+      }
+      if (!e.MAGIC_LINK_URL_BASE) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MAGIC_LINK_URL_BASE'],
+          message: 'is required when EMAIL_LINK_ENABLED is true',
+        });
+      }
     }
   });
 
@@ -248,6 +280,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     },
     baseUrl: e.BASE_URL ? trimTrailingSlash(e.BASE_URL) : null,
     unsubscribe: {
+      handling: e.UNSUBSCRIBE_HANDLING,
       // Dedicated secret when provided, else the JWT secret (single-secret setup).
       tokenSecret: e.UNSUBSCRIBE_TOKEN_SECRET ?? e.JWT_SECRET,
       url: e.UNSUBSCRIBE_URL ?? null,

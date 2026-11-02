@@ -3,6 +3,7 @@ import { loadConfig } from './config.js';
 
 const base = {
   DATABASE_URL: 'mongodb://localhost/cablegram',
+  BASE_URL: 'https://cablegram.test',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 'token',
   POSTMARK_WEBHOOK_SECRET: 'secret',
@@ -94,11 +95,39 @@ describe('loadConfig', () => {
     });
   });
 
-  it('defaults BASE_URL + UNSUBSCRIBE_URL to null and the unsubscribe secret to the JWT secret (ADR-015)', () => {
+  it('defaults UNSUBSCRIBE_URL to null and the unsubscribe secret to the JWT secret (ADR-015)', () => {
     const c = loadConfig(base);
-    expect(c.baseUrl).toBeNull();
     expect(c.unsubscribe.tokenSecret).toBe(base.JWT_SECRET);
     expect(c.unsubscribe.url).toBeNull();
+  });
+
+  it('defaults UNSUBSCRIBE_HANDLING to cablegram, so an existing deployment is unchanged (ADR-029)', () => {
+    expect(loadConfig(base).unsubscribe.handling).toBe('cablegram');
+  });
+
+  it('refuses to start when cablegram owns unsubscribes but BASE_URL is unset (ADR-029)', () => {
+    // This used to be silent: every campaign went out with no List-Unsubscribe
+    // header at all. Now it is a startup error that names the way out.
+    const withoutBaseUrl = { ...base, BASE_URL: undefined };
+    expect(() => loadConfig(withoutBaseUrl as NodeJS.ProcessEnv)).toThrow(
+      /BASE_URL: is required when UNSUBSCRIBE_HANDLING is cablegram/,
+    );
+    expect(() =>
+      loadConfig({ ...withoutBaseUrl, UNSUBSCRIBE_HANDLING: 'cablegram' } as NodeJS.ProcessEnv),
+    ).toThrow(/UNSUBSCRIBE_HANDLING=provider/);
+  });
+
+  it('lets the provider own unsubscribes, with BASE_URL optional (ADR-029)', () => {
+    const withoutBaseUrl = { ...base, BASE_URL: undefined };
+    const c = loadConfig({ ...withoutBaseUrl, UNSUBSCRIBE_HANDLING: 'provider' } as NodeJS.ProcessEnv);
+    expect(c.unsubscribe.handling).toBe('provider');
+    expect(c.baseUrl).toBeNull();
+  });
+
+  it('rejects an unknown UNSUBSCRIBE_HANDLING value rather than defaulting it', () => {
+    expect(() => loadConfig({ ...base, UNSUBSCRIBE_HANDLING: 'postmark' } as NodeJS.ProcessEnv)).toThrow(
+      /UNSUBSCRIBE_HANDLING/,
+    );
   });
 
   it('normalizes BASE_URL by trimming a trailing slash', () => {

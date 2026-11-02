@@ -17,6 +17,7 @@ export const TEST_JWT_SECRET = 'test-jwt-secret-please-use-32+-characters!!';
 /** The canonical env every unit/route test builds its container from. */
 export const TEST_ENV = {
   DATABASE_URL: 'mongodb://localhost/cablegram',
+  BASE_URL: 'https://cablegram.test',
   JWT_SECRET: TEST_JWT_SECRET,
   POSTMARK_SERVER_TOKEN: 't',
   POSTMARK_WEBHOOK_SECRET: 's',

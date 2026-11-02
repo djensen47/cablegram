@@ -200,16 +200,33 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   anyone out. **Don't** move the mutation back onto `GET`. The `PublicUnsubscribe` use case is
   non-revealing (forged token → 400; valid-but-missing row → quiet success) and reuses the domain
   `subscription.unsubscribe(now)`. It flips **per-newsletter status only — it does NOT add to the global
-  `deliverability` suppression list** (that's hard-bounce/complaint territory; keep them separate). Every
+  `deliverability` suppression list** (that's hard-bounce/complaint territory; keep them separate). Under
+  the default `UNSUBSCRIBE_HANDLING=cablegram` (ADR-029), every
   campaign send emits a **per-recipient** `List-Unsubscribe` + `List-Unsubscribe-Post` header — carried
   on the `email` port's per-recipient `EmailRecipient.headers`, mapped to the Postmark Bulk per-message
   `Headers`. The header **always** points at the API (`${BASE_URL}/v1/unsubscribe`) — it's the one-click
   machine endpoint, and the token can travel **only** in the per-recipient header (a campaign is one bulk
   send with a **shared** body, ADR-008, so no per-recipient body link). An operator's own page
   (`UNSUBSCRIBE_URL`) is therefore reached by the **`GET` 302-redirecting** to it (forwarding the token
-  params), not by pointing the header there; unset → `GET` serves the built-in page; no `BASE_URL` →
-  headers omitted. The operator JWT endpoint (`.../subscriptions/{id}/unsubscribe`) is kept as-is —
-  different caller.
+  params), not by pointing the header there; unset → `GET` serves the built-in page. `BASE_URL` is
+  **required** in this mode — missing is a startup error, no longer a silent header omission (ADR-029).
+  The operator JWT endpoint (`.../subscriptions/{id}/unsubscribe`) is kept as-is — different caller.
+- **`UNSUBSCRIBE_HANDLING` decides who owns the unsubscribe link: `cablegram` (default) or `provider`**
+  ([ADR-029](docs/adrs/ADR-029-unsubscribe-handling.md)). Named for the **role, not the vendor** —
+  don't add a `postmark` value. Under `provider`, `unsubscribeHeaders()` returns nothing (so the real
+  send *and* the test send carry no cablegram headers — two competing `List-Unsubscribe` sets would let
+  the mail client pick), Postmark's broadcast stream appends its own footer link + headers, and the
+  opt-out comes back as Postmark's **`SubscriptionChange`** webhook. `parseProviderEvent` claims only
+  `SuppressSending: true` + `ManualSuppression` + `Origin: Recipient` as an `unsubscribed` event —
+  deliberately narrow, because Postmark's docs don't say what a footer click produces; `HardBounce`/
+  `SpamComplaint` reasons are **ignored** (their own webhooks carry them); reactivations and operator
+  (`Customer`/`Admin`) suppressions go to the ADR-021 unhandled record. The event maps `Tag` →
+  campaign → newsletter and calls `subscription.unsubscribe()` on **that newsletter only** — never the
+  global list, never the recipient's delivery outcome. Known, accepted gaps under `provider`: Postmark
+  suppresses **per stream** and every newsletter shares the hardcoded `broadcast` stream, so one
+  opt-out stops all newsletters (**resolve before a second newsletter sends** in this mode); a
+  re-subscribe may stay blocked at Postmark; `{{{ pm:unsubscribe }}}` is blanked by the Handlebars
+  render, so Postmark's default footer link is what appears.
 - **The email port carries a business `category`, not a Postmark stream.** `BulkMessage.category` is
   `'broadcast' | 'transactional'` (campaigns → broadcast; subscribe confirmations + account mail →
   transactional). The Postmark adapter maps it to both the message stream **and** the signing token:
@@ -325,7 +342,9 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   original reason was sharper — the old serverless host's activation logs couldn't be searched at all
   — and went with that target, ADR-028; the decision didn't.) Keys: a bare `RecordType`; `Bounce:<Type>` for a bounce type in neither the permanent
   nor transient table (the case that catches Postmark's table moving); `<RecordType>:__no-address` when
-  a handled type carried no address; `__unparseable` for a non-object/type-less body. `AutoResponder`
+  a handled type carried no address; `SubscriptionChange:Reactivation` and
+  `SubscriptionChange:<reason>:<origin>` for a provider suppression change that isn't a recipient
+  opt-out (ADR-029); `__unparseable` for a non-object/type-less body. `AutoResponder`
   and `Subscribe` are on an explicit **ignore list** — deliberate drops (ADR-020), so recording them
   would be noise. Classification stays in the `shared/email` leaf (one place decides what we handle);
   the write stays in `campaigns` (a leaf owns no repository).
@@ -444,7 +463,8 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   mounted app's routes to `<prefix>/v1/*`), **never configured** — a `basePath` option would be a
   second place to state the mount and would drift into a 401. Two hazards are the **host's**, by
   decision, not bugs to fix here: `BASE_URL` **must include the mount prefix** (unsubscribe headers are
-  a plain concat, and an unset `BASE_URL` **silently omits** them), and `createApp` brings its own
+  a plain concat; an *unset* one is now a startup error under `UNSUBSCRIBE_HANDLING=cablegram`,
+  ADR-029, but a *wrong* prefix still starts), and `createApp` brings its own
   logging middleware + `/health`, so a host with top-level logging double-logs. Runbook:
   [`docs/embedding.md`](docs/embedding.md).
 - **Postmark wire format** (request/response, webhook schema) is implemented in

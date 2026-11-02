@@ -195,12 +195,14 @@ const UnhandledEventSchema = z
         'The bucket: a Postmark RecordType, a RecordType:Detail pair when the type is handled ' +
         'but a sub-case is not (e.g. Bounce:NewType), or `__unparseable` for a body with no ' +
         'usable RecordType.',
-      example: 'SubscriptionChange',
+      example: 'SubscriptionChange:ManualSuppression:Customer',
     }),
     count: z.number().int().openapi({ example: 4203 }),
     sample: z.string().openapi({
       description: 'The first payload seen for this key, JSON-serialized and truncated.',
-      example: '{"RecordType":"SubscriptionChange","Recipient":"reader@example.com"}',
+      example:
+        '{"RecordType":"SubscriptionChange","Recipient":"reader@example.com",' +
+        '"Origin":"Customer","SuppressSending":true,"SuppressionReason":"ManualSuppression"}',
     }),
     firstSeenAt: z.string().datetime(),
     lastSeenAt: z.string().datetime(),

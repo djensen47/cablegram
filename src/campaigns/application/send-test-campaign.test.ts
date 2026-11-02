@@ -98,8 +98,10 @@ class ForbiddenRecipientResolver implements RecipientResolver {
   }
 }
 
-function testContainer(): { container: Container; gateway: InMemoryDeliveryGateway } {
-  const container = buildContainer(env);
+function testContainer(
+  extraEnv: Record<string, string> = {},
+): { container: Container; gateway: InMemoryDeliveryGateway } {
+  const container = buildContainer({ ...env, ...extraEnv } as NodeJS.ProcessEnv);
   container.rebind(CAMPAIGN_TYPES.CampaignRepository).to(InMemoryCampaignRepository);
   container.rebind(CAMPAIGN_TYPES.SendRepository).to(InMemorySendRepository);
   container
@@ -312,6 +314,24 @@ describe('campaigns — test send (ADR-025)', () => {
       .execute({ newsletterId, limit: 50 });
     expect(rows.map((r) => r.id)).not.toContain(subscriptionId);
     expect(rows[0]?.status).toBe('subscribed');
+  });
+
+  it('carries no List-Unsubscribe header when the provider owns unsubscribes (ADR-029)', async () => {
+    // Same switch as the real send, because it is the same function: a proof
+    // that still carried cablegram's header would not show what subscribers get.
+    const provider = testContainer({ UNSUBSCRIBE_HANDLING: 'provider' });
+    const newsletter = await provider.container
+      .get<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter)
+      .execute({ name: 'Provider-owned', fromName: 'Editors', fromEmail: 'editors@dispatch.example' });
+    const campaign = await provider.container
+      .get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign)
+      .execute({ newsletterId: newsletter.id, name: 'Proof', subject: 'Hi', bodyHtml: '<p>x</p>' });
+
+    await provider.container
+      .get<SendTestCampaign>(CAMPAIGN_TYPES.SendTestCampaign)
+      .execute({ campaignId: campaign.id, addresses: ['me@example.com'], prefixSubject: true });
+
+    expect(provider.gateway.sent[0]!.recipients[0]!.headers).toBeUndefined();
   });
 
   it('tags the provider message so its events can never reach the campaign', async () => {

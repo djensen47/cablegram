@@ -139,6 +139,15 @@ users).
   `UNSUBSCRIBE_URL`, the `GET` **redirects** the browser to your own page (forwarding the token params)
   so it can POST back; otherwise `GET` serves a built-in page. See
   [ADR-015](docs/adrs/ADR-015-public-token-unsubscribe.md).
+- **Or let the email provider own the link** (`UNSUBSCRIBE_HANDLING=provider`,
+  [ADR-029](docs/adrs/ADR-029-unsubscribe-handling.md)). cablegram then sends **no** unsubscribe
+  headers; Postmark's broadcast stream adds its own footer link and headers and suppresses whoever
+  clicks. The opt-out comes back as Postmark's **Subscription Change** webhook (enable it on the
+  broadcast stream's webhook), and cablegram marks that subscriber `unsubscribed` on the campaign's
+  newsletter only. Postmark suppresses per **stream**, and every newsletter shares the one broadcast
+  stream, so under this mode an opt-out from one newsletter stops mail from all of them — fine with
+  one newsletter, not yet with two. Don't put `{{{ pm:unsubscribe }}}` in a body: cablegram's renderer
+  blanks it, and Postmark then appends its default link.
 
 ```bash
 # First-run bootstrap (open, one-time):
@@ -397,7 +406,9 @@ Reasons: `hard-bounce` · `spam-complaint` · `manual-junk` · `global-opt-out`.
 The receiver always answers `200` — a non-200 makes Postmark retry for hours — so an event it does
 not recognize cannot fail loudly. It is recorded instead
 ([ADR-021](docs/adrs/ADR-021-unhandled-webhook-events.md)): one row per *kind* of unrecognized event
-(an unknown `RecordType`, a bounce type outside the classified tables, or an unparseable body), with
+(an unknown `RecordType`, a bounce type outside the classified tables, a `SubscriptionChange` that
+isn't a recipient opt-out — e.g. `SubscriptionChange:ManualSuppression:Customer` — or an unparseable
+body), with
 a count, first/last seen and a truncated sample of the first payload. Deliberate drops
 (`AutoResponder`, `Subscribe`) are not recorded — they are not failures. A non-empty list means
 Postmark is sending traffic cablegram is discarding.
@@ -437,7 +448,8 @@ All configuration is environment variables (no config files on disk). See [`.env
 | `MAGIC_LINK_URL_BASE` | if links on | — | Front-end base for the magic-link; the token is appended as `?token=`. |
 | `PASSWORD_RESET_TTL_SECONDS` | no | `3600` | Password-reset token lifetime (1h). |
 | `MAGIC_LINK_TTL_SECONDS` | no | `900` | Magic-link token lifetime (15m). |
-| `BASE_URL` | no | — | The API's **own** public origin (e.g. `https://api.example.com`). The per-recipient `List-Unsubscribe` header always points at `${BASE_URL}/v1/unsubscribe` (ADR-015); unset → sends omit the headers. |
+| `UNSUBSCRIBE_HANDLING` | no | `cablegram` | Who owns the unsubscribe link (ADR-029). `cablegram`: every send carries cablegram's `List-Unsubscribe` headers. `provider`: cablegram sends none and the provider's link is used; opt-outs arrive by webhook. |
+| `BASE_URL` | when `UNSUBSCRIBE_HANDLING=cablegram` | — | The API's **own** public origin (e.g. `https://api.example.com`), including any mount prefix. The per-recipient `List-Unsubscribe` header always points at `${BASE_URL}/v1/unsubscribe` (ADR-015). Missing under `cablegram` → the app refuses to start. |
 | `UNSUBSCRIBE_URL` | no | — | Your **own** unsubscribe page. When set, `GET /v1/unsubscribe` redirects the browser here (forwarding `newsletterId`/`subscriptionId`/`token`/`email`) and your page POSTs back to `/v1/unsubscribe`. Unset → `GET` serves a built-in page. |
 | `UNSUBSCRIBE_TOKEN_SECRET` | no | *(= `JWT_SECRET`)* | HMAC secret for the stateless unsubscribe token. Falls back to `JWT_SECRET`; set separately to decouple link validity from JWT-secret rotation. |
 
@@ -525,6 +537,8 @@ docker run --rm -p 3000:3000 \
   -e JWT_SECRET="change-me-to-a-long-random-secret-at-least-32-chars" \
   -e POSTMARK_SERVER_TOKEN="pm-server-token" \
   -e POSTMARK_WEBHOOK_SECRET="change-me" \
+  -e SYSTEM_EMAIL_FROM_ADDRESS="system@example.com" \
+  -e BASE_URL="http://localhost:3000" \
   cablegram
 # (not `--env-file .env` — Docker's env-file loader doesn't strip the quotes in
 # .env.example's values, unlike Node's process.loadEnvFile used by `npm run dev`)

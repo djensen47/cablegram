@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted — 2026-07-24. **Implemented** the same day.
+Accepted — 2026-07-24. **Implemented** the same day. Amended by
+[ADR-029](ADR-029-unsubscribe-handling.md): this mechanism is now the default of two modes
+(`UNSUBSCRIBE_HANDLING=cablegram`); under `provider` the headers are not sent and the email provider
+owns the link. `BASE_URL` is now required in this mode rather than optional.
 
 ## Context
 

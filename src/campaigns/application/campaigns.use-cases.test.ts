@@ -45,6 +45,7 @@ import {
 
 const env = {
   DATABASE_URL: 'mongodb://localhost/cablegram',
+  BASE_URL: 'https://cablegram.test',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 't',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
@@ -414,6 +415,94 @@ describe('campaigns — the send integrator', () => {
       });
     });
 
+    // ADR-029: under UNSUBSCRIBE_HANDLING=provider, an opt-out arrives as
+    // Postmark's SubscriptionChange webhook rather than at /v1/unsubscribe.
+    describe('provider opt-outs (ADR-029)', () => {
+      const optOut = (campaignId: string): unknown => ({
+        RecordType: 'SubscriptionChange',
+        MessageID: 'in-memory-1-0',
+        MessageStream: 'broadcast',
+        Recipient: 'Keep1@Dispatch.example',
+        ChangedAt: '2026-07-20T10:03:00Z',
+        Origin: 'Recipient',
+        SuppressSending: true,
+        SuppressionReason: 'ManualSuppression',
+        Tag: campaignId,
+      });
+
+      it('unsubscribes the recipient from that newsletter, and nothing else', async () => {
+        const campaignId = await sendToTwo();
+
+        await container
+          .get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents)
+          .execute(optOut(campaignId));
+
+        const rows = await container
+          .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+          .execute({ newsletterId, limit: 50 });
+        const byAddress = Object.fromEntries(rows.map((r) => [r.email, r.status]));
+        // The address casing in the payload does not matter.
+        expect(byAddress['keep1@dispatch.example']).toBe('unsubscribed');
+        expect(byAddress['keep2@dispatch.example']).toBe('subscribed');
+        expect(rows.find((r) => r.email === 'keep1@dispatch.example')?.unsubscribedAt).toBeDefined();
+
+        // An opt-out is per-newsletter: never the global list (ADR-018).
+        const suppressed = await container
+          .get<FilterSuppressed>(DELIVERABILITY_TYPES.FilterSuppressed)
+          .execute(['keep1@dispatch.example']);
+        expect(suppressed).toEqual([]);
+
+        // A consent fact, not a delivery outcome: the recipient's row is untouched.
+        const outcomes = await container
+          .get<ListRecipientOutcomes>(CAMPAIGN_TYPES.ListRecipientOutcomes)
+          .execute({ campaignId, limit: 100 });
+        expect(outcomes.find((o) => o.address === 'keep1@dispatch.example')?.status).toBe('accepted');
+      });
+
+      it('leaves a second newsletter untouched', async () => {
+        const other = await seedNewsletter(container, 'Other Dispatch');
+        await subscribe(container, other, 'keep1@dispatch.example');
+        const campaignId = await sendToTwo();
+
+        await container
+          .get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents)
+          .execute(optOut(campaignId));
+
+        const rows = await container
+          .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+          .execute({ newsletterId: other, limit: 50 });
+        expect(rows[0]?.status).toBe('subscribed');
+      });
+
+      it('drops the next campaign to that newsletter for the opted-out address', async () => {
+        const campaignId = await sendToTwo();
+        await container
+          .get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents)
+          .execute(optOut(campaignId));
+
+        const templateId = await seedTemplate(container);
+        const next = await container
+          .get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign)
+          .execute({ newsletterId, name: 'April', templateId });
+        await container.get<SendCampaign>(CAMPAIGN_TYPES.SendCampaign).execute(next.id);
+
+        expect(gateway.sent[1]?.recipients.map((r) => r.email)).toEqual(['keep2@dispatch.example']);
+      });
+
+      it('ignores an opt-out from a test send — its tag is not a campaign (ADR-025)', async () => {
+        const campaignId = await sendToTwo();
+
+        await container
+          .get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents)
+          .execute({ ...(optOut(campaignId) as object), Tag: `test:${campaignId}` });
+
+        const rows = await container
+          .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+          .execute({ newsletterId, limit: 50 });
+        expect(rows.every((r) => r.status === 'subscribed')).toBe(true);
+      });
+    });
+
     it('is idempotent under duplicate / out-of-order delivery', async () => {
       const campaignId = await sendToTwo();
       const record = container.get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents);
@@ -558,9 +647,10 @@ describe('campaigns — per-recipient List-Unsubscribe headers (ADR-015)', () =>
     expect(unsubscribed?.email).toBe('reader@dispatch.example');
   });
 
-  it('omits List-Unsubscribe headers when no BASE_URL is configured', async () => {
-    // The default `env` has no BASE_URL — the send must still work, headerless.
-    const { container, gateway } = testContainer();
+  it('omits List-Unsubscribe headers when the provider owns unsubscribes (ADR-029)', async () => {
+    // Two competing sets of headers would leave it to the mail client which
+    // opt-out it honours, so under `provider` cablegram sends none.
+    const { container, gateway } = withHeadersEnv({ UNSUBSCRIBE_HANDLING: 'provider' });
     const { recipient } = await sendOneCampaign(container, gateway);
     expect(recipient.headers).toBeUndefined();
   });

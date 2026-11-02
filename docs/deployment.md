@@ -17,6 +17,8 @@ docker run --rm -p 3000:3000 \
   -e JWT_SECRET="change-me-to-a-long-random-secret-at-least-32-chars" \
   -e POSTMARK_SERVER_TOKEN="pm-server-token" \
   -e POSTMARK_WEBHOOK_SECRET="change-me" \
+  -e SYSTEM_EMAIL_FROM_ADDRESS="system@example.com" \
+  -e BASE_URL="http://localhost:3000" \
   cablegram
 
 curl localhost:3000/health

@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted — 2026-08-05.
+Accepted — 2026-08-05. Amended by [ADR-029](ADR-029-unsubscribe-handling.md) (an unset `BASE_URL`
+is now a startup error, not a silent omission).
 
 ## Context
 
@@ -110,7 +111,9 @@ Two things a mount does not and cannot fix, documented in [`../embedding.md`](..
 - **`BASE_URL` must include the mount prefix.** `unsubscribe-headers.ts` concatenates
   `${baseUrl}${PUBLIC_UNSUBSCRIBE_PATH}` and has no way to know where a host mounted the app. Unset,
   campaign sends **silently omit** `List-Unsubscribe` (ADR-015) rather than failing — a
-  misconfiguration discovered after a send, not before.
+  misconfiguration discovered after a send, not before. *(Amended by
+  [ADR-029](ADR-029-unsubscribe-handling.md): unset is now a startup error under the default
+  `UNSUBSCRIBE_HANDLING=cablegram`. A wrong prefix is still the host's to get right.)*
 - **`createApp` brings its own `requestId` + `requestLogging` middleware and its own `GET /health`.**
   A host with top-level logging double-logs mounted requests. Left as-is deliberately: making them
   opt-out would widen the API surface in the same change that first freezes it, and the cost is

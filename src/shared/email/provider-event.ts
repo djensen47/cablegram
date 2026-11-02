@@ -10,10 +10,13 @@
  *   - Spam complaint  RecordType "SpamComplaint", Email,     MessageID, BouncedAt
  *   - Open            RecordType "Open",          Recipient, MessageID, ReceivedAt, FirstOpen
  *   - Click           RecordType "Click",         Recipient, MessageID, ReceivedAt
+ *   - Subscription    RecordType "SubscriptionChange", Recipient, MessageID, ChangedAt,
+ *     change                     SuppressSending, SuppressionReason, Origin
  *
- * Note the address field differs by type: `Recipient` for delivery/open/click,
- * `Email` for bounce/complaint. Every type carries `Tag`, which is the campaign
- * id echoed back from the send — the only correlation handle we get.
+ * Note the address field differs by type: `Recipient` for delivery/open/click/
+ * subscription change, `Email` for bounce/complaint. Every type carries `Tag`,
+ * which is the campaign id echoed back from the send — the only correlation
+ * handle we get.
  *
  * Any unrecognized payload yields no event rather than throwing, so an
  * unexpected or newly-added Postmark event never fails the receiver (a non-200
@@ -31,7 +34,13 @@ export type DeliveryEventType =
   | 'soft-bounce'
   | 'spam-complaint'
   | 'open'
-  | 'click';
+  | 'click'
+  /**
+   * The recipient opted out through the **provider's** unsubscribe link
+   * (ADR-029, `UNSUBSCRIBE_HANDLING=provider`). A consent fact, not a delivery
+   * outcome — it changes the membership, never the recipient's outcome status.
+   */
+  | 'unsubscribed';
 
 /** A normalized delivery event. `campaigns` records these onto its aggregates. */
 export interface DeliveryEvent {
@@ -181,7 +190,9 @@ function build(
     type,
     email: address,
     messageId: str(payload.MessageID),
-    occurredAt: date(payload.DeliveredAt ?? payload.BouncedAt ?? payload.ReceivedAt),
+    occurredAt: date(
+      payload.DeliveredAt ?? payload.BouncedAt ?? payload.ReceivedAt ?? payload.ChangedAt,
+    ),
     tag: str(payload.Tag),
     firstEngagement: type === 'open' || type === 'click' ? bool(payload.FirstOpen) : null,
   };
@@ -220,6 +231,43 @@ function addressed(
     : { kind: 'event', event };
 }
 
+/**
+ * Postmark's `SubscriptionChange` fires whenever an address is added to or
+ * removed from a stream's suppression list (ADR-029). Only one of its cases is a
+ * new fact for cablegram: **the recipient opting out** through Postmark's own
+ * unsubscribe link, under `UNSUBSCRIBE_HANDLING=provider`.
+ *
+ *  - `SuppressionReason` `HardBounce` / `SpamComplaint` → **ignored**. The same
+ *    occurrence already arrives as its own `Bounce` / `SpamComplaint` webhook,
+ *    which is what cablegram acts on; acting twice would be noise at best.
+ *  - `ManualSuppression` from `Origin` `Recipient` → **`unsubscribed`**. This
+ *    pairing is the narrowest reading of "the recipient did it"; Postmark's docs
+ *    do not spell out what a footer click produces, so it is deliberately not
+ *    widened by guesswork.
+ *  - Everything else → **unhandled**, under a key naming the case: a
+ *    reactivation (`SuppressSending: false`, which carries no `Tag` and so can't
+ *    be traced to a newsletter), an operator suppression made in Postmark
+ *    (`Origin` `Customer`/`Admin`), or a pairing Postmark labels differently from
+ *    the one above. That last one is the safety net: if a real opt-out arrives
+ *    in a shape this does not claim, it shows up in
+ *    `GET /v1/webhooks/unhandled` instead of vanishing (ADR-021).
+ */
+function classifySubscriptionChange(
+  recordType: string,
+  payload: Record<string, unknown>,
+): Classification {
+  if (payload.SuppressSending === false) return unhandled(`${recordType}:Reactivation`);
+  const reason = str(payload.SuppressionReason);
+  const origin = str(payload.Origin);
+  if (payload.SuppressSending === true) {
+    if (reason === 'HardBounce' || reason === 'SpamComplaint') return ignored;
+    if (reason === 'ManualSuppression' && origin === 'Recipient') {
+      return addressed('unsubscribed', recordType, payload.Recipient, payload);
+    }
+  }
+  return unhandled(`${recordType}:${reason ?? '__no-reason'}:${origin ?? '__no-origin'}`);
+}
+
 function classifyOne(payload: unknown): Classification {
   if (!isRecord(payload)) return unhandled(UNPARSEABLE_EVENT_KEY);
 
@@ -251,6 +299,8 @@ function classifyOne(payload: unknown): Classification {
       return addressed('open', recordType, payload.Recipient, payload);
     case 'Click':
       return addressed('click', recordType, payload.Recipient, payload);
+    case 'SubscriptionChange':
+      return classifySubscriptionChange(recordType, payload);
     default:
       return unhandled(recordType);
   }

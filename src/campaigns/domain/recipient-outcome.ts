@@ -129,7 +129,12 @@ export type SubscriptionOutcomeSignal =
   /** Increment this membership's consecutive-soft-bounce counter (ADR-020). */
   | 'soft-bounce'
   /** Reset that counter — the mailbox is demonstrably working again. */
-  | 'delivered';
+  | 'delivered'
+  /**
+   * The recipient opted out through the provider's unsubscribe link (ADR-029).
+   * Per-newsletter, like every opt-out (ADR-018) — never the global list.
+   */
+  | 'unsubscribed';
 
 export interface EventEffect {
   readonly effect: OutcomeEffect;
@@ -216,6 +221,17 @@ export function effectOf(event: DeliveryEventInput): EventEffect {
             : `${keyBase}:${event.type}:${event.occurredAt.toISOString()}`,
       };
     }
+    case 'unsubscribed':
+      // A consent fact, not a delivery outcome: the recipient's outcome status is
+      // untouched (the mail was delivered or it wasn't), and the opt-out lands on
+      // this newsletter's membership only (ADR-018, ADR-029). Not deduped here —
+      // `unsubscribe()` is idempotent, and the first opt-out's timestamp wins.
+      return {
+        effect: { kind: 'ignore' },
+        suppress: null,
+        subscription: 'unsubscribed',
+        dedupeKey: null,
+      };
     default:
       // An unrecognized type changes nothing. Not an error: Postmark adds
       // record types over time and the receiver must keep succeeding (ADR-008).
