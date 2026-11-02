@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.0.0](https://github.com/djensen47/cablegram/compare/v2.1.1...v3.0.0) (2026-11-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* a deployment with UNSUBSCRIBE_HANDLING unset (so `cablegram`) and no BASE_URL now fails at startup. Set BASE_URL, or set UNSUBSCRIBE_HANDLING=provider.
+
+### Features
+
+* let the email provider own unsubscribe links (UNSUBSCRIBE_HANDLING) ([#65](https://github.com/djensen47/cablegram/issues/65)) ([f34b0a1](https://github.com/djensen47/cablegram/commit/f34b0a1f9317722bfeb193706469c191a83d66c9))
+
 ## [2.1.1](https://github.com/djensen47/cablegram/compare/v2.1.0...v2.1.1) (2026-10-24)
 
 
