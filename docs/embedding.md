@@ -73,9 +73,11 @@ mounted at /newsletter  →  BASE_URL=https://app.example.com/newsletter
 ```
 
 Get it wrong and one-click unsubscribe (RFC 8058, [ADR-015](adrs/ADR-015-public-token-unsubscribe.md))
-points at a 404. **Leave `BASE_URL` unset and campaign sends silently omit the header entirely** —
-no error, no failed send; you find out from a mailbox provider, after a send. Check it before the
-first campaign:
+points at a 404. Leave it unset and `buildContainer` **throws at startup** — under the default
+`UNSUBSCRIBE_HANDLING=cablegram` it is required ([ADR-029](adrs/ADR-029-unsubscribe-handling.md));
+it used to silently drop the header from every send instead. Under `UNSUBSCRIBE_HANDLING=provider`
+cablegram sends no unsubscribe header, so the prefix stops mattering for it. A *wrong* value still
+starts fine, so check it before the first campaign:
 
 ```ts
 console.log(container.get<AppConfig>(TYPES.Config).baseUrl);  // must end in your mount prefix
