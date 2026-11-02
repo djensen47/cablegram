@@ -10,8 +10,12 @@ import { PUBLIC_UNSUBSCRIBE_PATH } from '../../subscriptions/index.js';
  * travel per-recipient in the header (a campaign is one bulk send with a shared
  * body, ADR-008). Any operator `unsubscribe.url` page is reached by the API's
  * `GET` forwarding this token, not by pointing the header there. Returns
- * `undefined` when no `baseUrl` is set — nowhere to point, so headers are
- * omitted. `email` rides along for the landing page to display.
+ * `undefined` when the provider owns the unsubscribe link
+ * (`UNSUBSCRIBE_HANDLING=provider`, ADR-029) — two competing sets of
+ * `List-Unsubscribe` headers would leave it to the mail client which opt-out
+ * it honours. Also `undefined` with no `baseUrl`, which config validation now
+ * rules out under `cablegram`. `email` rides along for the landing page to
+ * display.
  *
  * A free function shared by the real send and the test send (ADR-025) rather
  * than a method on either: a test send that built its headers a second way
@@ -23,6 +27,7 @@ export function unsubscribeHeaders(
   subscriptionId: string,
   email: string,
 ): readonly EmailHeader[] | undefined {
+  if (config.unsubscribe.handling === 'provider') return undefined;
   if (config.baseUrl === null) return undefined;
 
   const token = unsubscribeToken(config.unsubscribe.tokenSecret, newsletterId, subscriptionId);

@@ -37,6 +37,7 @@ import { unsubscribeToken } from '../../shared/auth/index.js';
 
 const env = {
   DATABASE_URL: 'mongodb://localhost/cablegram',
+  BASE_URL: 'https://cablegram.test',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 't',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',

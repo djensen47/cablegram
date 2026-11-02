@@ -45,6 +45,7 @@ import {
 
 const env = {
   DATABASE_URL: 'mongodb://localhost/cablegram',
+  BASE_URL: 'https://cablegram.test',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 't',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
@@ -558,9 +559,10 @@ describe('campaigns — per-recipient List-Unsubscribe headers (ADR-015)', () =>
     expect(unsubscribed?.email).toBe('reader@dispatch.example');
   });
 
-  it('omits List-Unsubscribe headers when no BASE_URL is configured', async () => {
-    // The default `env` has no BASE_URL — the send must still work, headerless.
-    const { container, gateway } = testContainer();
+  it('omits List-Unsubscribe headers when the provider owns unsubscribes (ADR-029)', async () => {
+    // Two competing sets of headers would leave it to the mail client which
+    // opt-out it honours, so under `provider` cablegram sends none.
+    const { container, gateway } = withHeadersEnv({ UNSUBSCRIBE_HANDLING: 'provider' });
     const { recipient } = await sendOneCampaign(container, gateway);
     expect(recipient.headers).toBeUndefined();
   });
