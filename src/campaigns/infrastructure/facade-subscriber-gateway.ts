@@ -9,8 +9,9 @@ import type { SubscriberGateway } from '../application/subscriber-gateway.js';
  *
  * A thin pass-through: the signal vocabulary is
  * deliberately a subset of the subscriptions context's own outcome vocabulary,
- * so no translation is needed. `campaigns` cannot express `unsubscribed` here —
- * that comes from the subscriber, not from a delivery event.
+ * so no translation is needed. `unsubscribed` is in it only for the provider's
+ * own unsubscribe link (ADR-029): the subscriber opted out, and the provider's
+ * webhook is how that reaches us.
  */
 @injectable()
 export class FacadeSubscriberGateway implements SubscriberGateway {
