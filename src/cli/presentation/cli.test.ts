@@ -139,6 +139,7 @@ describe('newsletters', () => {
           name: 'Weekly',
           fromName: 'Editors',
           fromEmail: 'hi@example.com',
+          sendingChannel: 'weekly-dispatch',
           createdAt: '2026-07-01T10:00:00.000Z',
         },
       ],
@@ -191,6 +192,8 @@ describe('newsletters', () => {
       'Editors',
       '--from-email',
       'hi@example.com',
+      '--sending-channel',
+      'weekly-dispatch',
     ]);
 
     expect(code).toBe(EXIT.ok);
@@ -198,6 +201,7 @@ describe('newsletters', () => {
       name: 'Weekly',
       fromName: 'Editors',
       fromEmail: 'hi@example.com',
+      sendingChannel: 'weekly-dispatch',
     });
   });
 
@@ -208,6 +212,45 @@ describe('newsletters', () => {
 
     expect(code).toBe(EXIT.usage);
     expect(stderr).toMatch(/--from-name/);
+    expect(api.calls).toHaveLength(0);
+  });
+
+  it('sets the sending channel on an existing newsletter, sending only that field (ADR-030)', async () => {
+    const { api, deps } = harness();
+
+    const code = await run(deps, ['newsletters', 'update', 'n1', '--sending-channel', 'weekly-dispatch']);
+
+    expect(code).toBe(EXIT.ok);
+    expect(api.calls[0]).toMatchObject({ method: 'PATCH', path: '/v1/newsletters/n1' });
+    expect(api.calls[0]?.body).toEqual({ sendingChannel: 'weekly-dispatch' });
+  });
+
+  it('refuses "null" for the sending channel instead of clearing it', async () => {
+    const { api, deps } = harness();
+
+    const code = await run(deps, ['newsletters', 'update', 'n1', '--sending-channel', 'null']);
+
+    expect(code).toBe(EXIT.usage);
+    expect(stderr).toMatch(/cannot be cleared/);
+    expect(api.calls).toHaveLength(0);
+  });
+
+  it('fails without a TTY when create is missing the sending channel', async () => {
+    const { api, deps } = harness();
+
+    const code = await run(deps, [
+      'newsletters',
+      'create',
+      '--name',
+      'Weekly',
+      '--from-name',
+      'Editors',
+      '--from-email',
+      'hi@example.com',
+    ]);
+
+    expect(code).toBe(EXIT.usage);
+    expect(stderr).toMatch(/--sending-channel/);
     expect(api.calls).toHaveLength(0);
   });
 
