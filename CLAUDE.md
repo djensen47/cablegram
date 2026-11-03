@@ -223,16 +223,26 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   (`Customer`/`Admin`) suppressions go to the ADR-021 unhandled record. The event maps `Tag` →
   campaign → newsletter and calls `subscription.unsubscribe()` on **that newsletter only** — never the
   global list, never the recipient's delivery outcome. Known, accepted gaps under `provider`: Postmark
-  suppresses **per stream** and every newsletter shares the hardcoded `broadcast` stream, so one
-  opt-out stops all newsletters (**resolve before a second newsletter sends** in this mode); a
+  suppresses **per stream**, so two newsletters on the same `sendingChannel` share one opt-out list
+  (give each its own stream — ADR-030 corrected ADR-029's "every newsletter shares one stream"); a
   re-subscribe may stay blocked at Postmark; `{{{ pm:unsubscribe }}}` is blanked by the Handlebars
   render, so Postmark's default footer link is what appears.
-- **The email port carries a business `category`, not a Postmark stream.** `BulkMessage.category` is
-  `'broadcast' | 'transactional'` (campaigns → broadcast; subscribe confirmations + account mail →
-  transactional). The Postmark adapter maps it to both the message stream **and** the signing token:
+- **The email port carries a business `category`, plus a broadcast's `sendingChannel` — never an
+  assumed stream ID** ([ADR-030](docs/adrs/ADR-030-sending-channels.md)). `BulkMessage` is a union:
+  `'broadcast'` (campaigns + test sends) **must** carry `sendingChannel`; `'transactional'`
+  (subscribe confirmations + account mail) carries none. The category picks the signing token —
   broadcast uses `POSTMARK_SERVER_TOKEN`, transactional uses `POSTMARK_TRANSACTIONAL_SERVER_TOKEN`
-  (which **falls back** to the broadcast token when unset — a single-server setup is unchanged). Don't
-  reintroduce a raw `messageStream` field on the port.
+  (which **falls back** to the broadcast token when unset). The stream is the newsletter's
+  `sendingChannel` for a broadcast, and the required `POSTMARK_TRANSACTIONAL_STREAM` for transactional.
+  **Postmark stream IDs are chosen by the operator** — the adapter once hardcoded `broadcast` /
+  `outbound`, which made any other stream name fail with Postmark 1235 and forced every newsletter onto
+  one opt-out list; **don't reintroduce a default stream name** anywhere. `sendingChannel` is named for
+  the role, not the vendor, so the port still names no Postmark concept. On the `Newsletter`: required
+  on create, changeable, **never clearable**, validated loosely (no whitespace, ≤100 — Postmark
+  documents no ID rules), not checked against Postmark (a wrong ID shows up at the first test send). A
+  newsletter stored before the field existed reads back `null` — **no migration**; `SendCampaign` and
+  `SendTestCampaign` throw `CampaignSendingChannelMissingError` (409, message names the PATCH + CLI fix)
+  **before** writing anything, and `newsletters list` shows `(not set)`.
 - **There is a CLI, and it is only an HTTP client** ([ADR-016](docs/adrs/ADR-016-cli-client.md)).
   `src/cli/` (bin `cablegram`, `dist/cli/main.js`) speaks the public `/v1` API with a normal user JWT.
   It **must not** import a domain component, build the Inversify container, open a `MongoClient`, or
