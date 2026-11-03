@@ -17,6 +17,11 @@ interface NewsletterDoc {
   replyTo: string | null;
   sendingDomain: string | null;
   dkimIdentifier: string | null;
+  /**
+   * Absent on a document written before ADR-030; read back as `null` (the
+   * newsletter loads, but cannot send until `PATCH` sets one). No migration.
+   */
+  sendingChannel?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -73,6 +78,7 @@ function toDoc(newsletter: Newsletter): NewsletterDoc {
     replyTo: newsletter.replyTo?.value ?? null,
     sendingDomain: newsletter.sendingDomain,
     dkimIdentifier: newsletter.dkimIdentifier,
+    sendingChannel: newsletter.sendingChannel,
     createdAt: newsletter.createdAt,
     updatedAt: newsletter.updatedAt,
   };
@@ -87,6 +93,7 @@ function toDomain(doc: NewsletterDoc): Newsletter {
     replyTo: doc.replyTo === null ? null : EmailAddress.create(doc.replyTo),
     sendingDomain: doc.sendingDomain,
     dkimIdentifier: doc.dkimIdentifier,
+    sendingChannel: doc.sendingChannel ?? null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });

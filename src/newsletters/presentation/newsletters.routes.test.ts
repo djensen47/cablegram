@@ -9,6 +9,7 @@ const body = {
   name: 'The Weekly Dispatch',
   fromName: 'Dispatch Editors',
   fromEmail: 'editors@dispatch.example',
+  sendingChannel: 'weekly-dispatch',
 };
 
 function build() {
@@ -136,5 +137,43 @@ describe('newsletters routes', () => {
     expect(doc.paths).toHaveProperty('/v1/newsletters');
     expect(doc.paths).toHaveProperty('/v1/newsletters/{id}');
     expect(doc.components?.securitySchemes).toHaveProperty('BearerAuth');
+  });
+
+  describe('sendingChannel (ADR-030)', () => {
+    it('returns the channel on the DTO', async () => {
+      const json = (await (await create()).json()) as Record<string, unknown>;
+      expect(json.sendingChannel).toBe('weekly-dispatch');
+    });
+
+    it('requires it on create — there is no default', async () => {
+      const { sendingChannel: _omit, ...withoutChannel } = body;
+      void _omit;
+      const res = await app.request('/v1/newsletters', {
+        method: 'POST',
+        headers: auth,
+        body: JSON.stringify(withoutChannel),
+      });
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(await res.json())).toContain('sendingChannel');
+    });
+
+    it('changes it on update, but will not clear it', async () => {
+      const { id } = (await (await create()).json()) as { id: string };
+
+      const changed = await app.request(`/v1/newsletters/${id}`, {
+        method: 'PATCH',
+        headers: auth,
+        body: JSON.stringify({ sendingChannel: 'monthly-digest' }),
+      });
+      expect(changed.status).toBe(200);
+      expect(((await changed.json()) as { sendingChannel: string }).sendingChannel).toBe('monthly-digest');
+
+      const cleared = await app.request(`/v1/newsletters/${id}`, {
+        method: 'PATCH',
+        headers: auth,
+        body: JSON.stringify({ sendingChannel: null }),
+      });
+      expect(cleared.status).toBe(400);
+    });
   });
 });

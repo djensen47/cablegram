@@ -66,6 +66,7 @@ const env = {
   DATABASE_URL: 'mongodb://localhost/cablegram',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 't',
+  POSTMARK_TRANSACTIONAL_STREAM: 'outbound',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
   POSTMARK_WEBHOOK_SECRET: 's',
   BASE_URL,
@@ -139,6 +140,7 @@ describe('campaigns — test send (ADR-025)', () => {
         name: 'The Weekly Dispatch',
         fromName: 'Dispatch Editors',
         fromEmail: 'editors@dispatch.example',
+        sendingChannel: 'weekly-dispatch',
       });
     newsletterId = newsletter.id;
 
@@ -322,7 +324,12 @@ describe('campaigns — test send (ADR-025)', () => {
     const provider = testContainer({ UNSUBSCRIBE_HANDLING: 'provider' });
     const newsletter = await provider.container
       .get<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter)
-      .execute({ name: 'Provider-owned', fromName: 'Editors', fromEmail: 'editors@dispatch.example' });
+      .execute({
+        name: 'Provider-owned',
+        fromName: 'Editors',
+        fromEmail: 'editors@dispatch.example',
+        sendingChannel: 'weekly-dispatch',
+      });
     const campaign = await provider.container
       .get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign)
       .execute({ newsletterId: newsletter.id, name: 'Proof', subject: 'Hi', bodyHtml: '<p>x</p>' });

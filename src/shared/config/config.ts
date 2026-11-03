@@ -60,6 +60,13 @@ export interface AppConfig {
      */
     readonly transactionalServerToken: string;
     /**
+     * The ID of the Postmark message stream transactional mail goes through
+     * (subscribe confirmations, account emails). Required, with no default:
+     * stream IDs are chosen when a stream is created, so cablegram cannot know
+     * yours (ADR-030). Broadcast streams are set per newsletter instead.
+     */
+    readonly transactionalStream: string;
+    /**
      * Shared secret guarding the inbound webhook endpoint. Postmark provides
      * **no** HMAC/signature verification (pinned against the live webhook docs);
      * its only native mechanisms are HTTP Basic Auth on the webhook URL and IP
@@ -173,6 +180,8 @@ const schema = z
     // Optional distinct token for transactional sends; falls back to the
     // broadcast token below when unset (a single-server Postmark setup).
     POSTMARK_TRANSACTIONAL_SERVER_TOKEN: z.string().min(1).optional(),
+    // The transactional stream's ID — required, no default (ADR-030).
+    POSTMARK_TRANSACTIONAL_STREAM: z.string().trim().min(1),
     POSTMARK_WEBHOOK_SECRET: z.string().min(1),
     // System sender identity for cablegram's own account mail (ADR-013/014).
     SYSTEM_EMAIL_FROM_ADDRESS: z.string().email(),
@@ -263,6 +272,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
       serverToken: e.POSTMARK_SERVER_TOKEN,
       transactionalServerToken:
         e.POSTMARK_TRANSACTIONAL_SERVER_TOKEN ?? e.POSTMARK_SERVER_TOKEN,
+      transactionalStream: e.POSTMARK_TRANSACTIONAL_STREAM,
       webhookSecret: e.POSTMARK_WEBHOOK_SECRET,
     },
     systemEmail: {

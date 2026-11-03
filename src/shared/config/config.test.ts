@@ -6,6 +6,7 @@ const base = {
   BASE_URL: 'https://cablegram.test',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 'token',
+  POSTMARK_TRANSACTIONAL_STREAM: 'outbound',
   POSTMARK_WEBHOOK_SECRET: 'secret',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
 } as NodeJS.ProcessEnv;
@@ -144,5 +145,12 @@ describe('loadConfig', () => {
   it('carries the operator UNSUBSCRIBE_URL when set', () => {
     const c = loadConfig({ ...base, UNSUBSCRIBE_URL: 'https://example.com/unsubscribe' } as NodeJS.ProcessEnv);
     expect(c.unsubscribe.url).toBe('https://example.com/unsubscribe');
+  });
+
+  it('requires POSTMARK_TRANSACTIONAL_STREAM, with no default stream name (ADR-030)', () => {
+    expect(loadConfig(base).postmark.transactionalStream).toBe('outbound');
+    expect(() =>
+      loadConfig({ ...base, POSTMARK_TRANSACTIONAL_STREAM: undefined } as NodeJS.ProcessEnv),
+    ).toThrow(/POSTMARK_TRANSACTIONAL_STREAM/);
   });
 });

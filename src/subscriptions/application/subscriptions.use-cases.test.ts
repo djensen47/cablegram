@@ -40,6 +40,7 @@ const env = {
   BASE_URL: 'https://cablegram.test',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 't',
+  POSTMARK_TRANSACTIONAL_STREAM: 'outbound',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
   POSTMARK_WEBHOOK_SECRET: 's',
 } as NodeJS.ProcessEnv;
@@ -73,6 +74,7 @@ async function seedNewsletter(container: Container): Promise<string> {
       name: 'The Weekly Dispatch',
       fromName: 'Dispatch Editors',
       fromEmail: 'editors@dispatch.example',
+      sendingChannel: 'weekly-dispatch',
     });
   return newsletter.id;
 }

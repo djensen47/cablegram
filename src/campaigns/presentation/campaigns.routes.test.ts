@@ -11,6 +11,9 @@ import {
   NEWSLETTER_TYPES,
   InMemoryNewsletterRepository,
   CreateNewsletter,
+  Newsletter,
+  EmailAddress,
+  type NewsletterRepository,
 } from '../../newsletters/index.js';
 import { SUBSCRIPTION_TYPES, InMemorySubscriptionRepository, Subscribe } from '../../subscriptions/index.js';
 import { DELIVERABILITY_TYPES, InMemorySuppressionRepository } from '../../deliverability/index.js';
@@ -44,6 +47,7 @@ async function seedNewsletter(container: Container): Promise<string> {
     name: 'The Weekly Dispatch',
     fromName: 'Dispatch Editors',
     fromEmail: 'editors@dispatch.example',
+    sendingChannel: 'weekly-dispatch',
   });
   return newsletter.id;
 }
@@ -166,6 +170,36 @@ describe('campaigns routes', () => {
     expect(json.status).toBe('sent');
     expect(json.recipientCount).toBe(1);
     expect(gateway.sent).toHaveLength(1);
+  });
+
+  it('answers 409 with the fix when the newsletter has no sending channel (ADR-030)', async () => {
+    // A newsletter stored before the field existed.
+    const now = new Date('2026-01-01T00:00:00Z');
+    await container.get<NewsletterRepository>(NEWSLETTER_TYPES.NewsletterRepository).create(
+      Newsletter.reconstitute({
+        id: 'legacy-1',
+        name: 'Legacy',
+        fromName: 'Editors',
+        fromEmail: EmailAddress.create('editors@dispatch.example'),
+        replyTo: null,
+        sendingDomain: null,
+        dkimIdentifier: null,
+        sendingChannel: null,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    );
+    const created = (await (
+      await createCampaign({ newsletterId: 'legacy-1', name: 'Go', templateId })
+    ).json()) as { id: string };
+
+    const res = await app.request(`/v1/campaigns/${created.id}/send`, { method: 'POST', headers: auth });
+
+    expect(res.status).toBe(409);
+    const { error } = (await res.json()) as { error: { code: string; message: string } };
+    expect(error.message).toContain('has no sending channel');
+    expect(error.message).toContain('cablegram newsletters update legacy-1 --sending-channel');
+    expect(gateway.sent).toHaveLength(0);
   });
 
   it('exposes the send record after a send and 404s before one', async () => {

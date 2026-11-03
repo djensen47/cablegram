@@ -10,6 +10,9 @@ import {
   NEWSLETTER_TYPES,
   InMemoryNewsletterRepository,
   CreateNewsletter,
+  Newsletter,
+  EmailAddress,
+  type NewsletterRepository,
 } from '../../newsletters/index.js';
 import {
   SUBSCRIPTION_TYPES,
@@ -41,6 +44,8 @@ import {
   CampaignNotFoundError,
   CampaignStateError,
   CampaignContentError,
+  CampaignSendingChannelMissingError,
+  SendTestCampaign,
 } from '../index.js';
 
 const env = {
@@ -48,6 +53,7 @@ const env = {
   BASE_URL: 'https://cablegram.test',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 't',
+  POSTMARK_TRANSACTIONAL_STREAM: 'outbound',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
   POSTMARK_WEBHOOK_SECRET: 's',
 } as NodeJS.ProcessEnv;
@@ -79,6 +85,7 @@ async function seedNewsletter(container: Container, name = 'The Weekly Dispatch'
     name,
     fromName: 'Dispatch Editors',
     fromEmail: 'editors@dispatch.example',
+    sendingChannel: 'weekly-dispatch',
   });
   return newsletter.id;
 }
@@ -184,6 +191,79 @@ describe('campaigns — the send integrator', () => {
     await container.get<SendCampaign>(CAMPAIGN_TYPES.SendCampaign).execute(campaign.id);
 
     expect(gateway.sent[0]?.recipients.map((r) => r.email)).toEqual(['vip@dispatch.example']);
+  });
+
+  describe('sending channel (ADR-030)', () => {
+    it("submits through the newsletter's own channel", async () => {
+      await subscribe(container, newsletterId, 'keep1@dispatch.example');
+      const campaign = await container.get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign).execute({
+        newsletterId,
+        name: 'March',
+        subject: 'Hi',
+        bodyHtml: '<p>x</p>',
+      });
+      await container.get<SendCampaign>(CAMPAIGN_TYPES.SendCampaign).execute(campaign.id);
+
+      const sent = gateway.sent[0]!;
+      expect(sent.category).toBe('broadcast');
+      expect(sent.category === 'broadcast' && sent.sendingChannel).toBe('weekly-dispatch');
+    });
+
+    describe('a newsletter stored before the field existed', () => {
+      async function legacyCampaign(): Promise<string> {
+        const now = new Date('2026-01-01T00:00:00Z');
+        await container.get<NewsletterRepository>(NEWSLETTER_TYPES.NewsletterRepository).create(
+          Newsletter.reconstitute({
+            id: 'legacy-1',
+            name: 'Legacy',
+            fromName: 'Editors',
+            fromEmail: EmailAddress.create('editors@dispatch.example'),
+            replyTo: null,
+            sendingDomain: null,
+            dkimIdentifier: null,
+            sendingChannel: null,
+            createdAt: now,
+            updatedAt: now,
+          }),
+        );
+        await subscribe(container, 'legacy-1', 'reader@dispatch.example');
+        const campaign = await container.get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign).execute({
+          newsletterId: 'legacy-1',
+          name: 'March',
+          subject: 'Hi',
+          bodyHtml: '<p>x</p>',
+        });
+        return campaign.id;
+      }
+
+      it('refuses to send, before writing or submitting anything', async () => {
+        const campaignId = await legacyCampaign();
+        gateway.sent.length = 0;
+
+        await expect(
+          container.get<SendCampaign>(CAMPAIGN_TYPES.SendCampaign).execute(campaignId),
+        ).rejects.toBeInstanceOf(CampaignSendingChannelMissingError);
+
+        // Nothing reached the provider, no send record was opened, and the
+        // campaign is still a draft — it sends normally once the field is set.
+        expect(gateway.sent).toHaveLength(0);
+        await expect(container.get<GetSend>(CAMPAIGN_TYPES.GetSend).execute(campaignId)).rejects.toThrow();
+        const after = await container.get<GetCampaign>(CAMPAIGN_TYPES.GetCampaign).execute(campaignId);
+        expect(after.status).toBe('draft');
+      });
+
+      it('refuses a test send the same way', async () => {
+        const campaignId = await legacyCampaign();
+        gateway.sent.length = 0;
+
+        await expect(
+          container
+            .get<SendTestCampaign>(CAMPAIGN_TYPES.SendTestCampaign)
+            .execute({ campaignId, addresses: ['me@example.com'], prefixSubject: true }),
+        ).rejects.toBeInstanceOf(CampaignSendingChannelMissingError);
+        expect(gateway.sent).toHaveLength(0);
+      });
+    });
   });
 
   it('re-sending a sent campaign is a no-op', async () => {
