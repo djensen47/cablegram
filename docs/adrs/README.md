@@ -46,6 +46,7 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [027](ADR-027-library-entrypoint.md) | A Library Entrypoint — mounting cablegram inside a host service | Accepted — implemented |
 | [028](ADR-028-containers-only.md) | Containers Only — retiring the serverless function target | Accepted — implemented |
 | [029](ADR-029-unsubscribe-handling.md) | Unsubscribe Handling — who owns the link, cablegram or the provider | Accepted — implemented |
+| [030](ADR-030-sending-channels.md) | Sending Channels — a newsletter names the stream it sends through | Accepted — implemented |
 
 ## How to read these
 
