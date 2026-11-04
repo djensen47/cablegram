@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.0](https://github.com/djensen47/cablegram/compare/v3.0.0...v3.1.0) (2026-11-04)
+
+
+### Features
+
+* per-newsletter sending channel; no assumed Postmark stream IDs ([#68](https://github.com/djensen47/cablegram/issues/68)) ([570ac6b](https://github.com/djensen47/cablegram/commit/570ac6b52072a3574f952df9f8b5b57c8bed49bb))
+
 ## [3.0.0](https://github.com/djensen47/cablegram/compare/v2.1.1...v3.0.0) (2026-11-02)
 
 
