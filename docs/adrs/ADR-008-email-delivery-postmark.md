@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted — 2026-07-19.
+Accepted — 2026-07-19. Amended by [ADR-030](ADR-030-sending-channels.md): a broadcast names the
+newsletter's own `sendingChannel` (a Postmark stream ID), and transactional mail uses the configured
+`POSTMARK_TRANSACTIONAL_STREAM`; no stream ID is assumed.
 
 ## Context
 

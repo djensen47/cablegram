@@ -9,6 +9,7 @@ import type { CampaignId } from '../domain/campaign.js';
 import {
   CampaignNotFoundError,
   CampaignNewsletterNotFoundError,
+  CampaignSendingChannelMissingError,
   InvalidCampaignError,
 } from '../domain/errors.js';
 import type { CampaignRepository } from './campaign-repository.js';
@@ -73,8 +74,9 @@ export interface TestSendResult {
  *
  * It is faithful **by sharing the send path's code, not by resembling it**:
  * the same `MessageRenderer.render(campaign.contentRef(), {})` call, the same
- * `unsubscribeHeaders(...)`, the same `broadcast` category (so the same Postmark
- * stream, token and reputation path), the same `DeliveryGateway`. If any of
+ * `unsubscribeHeaders(...)`, the same `broadcast` category and the newsletter's
+ * own `sendingChannel` (so the same Postmark stream, token and reputation path),
+ * the same `DeliveryGateway`. If any of
  * that were re-implemented here, a green test send would prove nothing about
  * the real one.
  *
@@ -126,6 +128,11 @@ export class SendTestCampaign {
     if (sender === null) {
       throw new CampaignNewsletterNotFoundError(campaign.newsletterId);
     }
+    // Same channel check as the real send, for the same reason (ADR-030).
+    if (sender.sendingChannel === null) {
+      throw new CampaignSendingChannelMissingError(campaign.newsletterId);
+    }
+    const sendingChannel = sender.sendingChannel;
 
     const suppressed = new Set(await this.suppression.filterSuppressed(addresses));
     const allowed = addresses.filter((address) => !suppressed.has(address));
@@ -168,8 +175,9 @@ export class SendTestCampaign {
         const headers = unsubscribeHeaders(this.config, campaign.newsletterId, newId(), address);
         return headers === undefined ? { email: address } : { email: address, headers };
       }),
-      // Faithful to the real send: broadcast stream, broadcast token.
+      // Faithful to the real send: broadcast token, the newsletter's channel.
       category: 'broadcast',
+      sendingChannel,
       // NOT the campaign id — see TEST_SEND_TAG_PREFIX. Events for this message
       // must never reach the campaign's outcomes.
       tag: `${TEST_SEND_TAG_PREFIX}${campaign.id}`,

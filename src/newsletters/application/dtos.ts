@@ -12,6 +12,7 @@ export interface CreateNewsletterInput {
   replyTo?: string | null;
   sendingDomain?: string | null;
   dkimIdentifier?: string | null;
+  sendingChannel: string;
 }
 
 export interface UpdateNewsletterInput {
@@ -21,6 +22,7 @@ export interface UpdateNewsletterInput {
   replyTo?: string | null;
   sendingDomain?: string | null;
   dkimIdentifier?: string | null;
+  sendingChannel?: string;
 }
 
 export interface ListNewslettersInput {

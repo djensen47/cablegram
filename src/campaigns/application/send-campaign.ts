@@ -8,7 +8,11 @@ import { CAMPAIGN_TYPES } from '../types.js';
 import type { Campaign, CampaignId } from '../domain/campaign.js';
 import { Send } from '../domain/send.js';
 import { RecipientOutcome } from '../domain/recipient-outcome.js';
-import { CampaignNotFoundError, CampaignNewsletterNotFoundError } from '../domain/errors.js';
+import {
+  CampaignNotFoundError,
+  CampaignNewsletterNotFoundError,
+  CampaignSendingChannelMissingError,
+} from '../domain/errors.js';
 import type { CampaignRepository } from './campaign-repository.js';
 import type { SendRepository } from './send-repository.js';
 import type { RecipientOutcomeRepository } from './recipient-outcome-repository.js';
@@ -72,6 +76,13 @@ export class SendCampaign {
     if (sender === null) {
       throw new CampaignNewsletterNotFoundError(campaign.newsletterId);
     }
+    // …and so must the channel it goes through (ADR-030). Checked here, before
+    // the send record or any outcome is written, so a newsletter that predates
+    // the field leaves the campaign exactly as it was.
+    if (sender.sendingChannel === null) {
+      throw new CampaignSendingChannelMissingError(campaign.newsletterId);
+    }
+    const sendingChannel = sender.sendingChannel;
 
     // Gate 1: subscribed recipients narrowed by the query-time segment.
     const resolved = await this.recipients.resolve(campaign.newsletterId, campaign.segment());
@@ -139,8 +150,10 @@ export class SendCampaign {
             );
             return headers === undefined ? { email: r.address } : { email: r.address, headers };
           }),
-          // Newsletters are broadcasts (ADR-008): broadcast stream + token.
+          // Newsletters are broadcasts (ADR-008): broadcast token, through the
+          // newsletter's own channel (ADR-030).
           category: 'broadcast',
+          sendingChannel,
           // Echoed back on webhooks so events correlate to this campaign.
           tag: campaign.id,
         });

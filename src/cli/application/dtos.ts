@@ -33,6 +33,8 @@ export interface NewsletterDto {
   replyTo: string | null;
   sendingDomain: string | null;
   dkimIdentifier: string | null;
+  /** The provider channel (Postmark stream ID) campaigns go through; `null` on a pre-ADR-030 newsletter. */
+  sendingChannel: string | null;
   createdAt: string;
   updatedAt: string;
 }

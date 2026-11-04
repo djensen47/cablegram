@@ -39,8 +39,10 @@ export interface SenderIdentity {
  *  - `broadcast` — bulk newsletter/campaign mail (marketing);
  *  - `transactional` — one-off operational mail (subscribe confirmations,
  *    password-reset and magic-link emails).
- * The adapter maps a category to the provider's message stream **and** to which
- * server token signs the request (a transactional server may have its own token).
+ * The adapter maps a category to which server token signs the request (a
+ * transactional server may have its own token). Which provider **channel** the
+ * mail goes through is a separate fact: a broadcast names its own
+ * (`sendingChannel`, ADR-030); transactional mail uses one configured channel.
  */
 export type MessageCategory = 'broadcast' | 'transactional';
 
@@ -51,25 +53,34 @@ export interface RenderedMessage {
   readonly textBody?: string | null;
 }
 
+/** What every send carries, whatever its category. */
+interface BulkMessageBase {
+  readonly from: SenderIdentity;
+  readonly content: RenderedMessage;
+  readonly recipients: readonly EmailRecipient[];
+  /** Optional correlation tag (e.g. a campaign id) echoed back on events. */
+  readonly tag?: string;
+}
+
 /**
  * One logical broadcast: the same rendered message to a whole recipient set.
  * The gateway submits it to Postmark's Bulk API in a single call — the content
  * is defined once and the recipients ride along in the request (ADR-008). There
  * is no per-call recipient cap (only a 50 MB payload ceiling).
+ *
+ * The category is the caller's declared intent. A broadcast also names the
+ * provider channel it goes through — the newsletter's `sendingChannel`
+ * (ADR-030) — and the type makes that impossible to forget. It is a channel the
+ * operator configured, not a provider name baked into the caller: the adapter
+ * decides what it means (for Postmark, a message stream ID).
  */
-export interface BulkMessage {
-  readonly from: SenderIdentity;
-  readonly content: RenderedMessage;
-  readonly recipients: readonly EmailRecipient[];
-  /**
-   * Business classification of this send. The adapter maps it to the provider's
-   * message stream and to the signing token; the caller declares intent, not a
-   * provider stream name.
-   */
-  readonly category: MessageCategory;
-  /** Optional correlation tag (e.g. a campaign id) echoed back on events. */
-  readonly tag?: string;
-}
+export type BulkMessage =
+  | (BulkMessageBase & {
+      readonly category: 'broadcast';
+      /** The newsletter's configured provider channel (ADR-030). */
+      readonly sendingChannel: string;
+    })
+  | (BulkMessageBase & { readonly category: 'transactional' });
 
 /**
  * The provider's acknowledgment of a bulk submission. Postmark's Bulk API

@@ -19,6 +19,7 @@ async function seed(container: Container): Promise<{ newsletterId: string; subsc
     name: 'The Weekly Dispatch',
     fromName: 'Dispatch Editors',
     fromEmail: 'editors@dispatch.example',
+    sendingChannel: 'weekly-dispatch',
   });
   const subscription = await container
     .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)

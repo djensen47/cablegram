@@ -14,6 +14,9 @@ export type NewsletterId = Id;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
 const DKIM_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/i;
+// A provider's own identifier, so the shape is deliberately loose: Postmark
+// documents no ID rules for message streams. Only obvious garbage is refused.
+const SENDING_CHANNEL_RE = /^\S{1,100}$/;
 
 /**
  * A validated, normalized email address value object. Stored and compared in
@@ -48,6 +51,16 @@ export interface NewsletterProps {
   replyTo: EmailAddress | null;
   sendingDomain: string | null;
   dkimIdentifier: string | null;
+  /**
+   * Which of the provider's sending channels this newsletter's campaigns go
+   * through (ADR-030) — for Postmark, the ID of a broadcast message stream, which
+   * the operator chooses when creating the stream. Named for the role, not the
+   * vendor (ADR-008).
+   *
+   * `null` only on a newsletter stored before the field existed: it reads back
+   * normally, but cannot send until one is set. A new newsletter always has one.
+   */
+  sendingChannel: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -61,6 +74,8 @@ export interface CreateNewsletterProps {
   replyTo?: string | null;
   sendingDomain?: string | null;
   dkimIdentifier?: string | null;
+  /** Required: there is no default channel to fall back on (ADR-030). */
+  sendingChannel: string;
   now: Date;
 }
 
@@ -72,6 +87,8 @@ export interface UpdateNewsletterProps {
   replyTo?: string | null;
   sendingDomain?: string | null;
   dkimIdentifier?: string | null;
+  /** May be changed, never cleared — a newsletter without one cannot send. */
+  sendingChannel?: string;
 }
 
 function requireText(value: string, field: string): string {
@@ -89,6 +106,17 @@ function optionalDomain(value: string | null | undefined): string | null {
   if (trimmed.length === 0) return null;
   if (!DOMAIN_RE.test(trimmed)) {
     throw new InvalidNewsletterError('sendingDomain', 'must be a valid domain name');
+  }
+  return trimmed;
+}
+
+function requireSendingChannel(value: string): string {
+  const trimmed = value.trim();
+  if (!SENDING_CHANNEL_RE.test(trimmed)) {
+    throw new InvalidNewsletterError(
+      'sendingChannel',
+      'must be 1-100 characters with no whitespace',
+    );
   }
   return trimmed;
 }
@@ -123,6 +151,7 @@ export class Newsletter {
         : null,
       sendingDomain: optionalDomain(input.sendingDomain),
       dkimIdentifier: optionalDkim(input.dkimIdentifier),
+      sendingChannel: requireSendingChannel(input.sendingChannel),
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -148,6 +177,9 @@ export class Newsletter {
     }
     if (changes.sendingDomain !== undefined) next.sendingDomain = optionalDomain(changes.sendingDomain);
     if (changes.dkimIdentifier !== undefined) next.dkimIdentifier = optionalDkim(changes.dkimIdentifier);
+    if (changes.sendingChannel !== undefined) {
+      next.sendingChannel = requireSendingChannel(changes.sendingChannel);
+    }
 
     next.updatedAt = now;
     this.props = next;
@@ -173,6 +205,9 @@ export class Newsletter {
   }
   get dkimIdentifier(): string | null {
     return this.props.dkimIdentifier;
+  }
+  get sendingChannel(): string | null {
+    return this.props.sendingChannel;
   }
   get createdAt(): Date {
     return this.props.createdAt;

@@ -14,24 +14,40 @@ const env = {
   BASE_URL: 'https://cablegram.test',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 'server-token',
+  POSTMARK_TRANSACTIONAL_STREAM: 'outbound',
   POSTMARK_WEBHOOK_SECRET: 's',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
 } as NodeJS.ProcessEnv;
 
-/** A gateway wired with the two tokens the config resolves (fallback applied). */
+/**
+ * A gateway wired with the two tokens the config resolves (fallback applied).
+ * The transactional stream is deliberately not Postmark's usual `outbound`, so
+ * a test can tell the configured value from an assumed one (ADR-030).
+ */
 function gatewayWith(serverToken: string, transactionalServerToken = serverToken) {
   return new PostmarkDeliveryGateway({
-    postmark: { serverToken, transactionalServerToken, webhookSecret: 's' },
+    postmark: {
+      serverToken,
+      transactionalServerToken,
+      transactionalStream: 'account-mail',
+      webhookSecret: 's',
+    },
   } as never);
 }
 
-const message: BulkMessage = {
+const message = {
   from: { fromName: 'Dispatch Editors', fromEmail: 'editors@dispatch.example', replyTo: 'replies@dispatch.example' },
   content: { subject: 'Issue #1', htmlBody: '<h1>Hello</h1>', textBody: 'Hello' },
   recipients: [{ email: 'a@example.com' }, { email: 'b@example.com' }],
-  category: 'broadcast',
+  category: 'broadcast' as const,
+  sendingChannel: 'weekly-dispatch',
   tag: 'campaign-42',
-};
+} satisfies BulkMessage;
+
+/** The same content as a transactional send, which names no channel. */
+const { sendingChannel: _channel, ...transactionalBase } = message;
+void _channel;
+const transactional = { ...transactionalBase, category: 'transactional' as const } satisfies BulkMessage;
 
 /** A captured `/email/bulk` request: its URL, parsed JSON body, and headers. */
 interface CapturedCall {
@@ -77,7 +93,8 @@ describe('PostmarkDeliveryGateway.send', () => {
       Subject: 'Issue #1',
       HtmlBody: '<h1>Hello</h1>',
       TextBody: 'Hello',
-      MessageStream: 'broadcast',
+      // The newsletter's own channel, verbatim — no stream name is assumed.
+      MessageStream: 'weekly-dispatch',
       Tag: 'campaign-42',
     });
     expect(req.Messages).toEqual([{ To: 'a@example.com' }, { To: 'b@example.com' }]);
@@ -124,8 +141,8 @@ describe('PostmarkDeliveryGateway.send', () => {
     expect(req).not.toHaveProperty('ReplyTo');
     expect(req).not.toHaveProperty('TextBody');
     expect(req).not.toHaveProperty('Tag');
-    // A transactional category maps to Postmark's `outbound` stream.
-    expect(req.MessageStream).toBe('outbound');
+    // Transactional mail goes through the one configured transactional stream.
+    expect(req.MessageStream).toBe('account-mail');
     expect(req.Messages).toEqual([{ To: 'c@example.com' }]);
   });
 
@@ -133,13 +150,25 @@ describe('PostmarkDeliveryGateway.send', () => {
     const { calls } = stubBulk();
     const gateway = gatewayWith('broadcast-token', 'txn-token');
 
-    await gateway.send({ ...message, category: 'broadcast' });
-    await gateway.send({ ...message, category: 'transactional' });
+    await gateway.send(message);
+    await gateway.send(transactional);
 
     expect(calls[0]!.headers['X-Postmark-Server-Token']).toBe('broadcast-token');
-    expect(calls[0]!.body.MessageStream).toBe('broadcast');
+    expect(calls[0]!.body.MessageStream).toBe('weekly-dispatch');
     expect(calls[1]!.headers['X-Postmark-Server-Token']).toBe('txn-token');
-    expect(calls[1]!.body.MessageStream).toBe('outbound');
+    expect(calls[1]!.body.MessageStream).toBe('account-mail');
+  });
+
+  it('sends each newsletter through its own channel (ADR-030)', async () => {
+    // Two newsletters, two streams: an opt-out on one stream cannot stop mail
+    // on the other, which is the reason the channel is per newsletter.
+    const { calls } = stubBulk();
+    const gateway = gatewayWith('t');
+
+    await gateway.send({ ...message, sendingChannel: 'weekly-dispatch' });
+    await gateway.send({ ...message, sendingChannel: 'monthly-digest' });
+
+    expect(calls.map((c) => c.body.MessageStream)).toEqual(['weekly-dispatch', 'monthly-digest']);
   });
 
   it('falls transactional back to the broadcast token when only one is configured', async () => {
@@ -147,7 +176,7 @@ describe('PostmarkDeliveryGateway.send', () => {
     // The config resolves an unset transactional token to the broadcast token.
     const gateway = gatewayWith('only-token');
 
-    await gateway.send({ ...message, category: 'transactional' });
+    await gateway.send(transactional);
 
     expect(calls[0]!.headers['X-Postmark-Server-Token']).toBe('only-token');
   });
