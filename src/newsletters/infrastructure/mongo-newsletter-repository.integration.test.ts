@@ -36,6 +36,7 @@ describe('MongoNewsletterRepository (contract)', () => {
       name: overrides.name ?? 'The Weekly Dispatch',
       fromName: 'Dispatch Editors',
       fromEmail: overrides.fromEmail ?? 'editors@dispatch.example',
+      sendingChannel: 'weekly-dispatch',
       replyTo: 'replies@dispatch.example',
       sendingDomain: 'dispatch.example',
       dkimIdentifier: 'dkim1',
@@ -55,6 +56,30 @@ describe('MongoNewsletterRepository (contract)', () => {
     expect(found?.replyTo?.value).toBe('replies@dispatch.example');
     expect(found?.sendingDomain).toBe('dispatch.example');
     expect(found?.dkimIdentifier).toBe('dkim1');
+    expect(found?.sendingChannel).toBe('weekly-dispatch');
+  });
+
+  it('reads a document written before sendingChannel existed as null (ADR-030)', async () => {
+    // The stored shape of a pre-ADR-030 newsletter: the field is simply absent.
+    await db.collection(NEWSLETTER_COLLECTIONS.newsletters).insertOne({
+      _id: 'legacy-1' as never,
+      name: 'Legacy',
+      fromName: 'Editors',
+      fromEmail: 'editors@dispatch.example',
+      replyTo: null,
+      sendingDomain: null,
+      dkimIdentifier: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+    });
+
+    const found = await repo.findById('legacy-1');
+    expect(found?.sendingChannel).toBeNull();
+
+    // An update writes the field onto that same document — no migration step.
+    found!.update({ sendingChannel: 'legacy-stream' }, new Date('2026-02-01T00:00:00Z'));
+    await repo.update(found!);
+    expect((await repo.findById('legacy-1'))?.sendingChannel).toBe('legacy-stream');
   });
 
   it('returns null for an unknown id', async () => {

@@ -38,6 +38,7 @@ async function seedNewsletter(container: Container): Promise<string> {
       name: 'The Weekly Dispatch',
       fromName: 'Dispatch Editors',
       fromEmail: 'editors@dispatch.example',
+      sendingChannel: 'weekly-dispatch',
     });
   return newsletter.id;
 }
