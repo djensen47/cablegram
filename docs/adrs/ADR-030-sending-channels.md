@@ -88,8 +88,9 @@ adapter's own configuration rather than domain data.
   figures per plan, so the effective limit is unconfirmed).
 - **Each broadcast stream needs its own webhook** pointing at `/webhooks/postmark`, with Subscription
   Change enabled under `provider` (ADR-029 §5). Nothing in cablegram can check this.
-- **Breaking:** `POSTMARK_TRANSACTIONAL_STREAM` is required; `POST /v1/newsletters` requires
-  `sendingChannel`; an existing newsletter cannot send until it is set.
+- **Upgrade steps:** set `POSTMARK_TRANSACTIONAL_STREAM`, which is required; pass `sendingChannel`
+  to `POST /v1/newsletters`; and set it on every existing newsletter, which cannot send until it
+  has one. Released as a minor version (3.1.0): 3.0.0 had no deployments to break.
 - Postmark's rejection of a bad stream ID still reaches the API caller as a generic 500, with the real
   message only in the log line. Mapping `EmailDeliveryError` to a clear response is a separate change.
 
