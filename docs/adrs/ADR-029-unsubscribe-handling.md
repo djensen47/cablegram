@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted — 2026-11-02. **Implemented** the same day. Amends [ADR-015](ADR-015-public-token-unsubscribe.md)
+Accepted — 2026-11-02. **Implemented** the same day. Its shared-stream consequence is corrected by
+[ADR-030](ADR-030-sending-channels.md). Amends [ADR-015](ADR-015-public-token-unsubscribe.md)
 (its per-recipient `List-Unsubscribe` header is no longer unconditional) and
 [ADR-027](ADR-027-library-entrypoint.md) (an unset `BASE_URL` is no longer a silent hazard — it is a
 startup error under the default mode).
@@ -112,11 +113,13 @@ Operational steps, recorded here because none of them is visible to the code:
 
 - **Launch needs neither Postmark's approval nor a per-recipient body.** The visible link required on
   a broadcast stream — and by CAN-SPAM — is Postmark's.
-- **Opt-outs are per stream at Postmark, and every newsletter shares the one `broadcast` stream**
-  (hardcoded in the Postmark adapter). Under `provider`, leaving one newsletter therefore stops mail
-  from all of them, which contradicts ADR-018. cablegram's own records stay per-newsletter, but
-  Postmark's suppression is what blocks the mail. **This must be resolved before a second newsletter
-  sends under `provider`** — a stream per newsletter is the likely shape.
+- **Opt-outs are per stream at Postmark.** Two newsletters that send through the same stream share
+  one opt-out list under `provider`: leaving one stops mail from both, which contradicts ADR-018,
+  because cablegram's own records stay per-newsletter but Postmark's suppression is what blocks the
+  mail. *(Corrected by [ADR-030](ADR-030-sending-channels.md). As first written, this said every
+  newsletter shares one `broadcast` stream. That was true only because the Postmark adapter
+  hardcoded the stream ID; each newsletter now names its own `sendingChannel`, so one stream per
+  newsletter keeps opt-outs separate.)*
 - **A re-subscribe may stay blocked.** `Subscribe` revives the row, but Postmark keeps suppressing the
   address. Postmark's Suppressions API allows deletes, but its docs do not say whether a
   recipient-origin suppression can be deleted, so this is unresolved.

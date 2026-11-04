@@ -64,6 +64,7 @@ describe('postmark webhook receiver', () => {
       name: 'Dispatch',
       fromName: 'Editors',
       fromEmail: 'editors@dispatch.example',
+      sendingChannel: 'weekly-dispatch',
     });
     const template = await container.get<CreateTemplate>(TEMPLATE_TYPES.CreateTemplate).execute({
       name: 'Shell',

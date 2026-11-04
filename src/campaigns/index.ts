@@ -46,6 +46,7 @@ export {
   InvalidCampaignError,
   CampaignNotFoundError,
   CampaignNewsletterNotFoundError,
+  CampaignSendingChannelMissingError,
   CampaignStateError,
   CampaignContentError,
   SendNotFoundError,

@@ -10,7 +10,10 @@ import {
   UpdateNewsletter,
   DeleteNewsletter,
   InvalidEmailAddressError,
+  InvalidNewsletterError,
   NewsletterNotFoundError,
+  Newsletter,
+  EmailAddress,
 } from '../index.js';
 
 const env = {
@@ -18,6 +21,7 @@ const env = {
   BASE_URL: 'https://cablegram.test',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 't',
+  POSTMARK_TRANSACTIONAL_STREAM: 'outbound',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
   POSTMARK_WEBHOOK_SECRET: 's',
 } as NodeJS.ProcessEnv;
@@ -34,6 +38,7 @@ const validInput = {
   name: 'The Weekly Dispatch',
   fromName: 'Dispatch Editors',
   fromEmail: 'Editors@Dispatch.Example',
+  sendingChannel: 'weekly-dispatch',
   replyTo: 'replies@dispatch.example',
   sendingDomain: 'mail.dispatch.example',
   dkimIdentifier: 'pm',
@@ -124,5 +129,65 @@ describe('newsletters use cases', () => {
     expect(rows).toHaveLength(3);
     const ids = rows.map((r) => r.id);
     expect([...ids].sort()).toEqual(ids);
+  });
+
+  describe('sending channel (ADR-030)', () => {
+    it('stores the channel given at creation, trimmed', async () => {
+      const created = await container
+        .get<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter)
+        .execute({ ...validInput, sendingChannel: '  weekly-dispatch  ' });
+      expect(created.sendingChannel).toBe('weekly-dispatch');
+    });
+
+    it('refuses an empty or whitespace-containing channel', async () => {
+      const create = container.get<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter);
+      await expect(create.execute({ ...validInput, sendingChannel: '   ' })).rejects.toBeInstanceOf(
+        InvalidNewsletterError,
+      );
+      await expect(
+        create.execute({ ...validInput, sendingChannel: 'weekly dispatch' }),
+      ).rejects.toBeInstanceOf(InvalidNewsletterError);
+    });
+
+    it('sets the channel on a newsletter stored before the field existed', async () => {
+      // A pre-ADR-030 row: it loads normally with no channel, and an update
+      // writes one onto it — no migration.
+      const repository = container.get<InMemoryNewsletterRepository>(
+        NEWSLETTER_TYPES.NewsletterRepository,
+      );
+      const now = new Date('2026-01-01T00:00:00Z');
+      await repository.create(
+        Newsletter.reconstitute({
+          id: 'legacy-1',
+          name: 'Legacy',
+          fromName: 'Editors',
+          fromEmail: EmailAddress.create('editors@dispatch.example'),
+          replyTo: null,
+          sendingDomain: null,
+          dkimIdentifier: null,
+          sendingChannel: null,
+          createdAt: now,
+          updatedAt: now,
+        }),
+      );
+      const before = await container.get<GetNewsletter>(NEWSLETTER_TYPES.GetNewsletter).execute('legacy-1');
+      expect(before.sendingChannel).toBeNull();
+
+      const after = await container
+        .get<UpdateNewsletter>(NEWSLETTER_TYPES.UpdateNewsletter)
+        .execute('legacy-1', { sendingChannel: 'legacy-stream' });
+      expect(after.sendingChannel).toBe('legacy-stream');
+      expect(after.name).toBe('Legacy');
+    });
+
+    it('leaves the channel alone when an update does not mention it', async () => {
+      const created = await container
+        .get<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter)
+        .execute(validInput);
+      const updated = await container
+        .get<UpdateNewsletter>(NEWSLETTER_TYPES.UpdateNewsletter)
+        .execute(created.id, { name: 'Renamed' });
+      expect(updated.sendingChannel).toBe('weekly-dispatch');
+    });
   });
 });
