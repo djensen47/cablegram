@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.0](https://github.com/djensen47/cablegram/compare/v3.1.0...v3.2.0) (2026-11-05)
+
+
+### Features
+
+* per-newsletter confirmation channel; SYSTEM_EMAIL_CHANNEL for account mail ([#70](https://github.com/djensen47/cablegram/issues/70)) ([0832142](https://github.com/djensen47/cablegram/commit/0832142553086775374b0e61834bf5b1417166b6))
+
 ## [3.1.0](https://github.com/djensen47/cablegram/compare/v3.0.0...v3.1.0) (2026-11-04)
 
 
