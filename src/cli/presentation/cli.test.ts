@@ -139,7 +139,8 @@ describe('newsletters', () => {
           name: 'Weekly',
           fromName: 'Editors',
           fromEmail: 'hi@example.com',
-          sendingChannel: 'weekly-dispatch',
+          campaignChannel: 'weekly-dispatch',
+          confirmationChannel: 'weekly-confirmations',
           createdAt: '2026-07-01T10:00:00.000Z',
         },
       ],
@@ -192,8 +193,10 @@ describe('newsletters', () => {
       'Editors',
       '--from-email',
       'hi@example.com',
-      '--sending-channel',
+      '--campaign-channel',
       'weekly-dispatch',
+      '--confirmation-channel',
+      'weekly-confirmations',
     ]);
 
     expect(code).toBe(EXIT.ok);
@@ -201,7 +204,8 @@ describe('newsletters', () => {
       name: 'Weekly',
       fromName: 'Editors',
       fromEmail: 'hi@example.com',
-      sendingChannel: 'weekly-dispatch',
+      campaignChannel: 'weekly-dispatch',
+      confirmationChannel: 'weekly-confirmations',
     });
   });
 
@@ -215,42 +219,62 @@ describe('newsletters', () => {
     expect(api.calls).toHaveLength(0);
   });
 
-  it('sets the sending channel on an existing newsletter, sending only that field (ADR-030)', async () => {
+  it('sets a channel on an existing newsletter, sending only that field (ADR-030/031)', async () => {
     const { api, deps } = harness();
 
-    const code = await run(deps, ['newsletters', 'update', 'n1', '--sending-channel', 'weekly-dispatch']);
+    const code = await run(deps, ['newsletters', 'update', 'n1', '--confirmation-channel', 'outbound']);
 
     expect(code).toBe(EXIT.ok);
     expect(api.calls[0]).toMatchObject({ method: 'PATCH', path: '/v1/newsletters/n1' });
-    expect(api.calls[0]?.body).toEqual({ sendingChannel: 'weekly-dispatch' });
+    expect(api.calls[0]?.body).toEqual({ confirmationChannel: 'outbound' });
   });
 
-  it('refuses "null" for the sending channel instead of clearing it', async () => {
+  it('still accepts the 3.1.0 flag --sending-channel, sent as campaignChannel', async () => {
     const { api, deps } = harness();
 
-    const code = await run(deps, ['newsletters', 'update', 'n1', '--sending-channel', 'null']);
+    const code = await run(deps, ['newsletters', 'update', 'n1', '--sending-channel', 'newsletter']);
+
+    expect(code).toBe(EXIT.ok);
+    expect(api.calls[0]?.body).toEqual({ campaignChannel: 'newsletter' });
+  });
+
+  it('refuses --campaign-channel and --sending-channel with different values', async () => {
+    const { api, deps } = harness();
+
+    const code = await run(deps, [
+      'newsletters',
+      'update',
+      'n1',
+      '--campaign-channel',
+      'a',
+      '--sending-channel',
+      'b',
+    ]);
+
+    expect(code).toBe(EXIT.usage);
+    expect(stderr).toMatch(/disagree/);
+    expect(api.calls).toHaveLength(0);
+  });
+
+  it('refuses "null" for a channel instead of clearing it', async () => {
+    const { api, deps } = harness();
+
+    const code = await run(deps, ['newsletters', 'update', 'n1', '--campaign-channel', 'null']);
 
     expect(code).toBe(EXIT.usage);
     expect(stderr).toMatch(/cannot be cleared/);
     expect(api.calls).toHaveLength(0);
   });
 
-  it('fails without a TTY when create is missing the sending channel', async () => {
+  it('fails without a TTY when create is missing a channel', async () => {
     const { api, deps } = harness();
+    const base = ['newsletters', 'create', '--name', 'Weekly', '--from-name', 'Editors', '--from-email', 'hi@example.com'];
 
-    const code = await run(deps, [
-      'newsletters',
-      'create',
-      '--name',
-      'Weekly',
-      '--from-name',
-      'Editors',
-      '--from-email',
-      'hi@example.com',
-    ]);
+    expect(await run(deps, base)).toBe(EXIT.usage);
+    expect(stderr).toMatch(/--campaign-channel/);
 
-    expect(code).toBe(EXIT.usage);
-    expect(stderr).toMatch(/--sending-channel/);
+    expect(await run(deps, [...base, '--campaign-channel', 'weekly-dispatch'])).toBe(EXIT.usage);
+    expect(stderr).toMatch(/--confirmation-channel/);
     expect(api.calls).toHaveLength(0);
   });
 

@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { z } from 'zod';
 import type { ListEnvelope, NewsletterDto } from '../../application/dtos.js';
 import type { CommandContext } from '../context.js';
-import { emailFlag, paginationFlags, parseFlags } from '../flags.js';
+import { FlagError, emailFlag, paginationFlags, parseFlags } from '../flags.js';
 import { shortDate, truncate, type Column } from '../output.js';
 import { confirmAction, promptText } from '../prompts.js';
 
@@ -12,22 +12,42 @@ const columns: Column<NewsletterDto>[] = [
   { header: 'id', value: (n) => n.id },
   { header: 'name', value: (n) => truncate(n.name, 32) },
   { header: 'from', value: (n) => `${n.fromName} <${n.fromEmail}>` },
-  // A missing channel is the one thing in this list that stops a send, so it
-  // is shown rather than left for the first campaign to discover (ADR-030).
-  { header: 'channel', value: (n) => n.sendingChannel ?? '(not set)' },
+  // A missing channel stops a send (campaign) or a double opt-in signup
+  // (confirmation), so both are shown rather than left to be discovered.
+  { header: 'campaign channel', value: (n) => n.campaignChannel ?? '(not set)' },
+  { header: 'confirmation channel', value: (n) => n.confirmationChannel ?? '(not set)' },
   { header: 'created', value: (n) => shortDate(n.createdAt) },
 ];
 
 /**
- * `--sending-channel` mirrors the API's check (no whitespace, 1-100 chars). It
- * is required, so unlike the optional fields below it has no `"null"` form:
- * the literal is refused rather than sent as a stream ID named "null".
+ * The channel flags mirror the API's check (no whitespace, 1-100 chars). Both
+ * channels are required, so unlike the optional fields below they have no
+ * `"null"` form: the literal is refused rather than sent as a stream ID.
  */
-const sendingChannelFlag = z
+const channelFlag = z
   .string()
   .trim()
   .regex(/^\S{1,100}$/, 'must be 1-100 characters with no whitespace')
   .refine((v) => v !== 'null', 'cannot be cleared; a newsletter without one cannot send');
+
+/**
+ * `--sending-channel` is `--campaign-channel`'s 3.1.0 name, still accepted
+ * (ADR-031). Either works; both with different values is refused, not guessed.
+ */
+function campaignChannelOf(flags: { campaignChannel?: string; sendingChannel?: string }): string | undefined {
+  const { campaignChannel, sendingChannel } = flags;
+  if (campaignChannel !== undefined && sendingChannel !== undefined && campaignChannel !== sendingChannel) {
+    throw new FlagError(
+      '--campaign-channel and --sending-channel (its deprecated alias) disagree; pass only --campaign-channel',
+    );
+  }
+  return campaignChannel ?? sendingChannel;
+}
+
+const CAMPAIGN_CHANNEL_HELP = 'provider channel for campaigns (Postmark Broadcasts stream ID)';
+const CONFIRMATION_CHANNEL_HELP =
+  'provider channel for subscription confirmations (Postmark Transactional stream ID)';
+const SENDING_CHANNEL_HELP = 'deprecated alias for --campaign-channel';
 
 /**
  * `--reply-to`, `--sending-domain` and `--dkim-identifier` are nullable on the
@@ -85,7 +105,9 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
     .option('--reply-to <email>', 'reply-to address')
     .option('--sending-domain <domain>', 'sending domain')
     .option('--dkim-identifier <id>', 'DKIM identifier')
-    .option('--sending-channel <id>', 'provider channel for campaigns (Postmark broadcast stream ID)')
+    .option('--campaign-channel <id>', CAMPAIGN_CHANNEL_HELP)
+    .option('--confirmation-channel <id>', CONFIRMATION_CHANNEL_HELP)
+    .option('--sending-channel <id>', SENDING_CHANNEL_HELP)
     .action(async (raw) => {
       const c = ctx();
       const flags = parseFlags(
@@ -96,10 +118,13 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
           replyTo: emailFlag.optional(),
           sendingDomain: z.string().trim().max(253).optional(),
           dkimIdentifier: z.string().trim().max(64).optional(),
-          sendingChannel: sendingChannelFlag.optional(),
+          campaignChannel: channelFlag.optional(),
+          confirmationChannel: channelFlag.optional(),
+          sendingChannel: channelFlag.optional(),
         }),
         raw,
       );
+      const givenCampaignChannel = campaignChannelOf(flags);
 
       const name = await promptText(flags.name, { message: 'Newsletter name', flag: '--name' });
       const fromName = await promptText(flags.fromName, {
@@ -112,10 +137,15 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
         flag: '--from-email',
         validate: (v) => (emailFlag.safeParse(v).success ? undefined : 'Not a valid email address.'),
       });
-      const sendingChannel = await promptText(flags.sendingChannel, {
-        message: 'Sending channel (Postmark broadcast stream ID)',
-        flag: '--sending-channel',
-        validate: (v) => sendingChannelFlag.safeParse(v).error?.issues[0]?.message,
+      const campaignChannel = await promptText(givenCampaignChannel, {
+        message: 'Campaign channel (Postmark Broadcasts stream ID)',
+        flag: '--campaign-channel',
+        validate: (v) => channelFlag.safeParse(v).error?.issues[0]?.message,
+      });
+      const confirmationChannel = await promptText(flags.confirmationChannel, {
+        message: 'Confirmation channel (Postmark Transactional stream ID)',
+        flag: '--confirmation-channel',
+        validate: (v) => channelFlag.safeParse(v).error?.issues[0]?.message,
       });
 
       const api = await c.api();
@@ -126,7 +156,8 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
         replyTo: flags.replyTo,
         sendingDomain: flags.sendingDomain,
         dkimIdentifier: flags.dkimIdentifier,
-        sendingChannel,
+        campaignChannel,
+        confirmationChannel,
       });
 
       c.printer.data(newsletter);
@@ -142,7 +173,9 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
     .option('--reply-to <email>', 'reply-to address, or "null" to clear')
     .option('--sending-domain <domain>', 'sending domain, or "null" to clear')
     .option('--dkim-identifier <id>', 'DKIM identifier, or "null" to clear')
-    .option('--sending-channel <id>', 'provider channel for campaigns (Postmark broadcast stream ID); cannot be cleared')
+    .option('--campaign-channel <id>', `${CAMPAIGN_CHANNEL_HELP}; cannot be cleared`)
+    .option('--confirmation-channel <id>', `${CONFIRMATION_CHANNEL_HELP}; cannot be cleared`)
+    .option('--sending-channel <id>', SENDING_CHANNEL_HELP)
     .action(async (id: string, raw) => {
       const c = ctx();
       const flags = parseFlags(
@@ -153,12 +186,15 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
           replyTo: nullableString,
           sendingDomain: nullableString,
           dkimIdentifier: nullableString,
-          sendingChannel: sendingChannelFlag.optional(),
+          campaignChannel: channelFlag.optional(),
+          confirmationChannel: channelFlag.optional(),
+          sendingChannel: channelFlag.optional(),
         }),
         raw,
       );
-
-      const body = pruneUndefined(flags);
+      const { sendingChannel: _alias, ...named } = flags;
+      void _alias;
+      const body = pruneUndefined({ ...named, campaignChannel: campaignChannelOf(flags) });
       if (Object.keys(body).length === 0) {
         c.printer.warn('Nothing to update — pass at least one field.');
         process.exitCode = 2;
