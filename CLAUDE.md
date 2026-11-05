@@ -223,26 +223,36 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   (`Customer`/`Admin`) suppressions go to the ADR-021 unhandled record. The event maps `Tag` →
   campaign → newsletter and calls `subscription.unsubscribe()` on **that newsletter only** — never the
   global list, never the recipient's delivery outcome. Known, accepted gaps under `provider`: Postmark
-  suppresses **per stream**, so two newsletters on the same `sendingChannel` share one opt-out list
+  suppresses **per stream**, so two newsletters on the same `campaignChannel` share one opt-out list
   (give each its own stream — ADR-030 corrected ADR-029's "every newsletter shares one stream"); a
   re-subscribe may stay blocked at Postmark; `{{{ pm:unsubscribe }}}` is blanked by the Handlebars
   render, so Postmark's default footer link is what appears.
-- **The email port carries a business `category`, plus a broadcast's `sendingChannel` — never an
-  assumed stream ID** ([ADR-030](docs/adrs/ADR-030-sending-channels.md)). `BulkMessage` is a union:
-  `'broadcast'` (campaigns + test sends) **must** carry `sendingChannel`; `'transactional'`
-  (subscribe confirmations + account mail) carries none. The category picks the signing token —
-  broadcast uses `POSTMARK_SERVER_TOKEN`, transactional uses `POSTMARK_TRANSACTIONAL_SERVER_TOKEN`
-  (which **falls back** to the broadcast token when unset). The stream is the newsletter's
-  `sendingChannel` for a broadcast, and the required `POSTMARK_TRANSACTIONAL_STREAM` for transactional.
+- **Every email names its channel; no stream ID is ever assumed**
+  ([ADR-030](docs/adrs/ADR-030-sending-channels.md), [ADR-031](docs/adrs/ADR-031-confirmation-and-system-channels.md)).
+  `BulkMessage.sendingChannel` is **required on every message**; `category` (`broadcast` |
+  `transactional`) only picks the signing token — broadcast uses `POSTMARK_SERVER_TOKEN`, transactional
+  uses `POSTMARK_TRANSACTIONAL_SERVER_TOKEN` (which **falls back** to the broadcast token). The Postmark
+  adapter holds **no** stream config and uses the channel verbatim as `MessageStream`. Three sources:
+  a newsletter's **`campaignChannel`** (campaigns + test sends; a Broadcasts-type stream), a newsletter's
+  **`confirmationChannel`** (subscribe confirmations; a Transactional-type stream — **not** the campaign
+  stream: Postmark suppresses per stream, so a past unsubscribe would block a re-signup's
+  confirmation), and **`SYSTEM_EMAIL_CHANNEL`** (account mail, which belongs to no newsletter).
   **Postmark stream IDs are chosen by the operator** — the adapter once hardcoded `broadcast` /
-  `outbound`, which made any other stream name fail with Postmark 1235 and forced every newsletter onto
-  one opt-out list; **don't reintroduce a default stream name** anywhere. `sendingChannel` is named for
-  the role, not the vendor, so the port still names no Postmark concept. On the `Newsletter`: required
-  on create, changeable, **never clearable**, validated loosely (no whitespace, ≤100 — Postmark
-  documents no ID rules), not checked against Postmark (a wrong ID shows up at the first test send). A
-  newsletter stored before the field existed reads back `null` — **no migration**; `SendCampaign` and
-  `SendTestCampaign` throw `CampaignSendingChannelMissingError` (409, message names the PATCH + CLI fix)
-  **before** writing anything, and `newsletters list` shows `(not set)`.
+  `outbound` (any other name failed with Postmark 1235, and every newsletter shared one opt-out list),
+  and 3.1.0 then capped transactional mail at one stream; **don't reintroduce a default stream name or a
+  single shared stream** anywhere. Names are for the role, not the vendor ("channel", never "stream" or
+  "transactional"). Both newsletter channels: required on create, changeable, **never clearable**,
+  validated loosely (no whitespace, ≤100), not checked against Postmark. A newsletter stored before a
+  field existed reads back `null` — **no migration**: `SendCampaign`/`SendTestCampaign` throw
+  `CampaignChannelMissingError`, and a **double opt-in** `Subscribe` throws
+  `SubscriptionConfirmationChannelMissingError` — both 409s naming the fix, both **before** any write
+  (single opt-in sends nothing and is unaffected). **Old names still work, deliberately:** a stored
+  3.1.0 `sendingChannel` reads as `campaignChannel`; the API accepts `sendingChannel` and the CLI
+  `--sending-channel` as aliases (both with different values → 400 / usage error); and
+  `POSTMARK_TRANSACTIONAL_STREAM` is accepted for **account mail only** when `SYSTEM_EMAIL_CHANNEL` is
+  unset, with a `deprecated_config` log line at startup. It is **not** a confirmation fallback — that
+  would make `confirmationChannel` optional and recreate the shared stream. Remove the aliases at the
+  next major.
 - **There is a CLI, and it is only an HTTP client** ([ADR-016](docs/adrs/ADR-016-cli-client.md)).
   `src/cli/` (bin `cablegram`, `dist/cli/main.js`) speaks the public `/v1` API with a normal user JWT.
   It **must not** import a domain component, build the Inversify container, open a `MongoClient`, or
