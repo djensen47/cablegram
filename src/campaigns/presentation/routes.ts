@@ -14,7 +14,7 @@ import {
   CampaignError,
   CampaignNewsletterNotFoundError,
   CampaignNotFoundError,
-  CampaignSendingChannelMissingError,
+  CampaignChannelMissingError,
   CampaignStateError,
   SendNotFoundError,
 } from '../domain/errors.js';
@@ -72,12 +72,12 @@ function rethrowDomainError(err: unknown): never {
   if (err instanceof CampaignStateError) {
     throw new ConflictError(err.message);
   }
-  if (err instanceof CampaignSendingChannelMissingError) {
+  if (err instanceof CampaignChannelMissingError) {
     // A fact about the newsletter's setup, not this request: say how to fix it.
     throw new ConflictError(
       `${err.message}. Set it with PATCH /v1/newsletters/${err.newsletterId} ` +
-        `({"sendingChannel": "<stream-id>"}), or ` +
-        `"cablegram newsletters update ${err.newsletterId} --sending-channel <stream-id>".`,
+        `({"campaignChannel": "<stream-id>"}), or ` +
+        `"cablegram newsletters update ${err.newsletterId} --campaign-channel <stream-id>".`,
     );
   }
   if (err instanceof CampaignError) {

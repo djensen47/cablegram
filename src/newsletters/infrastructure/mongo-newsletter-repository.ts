@@ -18,8 +18,15 @@ interface NewsletterDoc {
   sendingDomain: string | null;
   dkimIdentifier: string | null;
   /**
-   * Absent on a document written before ADR-030; read back as `null` (the
-   * newsletter loads, but cannot send until `PATCH` sets one). No migration.
+   * Absent on a document written before the field existed; read back as `null`
+   * (the newsletter loads, and `PATCH` writes the field on). No migration.
+   */
+  campaignChannel?: string | null;
+  confirmationChannel?: string | null;
+  /**
+   * `campaignChannel`'s stored name in 3.1.0 (ADR-030, renamed by ADR-031).
+   * Read as a fallback only, so a channel set under 3.1.0 carries over; the next
+   * write replaces the document without it.
    */
   sendingChannel?: string | null;
   createdAt: Date;
@@ -78,7 +85,8 @@ function toDoc(newsletter: Newsletter): NewsletterDoc {
     replyTo: newsletter.replyTo?.value ?? null,
     sendingDomain: newsletter.sendingDomain,
     dkimIdentifier: newsletter.dkimIdentifier,
-    sendingChannel: newsletter.sendingChannel,
+    campaignChannel: newsletter.campaignChannel,
+    confirmationChannel: newsletter.confirmationChannel,
     createdAt: newsletter.createdAt,
     updatedAt: newsletter.updatedAt,
   };
@@ -93,7 +101,8 @@ function toDomain(doc: NewsletterDoc): Newsletter {
     replyTo: doc.replyTo === null ? null : EmailAddress.create(doc.replyTo),
     sendingDomain: doc.sendingDomain,
     dkimIdentifier: doc.dkimIdentifier,
-    sendingChannel: doc.sendingChannel ?? null,
+    campaignChannel: doc.campaignChannel ?? doc.sendingChannel ?? null,
+    confirmationChannel: doc.confirmationChannel ?? null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });

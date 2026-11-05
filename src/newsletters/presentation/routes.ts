@@ -22,6 +22,7 @@ import {
   NewsletterListSchema,
   NewsletterSchema,
   UpdateNewsletterSchema,
+  splitCampaignChannel,
   toNewsletterResponse,
 } from './schemas.js';
 
@@ -141,11 +142,14 @@ export function createNewsletterRoutes(container: Container): OpenAPIHono<AppEnv
   });
 
   app.openapi(createNewsletterRoute, async (c) => {
-    const body = c.req.valid('json');
+    const { campaignChannel, rest } = splitCampaignChannel(c.req.valid('json'));
+    if (campaignChannel === undefined) {
+      throw new BadRequestError('campaignChannel is required; there is no default (ADR-030)');
+    }
     try {
       const newsletter = await container
         .get<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter)
-        .execute(body);
+        .execute({ ...rest, campaignChannel });
       return c.json(toNewsletterResponse(newsletter), 201);
     } catch (err) {
       rethrowDomainError(err);
@@ -166,11 +170,11 @@ export function createNewsletterRoutes(container: Container): OpenAPIHono<AppEnv
 
   app.openapi(updateRoute, async (c) => {
     const { id } = c.req.valid('param');
-    const body = c.req.valid('json');
+    const { campaignChannel, rest } = splitCampaignChannel(c.req.valid('json'));
     try {
       const newsletter = await container
         .get<UpdateNewsletter>(NEWSLETTER_TYPES.UpdateNewsletter)
-        .execute(id, body);
+        .execute(id, campaignChannel === undefined ? rest : { ...rest, campaignChannel });
       return c.json(toNewsletterResponse(newsletter), 200);
     } catch (err) {
       rethrowDomainError(err);

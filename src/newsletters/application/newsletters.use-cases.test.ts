@@ -21,7 +21,7 @@ const env = {
   BASE_URL: 'https://cablegram.test',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 't',
-  POSTMARK_TRANSACTIONAL_STREAM: 'outbound',
+  SYSTEM_EMAIL_CHANNEL: 'outbound',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
   POSTMARK_WEBHOOK_SECRET: 's',
 } as NodeJS.ProcessEnv;
@@ -38,7 +38,8 @@ const validInput = {
   name: 'The Weekly Dispatch',
   fromName: 'Dispatch Editors',
   fromEmail: 'Editors@Dispatch.Example',
-  sendingChannel: 'weekly-dispatch',
+  campaignChannel: 'weekly-dispatch',
+  confirmationChannel: 'weekly-confirmations',
   replyTo: 'replies@dispatch.example',
   sendingDomain: 'mail.dispatch.example',
   dkimIdentifier: 'pm',
@@ -131,27 +132,35 @@ describe('newsletters use cases', () => {
     expect([...ids].sort()).toEqual(ids);
   });
 
-  describe('sending channel (ADR-030)', () => {
-    it('stores the channel given at creation, trimmed', async () => {
+  describe('campaign and confirmation channels (ADR-030, ADR-031)', () => {
+    it('stores both channels given at creation, trimmed', async () => {
       const created = await container
         .get<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter)
-        .execute({ ...validInput, sendingChannel: '  weekly-dispatch  ' });
-      expect(created.sendingChannel).toBe('weekly-dispatch');
+        .execute({
+          ...validInput,
+          campaignChannel: '  weekly-dispatch  ',
+          confirmationChannel: ' weekly-confirmations ',
+        });
+      expect(created.campaignChannel).toBe('weekly-dispatch');
+      expect(created.confirmationChannel).toBe('weekly-confirmations');
     });
 
-    it('refuses an empty or whitespace-containing channel', async () => {
+    it('refuses an empty or whitespace-containing channel, naming the field', async () => {
       const create = container.get<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter);
-      await expect(create.execute({ ...validInput, sendingChannel: '   ' })).rejects.toBeInstanceOf(
-        InvalidNewsletterError,
+      await expect(create.execute({ ...validInput, campaignChannel: '   ' })).rejects.toThrow(
+        /campaignChannel/,
       );
       await expect(
-        create.execute({ ...validInput, sendingChannel: 'weekly dispatch' }),
-      ).rejects.toBeInstanceOf(InvalidNewsletterError);
+        create.execute({ ...validInput, confirmationChannel: 'weekly confirmations' }),
+      ).rejects.toThrow(/confirmationChannel/);
+      await expect(create.execute({ ...validInput, campaignChannel: '' })).rejects.toBeInstanceOf(
+        InvalidNewsletterError,
+      );
     });
 
-    it('sets the channel on a newsletter stored before the field existed', async () => {
-      // A pre-ADR-030 row: it loads normally with no channel, and an update
-      // writes one onto it — no migration.
+    it('sets both channels on a newsletter stored before they existed', async () => {
+      // A pre-ADR-030 row: it loads normally with no channels, and an update
+      // writes them onto it — no migration.
       const repository = container.get<InMemoryNewsletterRepository>(
         NEWSLETTER_TYPES.NewsletterRepository,
       );
@@ -165,29 +174,33 @@ describe('newsletters use cases', () => {
           replyTo: null,
           sendingDomain: null,
           dkimIdentifier: null,
-          sendingChannel: null,
+          campaignChannel: null,
+          confirmationChannel: null,
           createdAt: now,
           updatedAt: now,
         }),
       );
       const before = await container.get<GetNewsletter>(NEWSLETTER_TYPES.GetNewsletter).execute('legacy-1');
-      expect(before.sendingChannel).toBeNull();
+      expect(before.campaignChannel).toBeNull();
+      expect(before.confirmationChannel).toBeNull();
 
       const after = await container
         .get<UpdateNewsletter>(NEWSLETTER_TYPES.UpdateNewsletter)
-        .execute('legacy-1', { sendingChannel: 'legacy-stream' });
-      expect(after.sendingChannel).toBe('legacy-stream');
+        .execute('legacy-1', { campaignChannel: 'legacy-stream', confirmationChannel: 'legacy-confirm' });
+      expect(after.campaignChannel).toBe('legacy-stream');
+      expect(after.confirmationChannel).toBe('legacy-confirm');
       expect(after.name).toBe('Legacy');
     });
 
-    it('leaves the channel alone when an update does not mention it', async () => {
+    it('leaves both channels alone when an update does not mention them', async () => {
       const created = await container
         .get<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter)
         .execute(validInput);
       const updated = await container
         .get<UpdateNewsletter>(NEWSLETTER_TYPES.UpdateNewsletter)
         .execute(created.id, { name: 'Renamed' });
-      expect(updated.sendingChannel).toBe('weekly-dispatch');
+      expect(updated.campaignChannel).toBe('weekly-dispatch');
+      expect(updated.confirmationChannel).toBe('weekly-confirmations');
     });
   });
 });

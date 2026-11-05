@@ -3,7 +3,7 @@ import { Container } from 'inversify';
 import { MongoClient, type Db } from 'mongodb';
 import { loadConfig, type AppConfig } from '../config/index.js';
 import { DefaultClock, type Clock } from '../clock/index.js';
-import { InMemoryIdempotencyStore, type IdempotencyStore } from '../http/index.js';
+import { InMemoryIdempotencyStore, logLine, type IdempotencyStore } from '../http/index.js';
 import { emailModule } from '../email/index.js';
 import { authModule } from '../auth/index.js';
 import { accountsModule } from '../../accounts/index.js';
@@ -27,6 +27,16 @@ import { TYPES } from './types.js';
 export function buildContainer(env: NodeJS.ProcessEnv = process.env): Container {
   const container = new Container({ defaultScope: 'Singleton' });
   const config = loadConfig(env);
+  // Once per process, at the one place every entrypoint (and an embedding host)
+  // passes through — so an old env name is visible without being an error.
+  for (const { name, replacement } of config.deprecatedEnv) {
+    logLine({
+      level: 'warn',
+      event: 'deprecated_config',
+      variable: name,
+      message: `${name} is deprecated; use ${replacement}. It will be removed in the next major version.`,
+    });
+  }
 
   container.bind<AppConfig>(TYPES.Config).toConstantValue(config);
   container.bind<Clock>(TYPES.Clock).to(DefaultClock);

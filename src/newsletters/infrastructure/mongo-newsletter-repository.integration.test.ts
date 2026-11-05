@@ -36,7 +36,8 @@ describe('MongoNewsletterRepository (contract)', () => {
       name: overrides.name ?? 'The Weekly Dispatch',
       fromName: 'Dispatch Editors',
       fromEmail: overrides.fromEmail ?? 'editors@dispatch.example',
-      sendingChannel: 'weekly-dispatch',
+      campaignChannel: 'weekly-dispatch',
+      confirmationChannel: 'weekly-confirmations',
       replyTo: 'replies@dispatch.example',
       sendingDomain: 'dispatch.example',
       dkimIdentifier: 'dkim1',
@@ -56,11 +57,12 @@ describe('MongoNewsletterRepository (contract)', () => {
     expect(found?.replyTo?.value).toBe('replies@dispatch.example');
     expect(found?.sendingDomain).toBe('dispatch.example');
     expect(found?.dkimIdentifier).toBe('dkim1');
-    expect(found?.sendingChannel).toBe('weekly-dispatch');
+    expect(found?.campaignChannel).toBe('weekly-dispatch');
+    expect(found?.confirmationChannel).toBe('weekly-confirmations');
   });
 
-  it('reads a document written before sendingChannel existed as null (ADR-030)', async () => {
-    // The stored shape of a pre-ADR-030 newsletter: the field is simply absent.
+  it('reads a document written before either channel existed as null (ADR-030/031)', async () => {
+    // The stored shape of a pre-ADR-030 newsletter: the fields are simply absent.
     await db.collection(NEWSLETTER_COLLECTIONS.newsletters).insertOne({
       _id: 'legacy-1' as never,
       name: 'Legacy',
@@ -74,12 +76,46 @@ describe('MongoNewsletterRepository (contract)', () => {
     });
 
     const found = await repo.findById('legacy-1');
-    expect(found?.sendingChannel).toBeNull();
+    expect(found?.campaignChannel).toBeNull();
+    expect(found?.confirmationChannel).toBeNull();
 
-    // An update writes the field onto that same document — no migration step.
-    found!.update({ sendingChannel: 'legacy-stream' }, new Date('2026-02-01T00:00:00Z'));
+    // An update writes the fields onto that same document — no migration step.
+    found!.update(
+      { campaignChannel: 'legacy-stream', confirmationChannel: 'legacy-confirm' },
+      new Date('2026-02-01T00:00:00Z'),
+    );
     await repo.update(found!);
-    expect((await repo.findById('legacy-1'))?.sendingChannel).toBe('legacy-stream');
+    const updated = await repo.findById('legacy-1');
+    expect(updated?.campaignChannel).toBe('legacy-stream');
+    expect(updated?.confirmationChannel).toBe('legacy-confirm');
+  });
+
+  it("reads a 3.1.0 document's `sendingChannel` as its campaign channel (ADR-031)", async () => {
+    // What 3.1.0 stored: the campaign stream under its old name, and no
+    // confirmation channel yet. A channel already set must carry over.
+    await db.collection(NEWSLETTER_COLLECTIONS.newsletters).insertOne({
+      _id: 'v310-1' as never,
+      name: 'Set under 3.1.0',
+      fromName: 'Editors',
+      fromEmail: 'editors@dispatch.example',
+      replyTo: null,
+      sendingDomain: null,
+      dkimIdentifier: null,
+      sendingChannel: 'newsletter',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+    });
+
+    const found = await repo.findById('v310-1');
+    expect(found?.campaignChannel).toBe('newsletter');
+    expect(found?.confirmationChannel).toBeNull();
+
+    // The next write stores the new name and drops the old one.
+    found!.update({ confirmationChannel: 'outbound' }, new Date('2026-02-01T00:00:00Z'));
+    await repo.update(found!);
+    const raw = await db.collection(NEWSLETTER_COLLECTIONS.newsletters).findOne({ _id: 'v310-1' as never });
+    expect(raw).toMatchObject({ campaignChannel: 'newsletter', confirmationChannel: 'outbound' });
+    expect(raw).not.toHaveProperty('sendingChannel');
   });
 
   it('returns null for an unknown id', async () => {

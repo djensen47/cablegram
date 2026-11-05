@@ -60,13 +60,6 @@ export interface AppConfig {
      */
     readonly transactionalServerToken: string;
     /**
-     * The ID of the Postmark message stream transactional mail goes through
-     * (subscribe confirmations, account emails). Required, with no default:
-     * stream IDs are chosen when a stream is created, so cablegram cannot know
-     * yours (ADR-030). Broadcast streams are set per newsletter instead.
-     */
-    readonly transactionalStream: string;
-    /**
      * Shared secret guarding the inbound webhook endpoint. Postmark provides
      * **no** HMAC/signature verification (pinned against the live webhook docs);
      * its only native mechanisms are HTTP Basic Auth on the webhook URL and IP
@@ -88,7 +81,20 @@ export interface AppConfig {
     readonly fromAddress: string;
     /** Display name for account mail (defaults to `cablegram`). */
     readonly fromName: string;
+    /**
+     * The provider channel account mail goes through (ADR-031) — for Postmark,
+     * a Transactional-type stream ID. From `SYSTEM_EMAIL_CHANNEL`, or the
+     * deprecated `POSTMARK_TRANSACTIONAL_STREAM` when only that is set. Required,
+     * with no default: stream IDs are chosen when a stream is created. Newsletter
+     * mail does not use it — each newsletter names its own channels.
+     */
+    readonly sendingChannel: string;
   };
+  /**
+   * Deprecated env vars this process was started with, and what replaces each.
+   * The composition root logs one line per entry at startup.
+   */
+  readonly deprecatedEnv: readonly { readonly name: string; readonly replacement: string }[];
   /**
    * How account emails present their reset / magic-link references (ADR-013/014).
    * cablegram is headless, so a link needs a front-end base URL the operator
@@ -180,12 +186,16 @@ const schema = z
     // Optional distinct token for transactional sends; falls back to the
     // broadcast token below when unset (a single-server Postmark setup).
     POSTMARK_TRANSACTIONAL_SERVER_TOKEN: z.string().min(1).optional(),
-    // The transactional stream's ID — required, no default (ADR-030).
-    POSTMARK_TRANSACTIONAL_STREAM: z.string().trim().min(1),
+    // Deprecated name for SYSTEM_EMAIL_CHANNEL (ADR-031); still honoured when
+    // the new one is unset. Before ADR-031 it also carried confirmations.
+    POSTMARK_TRANSACTIONAL_STREAM: z.string().trim().min(1).optional(),
     POSTMARK_WEBHOOK_SECRET: z.string().min(1),
     // System sender identity for cablegram's own account mail (ADR-013/014).
     SYSTEM_EMAIL_FROM_ADDRESS: z.string().email(),
     SYSTEM_EMAIL_FROM_NAME: z.string().min(1).default('cablegram'),
+    // The provider channel for account mail (ADR-031). Required unless the
+    // deprecated POSTMARK_TRANSACTIONAL_STREAM is set; see the refinement.
+    SYSTEM_EMAIL_CHANNEL: z.string().trim().min(1).optional(),
     // Account-email link presentation. `EMAIL_LINK_ENABLED` is an explicit
     // opt-in string flag (`true`); anything else (including unset) is false —
     // `z.coerce.boolean()` would wrongly treat the string `"false"` as true.
@@ -212,6 +222,16 @@ const schema = z
     UNSUBSCRIBE_URL: z.string().url().optional(),
   })
   .superRefine((e, ctx) => {
+    // Account mail needs a channel, and there is no default to assume (ADR-031).
+    if (!e.SYSTEM_EMAIL_CHANNEL && !e.POSTMARK_TRANSACTIONAL_STREAM) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SYSTEM_EMAIL_CHANNEL'],
+        message:
+          'is required (the provider channel for account mail; for Postmark, a ' +
+          'Transactional stream ID). The deprecated POSTMARK_TRANSACTIONAL_STREAM is also accepted',
+      });
+    }
     // When cablegram owns the unsubscribe link, the header needs an absolute URL
     // to point at. This used to be silent — an unset BASE_URL simply dropped the
     // header from every send (ADR-029) — so it is now a startup error instead.
@@ -272,13 +292,18 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
       serverToken: e.POSTMARK_SERVER_TOKEN,
       transactionalServerToken:
         e.POSTMARK_TRANSACTIONAL_SERVER_TOKEN ?? e.POSTMARK_SERVER_TOKEN,
-      transactionalStream: e.POSTMARK_TRANSACTIONAL_STREAM,
       webhookSecret: e.POSTMARK_WEBHOOK_SECRET,
     },
     systemEmail: {
       fromAddress: e.SYSTEM_EMAIL_FROM_ADDRESS,
       fromName: e.SYSTEM_EMAIL_FROM_NAME,
+      // The new name wins when both are set; the refinement guarantees one is.
+      sendingChannel: (e.SYSTEM_EMAIL_CHANNEL ?? e.POSTMARK_TRANSACTIONAL_STREAM)!,
     },
+    deprecatedEnv:
+      e.POSTMARK_TRANSACTIONAL_STREAM !== undefined
+        ? [{ name: 'POSTMARK_TRANSACTIONAL_STREAM', replacement: 'SYSTEM_EMAIL_CHANNEL' }]
+        : [],
     accountLinks: {
       enabled: e.EMAIL_LINK_ENABLED,
       passwordResetUrlBase: e.PASSWORD_RESET_URL_BASE ?? null,

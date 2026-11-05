@@ -1,5 +1,5 @@
 import { z } from '@hono/zod-openapi';
-import { listResponseSchema } from '../../shared/http/index.js';
+import { BadRequestError, listResponseSchema } from '../../shared/http/index.js';
 import type { Newsletter } from '../domain/newsletter.js';
 
 /**
@@ -12,16 +12,26 @@ import type { Newsletter } from '../domain/newsletter.js';
 const emailField = z.string().trim().email().max(320);
 
 // Mirrors the domain's loose check: a provider-chosen identifier (for Postmark,
-// a broadcast message stream ID), so only whitespace and length are refused.
-const sendingChannelField = z
+// a message stream ID), so only whitespace and length are refused.
+const channelField = z
   .string()
   .trim()
   .regex(/^\S{1,100}$/, 'must be 1-100 characters with no whitespace');
 
-const SENDING_CHANNEL_DESCRIPTION =
-  'The provider sending channel this newsletter\u2019s campaigns go through (ADR-030). For ' +
-  'Postmark, the ID of a broadcast message stream \u2014 one stream per newsletter keeps each ' +
-  'newsletter\u2019s opt-outs separate.'
+const CAMPAIGN_CHANNEL_DESCRIPTION =
+  'The provider channel this newsletter\u2019s campaigns go through (ADR-030). For Postmark, ' +
+  'the ID of a Broadcasts-type message stream \u2014 one per newsletter keeps each ' +
+  'newsletter\u2019s opt-outs separate.';
+
+const CONFIRMATION_CHANNEL_DESCRIPTION =
+  'The provider channel this newsletter\u2019s subscription confirmations go through (ADR-031). ' +
+  'For Postmark, the ID of a Transactional-type message stream. Kept apart from the campaign ' +
+  'channel because Postmark suppresses per stream: on the campaign stream, someone who once ' +
+  'unsubscribed could never receive a re-signup\u2019s confirmation.';
+
+const LEGACY_SENDING_CHANNEL_DESCRIPTION =
+  'Deprecated alias for `campaignChannel` (its name in 3.1.0), still accepted. Pass one or the ' +
+  'other; passing both with different values is a 400.';
 
 export const NewsletterSchema = z
   .object({
@@ -32,11 +42,17 @@ export const NewsletterSchema = z
     replyTo: z.string().email().nullable().openapi({ example: 'replies@dispatch.example' }),
     sendingDomain: z.string().nullable().openapi({ example: 'mail.dispatch.example' }),
     dkimIdentifier: z.string().nullable().openapi({ example: 'pm' }),
-    sendingChannel: z.string().nullable().openapi({
+    campaignChannel: z.string().nullable().openapi({
       description:
-        `${SENDING_CHANNEL_DESCRIPTION} \`null\` only on a newsletter created before the field ` +
-        'existed; it cannot send until one is set.',
+        `${CAMPAIGN_CHANNEL_DESCRIPTION} \`null\` only on a newsletter created before the field ` +
+        'existed; it cannot send a campaign until one is set.',
       example: 'weekly-dispatch',
+    }),
+    confirmationChannel: z.string().nullable().openapi({
+      description:
+        `${CONFIRMATION_CHANNEL_DESCRIPTION} \`null\` on a newsletter created before the field ` +
+        'existed; double opt-in signups to it are refused until one is set.',
+      example: 'weekly-dispatch-confirmations',
     }),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
@@ -51,9 +67,20 @@ export const CreateNewsletterSchema = z
     replyTo: emailField.nullish().openapi({ example: 'replies@dispatch.example' }),
     sendingDomain: z.string().trim().max(253).nullish().openapi({ example: 'mail.dispatch.example' }),
     dkimIdentifier: z.string().trim().max(64).nullish().openapi({ example: 'pm' }),
-    sendingChannel: sendingChannelField.openapi({
-      description: `${SENDING_CHANNEL_DESCRIPTION} Required; there is no default.`,
+    // Required — as `campaignChannel`, or its deprecated alias `sendingChannel`.
+    // Which one was given is resolved in the handler (`resolveCampaignChannel`),
+    // so the schema stays a plain object the OpenAPI generator renders as-is.
+    campaignChannel: channelField.optional().openapi({
+      description: `${CAMPAIGN_CHANNEL_DESCRIPTION} Required (or \`sendingChannel\`); there is no default.`,
       example: 'weekly-dispatch',
+    }),
+    sendingChannel: channelField.optional().openapi({
+      description: LEGACY_SENDING_CHANNEL_DESCRIPTION,
+      deprecated: true,
+    }),
+    confirmationChannel: channelField.openapi({
+      description: `${CONFIRMATION_CHANNEL_DESCRIPTION} Required; there is no default.`,
+      example: 'weekly-dispatch-confirmations',
     }),
   })
   .openapi('CreateNewsletter');
@@ -67,9 +94,17 @@ export const UpdateNewsletterSchema = z
     sendingDomain: z.string().trim().max(253).nullish(),
     dkimIdentifier: z.string().trim().max(64).nullish(),
     // Changeable, never clearable: a newsletter without one cannot send.
-    sendingChannel: sendingChannelField.optional().openapi({
-      description: `${SENDING_CHANNEL_DESCRIPTION} Can be changed but not cleared.`,
+    campaignChannel: channelField.optional().openapi({
+      description: `${CAMPAIGN_CHANNEL_DESCRIPTION} Can be changed but not cleared.`,
       example: 'weekly-dispatch',
+    }),
+    sendingChannel: channelField.optional().openapi({
+      description: LEGACY_SENDING_CHANNEL_DESCRIPTION,
+      deprecated: true,
+    }),
+    confirmationChannel: channelField.optional().openapi({
+      description: `${CONFIRMATION_CHANNEL_DESCRIPTION} Can be changed but not cleared.`,
+      example: 'weekly-dispatch-confirmations',
     }),
   })
   .openapi('UpdateNewsletter');
@@ -88,6 +123,30 @@ export const NewsletterIdParamSchema = z.object({
 
 export type NewsletterResponse = z.infer<typeof NewsletterSchema>;
 
+type ChannelAliases = { campaignChannel?: string; sendingChannel?: string };
+
+/**
+ * Split a request body into its campaign channel and everything else, accepting
+ * the 3.1.0 name `sendingChannel` as well as `campaignChannel` (ADR-031 keeps
+ * the old name working). Either is fine; both with different values is
+ * ambiguous, so it is refused rather than guessed. `campaignChannel` is
+ * `undefined` when neither was given.
+ */
+export function splitCampaignChannel<T extends ChannelAliases>(
+  body: T,
+): { campaignChannel: string | undefined; rest: Omit<T, keyof ChannelAliases> } {
+  const { campaignChannel, sendingChannel } = body;
+  if (campaignChannel !== undefined && sendingChannel !== undefined && campaignChannel !== sendingChannel) {
+    throw new BadRequestError(
+      'campaignChannel and sendingChannel (its deprecated alias) disagree; pass only campaignChannel',
+    );
+  }
+  const rest: Partial<T> = { ...body };
+  delete rest.campaignChannel;
+  delete rest.sendingChannel;
+  return { campaignChannel: campaignChannel ?? sendingChannel, rest: rest as Omit<T, keyof ChannelAliases> };
+}
+
 /** Maps a domain aggregate to its wire DTO — entities are never serialized directly (ADR-004). */
 export function toNewsletterResponse(newsletter: Newsletter): NewsletterResponse {
   return {
@@ -98,7 +157,8 @@ export function toNewsletterResponse(newsletter: Newsletter): NewsletterResponse
     replyTo: newsletter.replyTo?.value ?? null,
     sendingDomain: newsletter.sendingDomain,
     dkimIdentifier: newsletter.dkimIdentifier,
-    sendingChannel: newsletter.sendingChannel,
+    campaignChannel: newsletter.campaignChannel,
+    confirmationChannel: newsletter.confirmationChannel,
     createdAt: newsletter.createdAt.toISOString(),
     updatedAt: newsletter.updatedAt.toISOString(),
   };

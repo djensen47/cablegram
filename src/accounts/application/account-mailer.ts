@@ -7,7 +7,8 @@ import { EMAIL_TYPES, type DeliveryGateway, type SenderIdentity } from '../../sh
  * Sends cablegram's own **transactional** account mail (ADR-013/014):
  * password-reset and magic-link messages. Unlike subscribe confirmations these
  * have no newsletter to borrow a sender from, so they go out from the configured
- * system identity (`systemEmail`) on the `transactional` category — mirroring how
+ * system identity (`systemEmail`, including its channel — ADR-031) on the
+ * `transactional` category — mirroring how
  * `subscribe.ts` drives the shared `DeliveryGateway`, the one email seam.
  *
  * How the one-time token is presented depends on config (`accountLinks`): with a
@@ -37,6 +38,7 @@ export class AccountMailer {
       },
       recipients: [{ email }],
       category: 'transactional',
+      sendingChannel: this.config.systemEmail.sendingChannel,
       tag: 'password-reset',
     });
   }
@@ -56,6 +58,7 @@ export class AccountMailer {
       },
       recipients: [{ email }],
       category: 'transactional',
+      sendingChannel: this.config.systemEmail.sendingChannel,
       tag: 'magic-link',
     });
   }

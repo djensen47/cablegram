@@ -13,11 +13,11 @@ export interface CampaignSender {
   readonly fromEmail: string;
   readonly replyTo: string | null;
   /**
-   * The provider channel the newsletter's campaigns go through (ADR-030), or
+   * The provider channel the newsletter's campaigns go through (ADR-030/031), or
    * `null` for a newsletter created before the field existed — which cannot
    * send until one is set.
    */
-  readonly sendingChannel: string | null;
+  readonly campaignChannel: string | null;
 }
 
 export interface NewsletterGateway {

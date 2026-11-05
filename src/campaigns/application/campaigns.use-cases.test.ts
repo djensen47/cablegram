@@ -44,7 +44,7 @@ import {
   CampaignNotFoundError,
   CampaignStateError,
   CampaignContentError,
-  CampaignSendingChannelMissingError,
+  CampaignChannelMissingError,
   SendTestCampaign,
 } from '../index.js';
 
@@ -53,7 +53,7 @@ const env = {
   BASE_URL: 'https://cablegram.test',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 't',
-  POSTMARK_TRANSACTIONAL_STREAM: 'outbound',
+  SYSTEM_EMAIL_CHANNEL: 'outbound',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
   POSTMARK_WEBHOOK_SECRET: 's',
 } as NodeJS.ProcessEnv;
@@ -85,7 +85,8 @@ async function seedNewsletter(container: Container, name = 'The Weekly Dispatch'
     name,
     fromName: 'Dispatch Editors',
     fromEmail: 'editors@dispatch.example',
-    sendingChannel: 'weekly-dispatch',
+    campaignChannel: 'weekly-dispatch',
+    confirmationChannel: 'weekly-confirmations',
   });
   return newsletter.id;
 }
@@ -221,7 +222,8 @@ describe('campaigns — the send integrator', () => {
             replyTo: null,
             sendingDomain: null,
             dkimIdentifier: null,
-            sendingChannel: null,
+            campaignChannel: null,
+            confirmationChannel: null,
             createdAt: now,
             updatedAt: now,
           }),
@@ -242,7 +244,7 @@ describe('campaigns — the send integrator', () => {
 
         await expect(
           container.get<SendCampaign>(CAMPAIGN_TYPES.SendCampaign).execute(campaignId),
-        ).rejects.toBeInstanceOf(CampaignSendingChannelMissingError);
+        ).rejects.toBeInstanceOf(CampaignChannelMissingError);
 
         // Nothing reached the provider, no send record was opened, and the
         // campaign is still a draft — it sends normally once the field is set.
@@ -260,7 +262,7 @@ describe('campaigns — the send integrator', () => {
           container
             .get<SendTestCampaign>(CAMPAIGN_TYPES.SendTestCampaign)
             .execute({ campaignId, addresses: ['me@example.com'], prefixSubject: true }),
-        ).rejects.toBeInstanceOf(CampaignSendingChannelMissingError);
+        ).rejects.toBeInstanceOf(CampaignChannelMissingError);
         expect(gateway.sent).toHaveLength(0);
       });
     });

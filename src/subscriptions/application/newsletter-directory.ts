@@ -13,6 +13,11 @@ export interface NewsletterInfo {
   readonly fromName: string;
   readonly fromEmail: string;
   readonly replyTo: string | null;
+  /**
+   * The provider channel the newsletter's confirmations go through (ADR-031),
+   * or `null` on a newsletter created before the field existed.
+   */
+  readonly confirmationChannel: string | null;
 }
 
 export interface NewsletterDirectory {

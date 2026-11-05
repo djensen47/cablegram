@@ -225,6 +225,8 @@ describe('accounts use cases', () => {
       expect(gateway().sent).toHaveLength(1);
       const msg = gateway().sent[0]!;
       expect(msg.category).toBe('transactional');
+      // Account mail goes through the system channel (SYSTEM_EMAIL_CHANNEL, ADR-031).
+      expect(msg.sendingChannel).toBe('outbound');
       expect(msg.from.fromEmail).toBe('system@cablegram.example');
       expect(msg.recipients).toEqual([{ email: 'boss@dispatch.example' }]);
       // The opaque token rides in the body (only its hash is stored).
@@ -322,7 +324,7 @@ describe('accounts use cases', () => {
 
     it('consumes a token to mint a working, single-use session', async () => {
       await requestLink().execute({ email: 'boss@dispatch.example' });
-      expect(gateway().sent[0]!.category).toBe('transactional');
+      expect(gateway().sent[0]).toMatchObject({ category: 'transactional', sendingChannel: 'outbound' });
       const token = tokenFromLastEmail(gateway());
 
       const session = await consumeLink().execute({ token });

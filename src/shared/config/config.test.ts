@@ -6,7 +6,7 @@ const base = {
   BASE_URL: 'https://cablegram.test',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 'token',
-  POSTMARK_TRANSACTIONAL_STREAM: 'outbound',
+  SYSTEM_EMAIL_CHANNEL: 'outbound',
   POSTMARK_WEBHOOK_SECRET: 'secret',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
 } as NodeJS.ProcessEnv;
@@ -147,10 +147,42 @@ describe('loadConfig', () => {
     expect(c.unsubscribe.url).toBe('https://example.com/unsubscribe');
   });
 
-  it('requires POSTMARK_TRANSACTIONAL_STREAM, with no default stream name (ADR-030)', () => {
-    expect(loadConfig(base).postmark.transactionalStream).toBe('outbound');
-    expect(() =>
-      loadConfig({ ...base, POSTMARK_TRANSACTIONAL_STREAM: undefined } as NodeJS.ProcessEnv),
-    ).toThrow(/POSTMARK_TRANSACTIONAL_STREAM/);
+  describe('SYSTEM_EMAIL_CHANNEL (ADR-031)', () => {
+    const withoutChannel = { ...base, SYSTEM_EMAIL_CHANNEL: undefined };
+
+    it('reads the account-mail channel, with nothing deprecated', () => {
+      const c = loadConfig(base);
+      expect(c.systemEmail.sendingChannel).toBe('outbound');
+      expect(c.deprecatedEnv).toEqual([]);
+    });
+
+    it('is required, with no default stream name; the error names both variables', () => {
+      expect(() => loadConfig(withoutChannel as NodeJS.ProcessEnv)).toThrow(
+        /SYSTEM_EMAIL_CHANNEL: is required.*POSTMARK_TRANSACTIONAL_STREAM/,
+      );
+    });
+
+    it('still accepts the deprecated POSTMARK_TRANSACTIONAL_STREAM, and reports it', () => {
+      const c = loadConfig({
+        ...withoutChannel,
+        POSTMARK_TRANSACTIONAL_STREAM: 'legacy-outbound',
+      } as NodeJS.ProcessEnv);
+      expect(c.systemEmail.sendingChannel).toBe('legacy-outbound');
+      expect(c.deprecatedEnv).toEqual([
+        { name: 'POSTMARK_TRANSACTIONAL_STREAM', replacement: 'SYSTEM_EMAIL_CHANNEL' },
+      ]);
+    });
+
+    it('prefers SYSTEM_EMAIL_CHANNEL when both are set', () => {
+      const c = loadConfig({
+        ...base,
+        SYSTEM_EMAIL_CHANNEL: 'account-mail',
+        POSTMARK_TRANSACTIONAL_STREAM: 'legacy-outbound',
+      } as NodeJS.ProcessEnv);
+      expect(c.systemEmail.sendingChannel).toBe('account-mail');
+      // Still reported: the old name is set, so it should still be cleaned up.
+      expect(c.deprecatedEnv).toHaveLength(1);
+    });
   });
+
 });

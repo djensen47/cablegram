@@ -39,13 +39,13 @@ export class CampaignNewsletterNotFoundError extends CampaignError {
 }
 
 /**
- * The campaign's newsletter has no sending channel (ADR-030) — it was created
- * before the field existed. Raised before anything is written or sent, so the
- * campaign is untouched and can be sent once the newsletter is updated.
+ * The campaign's newsletter has no campaign channel (ADR-030/031) — it was
+ * created before the field existed. Raised before anything is written or sent,
+ * so the campaign is untouched and can be sent once the newsletter is updated.
  */
-export class CampaignSendingChannelMissingError extends CampaignError {
+export class CampaignChannelMissingError extends CampaignError {
   constructor(readonly newsletterId: string) {
-    super(`Newsletter ${newsletterId} has no sending channel set`);
+    super(`Newsletter ${newsletterId} has no campaign channel set`);
   }
 }
 
