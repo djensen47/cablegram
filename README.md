@@ -145,7 +145,7 @@ users).
   clicks. The opt-out comes back as Postmark's **Subscription Change** webhook (enable it on the
   broadcast stream's webhook), and cablegram marks that subscriber `unsubscribed` on the campaign's
   newsletter only. Postmark suppresses per **stream**, so give each newsletter its own stream
-  (`sendingChannel`, below): two newsletters on one stream share one opt-out list. Don't put `{{{ pm:unsubscribe }}}` in a body: cablegram's renderer
+  (`campaignChannel`, below): two newsletters on one stream share one opt-out list. Don't put `{{{ pm:unsubscribe }}}` in a body: cablegram's renderer
   blanks it, and Postmark then appends its default link.
 
 ```bash
@@ -170,14 +170,16 @@ the commands short. All create/list responses are DTOs (never internal entities)
 ```bash
 A="authorization: Bearer $TOKEN"; J='content-type: application/json'
 
-# 1. Create a newsletter (its sender identity, and the Postmark broadcast
-#    stream its campaigns go through — the stream's ID, as created in Postmark).
+# 1. Create a newsletter: its sender identity, and the two Postmark streams it
+#    sends through, by the IDs you gave them in Postmark — a Broadcasts stream
+#    for campaigns and a Transactional stream for subscription confirmations.
 NL=$(curl -sX POST localhost:3000/v1/newsletters -H "$A" -H "$J" -d '{
   "name": "The Weekly Dispatch",
   "fromName": "Dispatch Editors",
   "fromEmail": "editors@dispatch.example",
   "replyTo": "replies@dispatch.example",
-  "sendingChannel": "weekly-dispatch"
+  "campaignChannel": "weekly-dispatch",
+  "confirmationChannel": "weekly-confirmations"
 }' | jq -r .id)
 
 # 2. Create a reusable template (Handlebars in subject + body).
@@ -247,10 +249,13 @@ cablegram login                                                          # promp
 
 NL=$(cablegram --json newsletters create \
       --name "The Weekly Dispatch" --from-name "Dispatch Editors" \
-      --from-email editors@dispatch.example --sending-channel weekly-dispatch | jq -r .id)
+      --from-email editors@dispatch.example \
+      --campaign-channel weekly-dispatch --confirmation-channel weekly-confirmations | jq -r .id)
 
-# A newsletter created before sendingChannel existed can't send until it has one:
-cablegram newsletters update "$NL" --sending-channel weekly-dispatch
+# A newsletter created before a channel existed needs it set: campaigns need the
+# campaign channel, double opt-in signups need the confirmation channel.
+cablegram newsletters update "$NL" --campaign-channel weekly-dispatch \
+      --confirmation-channel weekly-confirmations
 
 cablegram subscriptions import "$NL" subscribers.csv --dry-run   # status breakdown, writes nothing
 cablegram subscriptions import "$NL" subscribers.csv             # preserves each row's status
@@ -446,7 +451,7 @@ All configuration is environment variables (no config files on disk). See [`.env
 | `JWT_REFRESH_TTL_SECONDS` | no | `2592000` | Refresh-token lifetime (30d). |
 | `EMAIL_PROVIDER` | no | `postmark` | Email backend seam; only `postmark` today. |
 | `POSTMARK_TRANSACTIONAL_SERVER_TOKEN` | no | *(= broadcast token)* | Separate token for **transactional** sends (account + confirmation mail). Falls back to `POSTMARK_SERVER_TOKEN`. |
-| `POSTMARK_TRANSACTIONAL_STREAM` | yes | — | ID of the Postmark message stream for **transactional** mail (account + confirmation). No default: stream IDs are chosen when a stream is created ([ADR-030](docs/adrs/ADR-030-sending-channels.md)). Campaign streams are set per newsletter (`sendingChannel`), not here. |
+| `SYSTEM_EMAIL_CHANNEL` | yes | — | Provider channel for **account mail** (password reset, magic link); for Postmark, a Transactional stream ID. No default: stream IDs are chosen when a stream is created ([ADR-031](docs/adrs/ADR-031-confirmation-and-system-channels.md)). Newsletter mail is not set here — each newsletter names its `campaignChannel` and `confirmationChannel`. The old name `POSTMARK_TRANSACTIONAL_STREAM` is still accepted when this is unset (deprecated; logs a warning). |
 | `SYSTEM_EMAIL_FROM_NAME` | no | `cablegram` | Display name for account mail. |
 | `EMAIL_LINK_ENABLED` | no | `false` | If `true`, account emails link to the base URLs below (both then **required**); else they carry the raw token + API path. |
 | `PASSWORD_RESET_URL_BASE` | if links on | — | Front-end base for the reset link; the token is appended as `?token=`. |
@@ -472,7 +477,7 @@ All configuration is environment variables (no config files on disk). See [`.env
 - **No scheduling in v1.** Sending is on-demand only; there is no `scheduled` status and no timer.
 - **A test send is the same send, aimed elsewhere.** `POST /v1/campaigns/{id}/test` renders through
   the exact same path as a real send (same renderer call, same `List-Unsubscribe` headers, same
-  broadcast stream — the newsletter's `sendingChannel`) and records **nothing** — no send record, no outcomes, no stats, no state change
+  broadcast stream — the newsletter's `campaignChannel`) and records **nothing** — no send record, no outcomes, no stats, no state change
   — so it is safe to repeat. It never reads the subscriber list, but the global suppression list
   still applies, the subject is prefixed `[TEST] ` unless you pass `prefixSubject: false`, and it is
   legal on an already-`sent` campaign ([ADR-025](docs/adrs/ADR-025-campaign-test-send.md)).
@@ -542,7 +547,7 @@ docker run --rm -p 3000:3000 \
   -e JWT_SECRET="change-me-to-a-long-random-secret-at-least-32-chars" \
   -e POSTMARK_SERVER_TOKEN="pm-server-token" \
   -e POSTMARK_WEBHOOK_SECRET="change-me" \
-  -e POSTMARK_TRANSACTIONAL_STREAM="outbound" \
+  -e SYSTEM_EMAIL_CHANNEL="outbound" \
   -e SYSTEM_EMAIL_FROM_ADDRESS="system@example.com" \
   -e BASE_URL="http://localhost:3000" \
   cablegram

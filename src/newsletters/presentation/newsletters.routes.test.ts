@@ -9,7 +9,8 @@ const body = {
   name: 'The Weekly Dispatch',
   fromName: 'Dispatch Editors',
   fromEmail: 'editors@dispatch.example',
-  sendingChannel: 'weekly-dispatch',
+  campaignChannel: 'weekly-dispatch',
+  confirmationChannel: 'weekly-confirmations',
 };
 
 function build() {
@@ -139,41 +140,80 @@ describe('newsletters routes', () => {
     expect(doc.components?.securitySchemes).toHaveProperty('BearerAuth');
   });
 
-  describe('sendingChannel (ADR-030)', () => {
-    it('returns the channel on the DTO', async () => {
+  describe('campaign and confirmation channels (ADR-030, ADR-031)', () => {
+    async function patch(id: string, patchBody: Record<string, unknown>) {
+      return app.request(`/v1/newsletters/${id}`, {
+        method: 'PATCH',
+        headers: auth,
+        body: JSON.stringify(patchBody),
+      });
+    }
+
+    it('returns both channels on the DTO', async () => {
       const json = (await (await create()).json()) as Record<string, unknown>;
-      expect(json.sendingChannel).toBe('weekly-dispatch');
+      expect(json.campaignChannel).toBe('weekly-dispatch');
+      expect(json.confirmationChannel).toBe('weekly-confirmations');
     });
 
-    it('requires it on create — there is no default', async () => {
-      const { sendingChannel: _omit, ...withoutChannel } = body;
-      void _omit;
-      const res = await app.request('/v1/newsletters', {
+    it('requires both on create — there is no default', async () => {
+      const { campaignChannel: _c, ...withoutCampaign } = body;
+      void _c;
+      const noCampaign = await app.request('/v1/newsletters', {
         method: 'POST',
         headers: auth,
-        body: JSON.stringify(withoutChannel),
+        body: JSON.stringify(withoutCampaign),
       });
-      expect(res.status).toBe(400);
-      expect(JSON.stringify(await res.json())).toContain('sendingChannel');
+      expect(noCampaign.status).toBe(400);
+      expect(JSON.stringify(await noCampaign.json())).toContain('campaignChannel');
+
+      const { confirmationChannel: _f, ...withoutConfirmation } = body;
+      void _f;
+      const noConfirmation = await app.request('/v1/newsletters', {
+        method: 'POST',
+        headers: auth,
+        body: JSON.stringify(withoutConfirmation),
+      });
+      expect(noConfirmation.status).toBe(400);
+      expect(JSON.stringify(await noConfirmation.json())).toContain('confirmationChannel');
     });
 
-    it('changes it on update, but will not clear it', async () => {
+    it('still accepts the 3.1.0 name `sendingChannel` for the campaign channel', async () => {
+      const { campaignChannel: _c, ...rest } = body;
+      void _c;
+      // Posted directly: `create` would merge the overrides over `body`, which
+      // already carries `campaignChannel`.
+      const created = await app.request('/v1/newsletters', {
+        method: 'POST',
+        headers: auth,
+        body: JSON.stringify({ ...rest, sendingChannel: 'legacy-name' }),
+      });
+      expect(created.status).toBe(201);
+      const json = (await created.json()) as { id: string; campaignChannel: string };
+      expect(json.campaignChannel).toBe('legacy-name');
+
+      const renamed = await patch(json.id, { sendingChannel: 'renamed' });
+      expect(renamed.status).toBe(200);
+      expect(((await renamed.json()) as { campaignChannel: string }).campaignChannel).toBe('renamed');
+    });
+
+    it('refuses both names with different values instead of guessing', async () => {
+      const res = await create({ campaignChannel: 'a', sendingChannel: 'b' });
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(await res.json())).toContain('disagree');
+    });
+
+    it('changes either channel on update, but will not clear it', async () => {
       const { id } = (await (await create()).json()) as { id: string };
 
-      const changed = await app.request(`/v1/newsletters/${id}`, {
-        method: 'PATCH',
-        headers: auth,
-        body: JSON.stringify({ sendingChannel: 'monthly-digest' }),
-      });
+      const changed = await patch(id, { confirmationChannel: 'monthly-confirmations' });
       expect(changed.status).toBe(200);
-      expect(((await changed.json()) as { sendingChannel: string }).sendingChannel).toBe('monthly-digest');
-
-      const cleared = await app.request(`/v1/newsletters/${id}`, {
-        method: 'PATCH',
-        headers: auth,
-        body: JSON.stringify({ sendingChannel: null }),
+      expect(await changed.json()).toMatchObject({
+        campaignChannel: 'weekly-dispatch',
+        confirmationChannel: 'monthly-confirmations',
       });
-      expect(cleared.status).toBe(400);
+
+      expect((await patch(id, { campaignChannel: null })).status).toBe(400);
+      expect((await patch(id, { confirmationChannel: null })).status).toBe(400);
     });
   });
 });

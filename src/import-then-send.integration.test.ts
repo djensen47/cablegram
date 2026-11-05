@@ -91,7 +91,8 @@ describe('import then send (ADR-022)', () => {
       name: 'The Weekly Dispatch',
       fromName: 'Dispatch Editors',
       fromEmail: 'editors@dispatch.example',
-      sendingChannel: 'weekly-dispatch',
+      campaignChannel: 'weekly-dispatch',
+      confirmationChannel: 'weekly-confirmations',
     });
     return ((await res.json()) as { id: string }).id;
   }

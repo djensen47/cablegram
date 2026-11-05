@@ -31,6 +31,7 @@ export class FacadeNewsletterDirectory implements NewsletterDirectory {
         fromName: newsletter.fromName,
         fromEmail: newsletter.fromEmail.value,
         replyTo: newsletter.replyTo?.value ?? null,
+        confirmationChannel: newsletter.confirmationChannel,
       };
     } catch (err) {
       if (err instanceof NewsletterNotFoundError) return null;

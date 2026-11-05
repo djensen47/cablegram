@@ -66,7 +66,7 @@ const env = {
   DATABASE_URL: 'mongodb://localhost/cablegram',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 't',
-  POSTMARK_TRANSACTIONAL_STREAM: 'outbound',
+  SYSTEM_EMAIL_CHANNEL: 'outbound',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
   POSTMARK_WEBHOOK_SECRET: 's',
   BASE_URL,
@@ -140,7 +140,8 @@ describe('campaigns — test send (ADR-025)', () => {
         name: 'The Weekly Dispatch',
         fromName: 'Dispatch Editors',
         fromEmail: 'editors@dispatch.example',
-        sendingChannel: 'weekly-dispatch',
+        campaignChannel: 'weekly-dispatch',
+        confirmationChannel: 'weekly-confirmations',
       });
     newsletterId = newsletter.id;
 
@@ -328,7 +329,8 @@ describe('campaigns — test send (ADR-025)', () => {
         name: 'Provider-owned',
         fromName: 'Editors',
         fromEmail: 'editors@dispatch.example',
-        sendingChannel: 'weekly-dispatch',
+        campaignChannel: 'weekly-dispatch',
+        confirmationChannel: 'weekly-confirmations',
       });
     const campaign = await provider.container
       .get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign)

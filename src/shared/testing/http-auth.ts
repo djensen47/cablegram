@@ -20,7 +20,7 @@ export const TEST_ENV = {
   BASE_URL: 'https://cablegram.test',
   JWT_SECRET: TEST_JWT_SECRET,
   POSTMARK_SERVER_TOKEN: 't',
-  POSTMARK_TRANSACTIONAL_STREAM: 'outbound',
+  SYSTEM_EMAIL_CHANNEL: 'outbound',
   POSTMARK_WEBHOOK_SECRET: 's',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
 } as NodeJS.ProcessEnv;

@@ -22,7 +22,7 @@ export class FacadeNewsletterGateway implements NewsletterGateway {
         fromName: newsletter.fromName,
         fromEmail: newsletter.fromEmail.value,
         replyTo: newsletter.replyTo?.value ?? null,
-        sendingChannel: newsletter.sendingChannel,
+        campaignChannel: newsletter.campaignChannel,
       };
     } catch (err) {
       if (err instanceof NewsletterNotFoundError) return null;

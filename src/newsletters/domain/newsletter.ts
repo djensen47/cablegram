@@ -16,7 +16,7 @@ const DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{
 const DKIM_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/i;
 // A provider's own identifier, so the shape is deliberately loose: Postmark
 // documents no ID rules for message streams. Only obvious garbage is refused.
-const SENDING_CHANNEL_RE = /^\S{1,100}$/;
+const CHANNEL_RE = /^\S{1,100}$/;
 
 /**
  * A validated, normalized email address value object. Stored and compared in
@@ -52,15 +52,26 @@ export interface NewsletterProps {
   sendingDomain: string | null;
   dkimIdentifier: string | null;
   /**
-   * Which of the provider's sending channels this newsletter's campaigns go
-   * through (ADR-030) — for Postmark, the ID of a broadcast message stream, which
-   * the operator chooses when creating the stream. Named for the role, not the
-   * vendor (ADR-008).
+   * The provider channel this newsletter's **campaigns** go through (ADR-030;
+   * named `sendingChannel` until ADR-031) — for Postmark, the ID of a
+   * Broadcasts-type message stream, chosen by the operator. Named for the role,
+   * not the vendor (ADR-008).
    *
    * `null` only on a newsletter stored before the field existed: it reads back
-   * normally, but cannot send until one is set. A new newsletter always has one.
+   * normally, but cannot send a campaign until one is set.
    */
-  sendingChannel: string | null;
+  campaignChannel: string | null;
+  /**
+   * The provider channel this newsletter's **subscription confirmations** go
+   * through (ADR-031) — for Postmark, the ID of a Transactional-type stream.
+   * Kept apart from `campaignChannel` because Postmark suppresses per stream:
+   * on the campaign stream, someone who once unsubscribed could never receive
+   * the confirmation for a re-signup.
+   *
+   * `null` on a newsletter created before ADR-031: double opt-in signups to it
+   * are refused until one is set; single opt-in sends no mail and is unaffected.
+   */
+  confirmationChannel: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -75,7 +86,9 @@ export interface CreateNewsletterProps {
   sendingDomain?: string | null;
   dkimIdentifier?: string | null;
   /** Required: there is no default channel to fall back on (ADR-030). */
-  sendingChannel: string;
+  campaignChannel: string;
+  /** Required, for the same reason (ADR-031). */
+  confirmationChannel: string;
   now: Date;
 }
 
@@ -88,7 +101,9 @@ export interface UpdateNewsletterProps {
   sendingDomain?: string | null;
   dkimIdentifier?: string | null;
   /** May be changed, never cleared — a newsletter without one cannot send. */
-  sendingChannel?: string;
+  campaignChannel?: string;
+  /** May be changed, never cleared (ADR-031). */
+  confirmationChannel?: string;
 }
 
 function requireText(value: string, field: string): string {
@@ -110,13 +125,10 @@ function optionalDomain(value: string | null | undefined): string | null {
   return trimmed;
 }
 
-function requireSendingChannel(value: string): string {
+function requireChannel(field: 'campaignChannel' | 'confirmationChannel', value: string): string {
   const trimmed = value.trim();
-  if (!SENDING_CHANNEL_RE.test(trimmed)) {
-    throw new InvalidNewsletterError(
-      'sendingChannel',
-      'must be 1-100 characters with no whitespace',
-    );
+  if (!CHANNEL_RE.test(trimmed)) {
+    throw new InvalidNewsletterError(field, 'must be 1-100 characters with no whitespace');
   }
   return trimmed;
 }
@@ -151,7 +163,8 @@ export class Newsletter {
         : null,
       sendingDomain: optionalDomain(input.sendingDomain),
       dkimIdentifier: optionalDkim(input.dkimIdentifier),
-      sendingChannel: requireSendingChannel(input.sendingChannel),
+      campaignChannel: requireChannel('campaignChannel', input.campaignChannel),
+      confirmationChannel: requireChannel('confirmationChannel', input.confirmationChannel),
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -177,8 +190,11 @@ export class Newsletter {
     }
     if (changes.sendingDomain !== undefined) next.sendingDomain = optionalDomain(changes.sendingDomain);
     if (changes.dkimIdentifier !== undefined) next.dkimIdentifier = optionalDkim(changes.dkimIdentifier);
-    if (changes.sendingChannel !== undefined) {
-      next.sendingChannel = requireSendingChannel(changes.sendingChannel);
+    if (changes.campaignChannel !== undefined) {
+      next.campaignChannel = requireChannel('campaignChannel', changes.campaignChannel);
+    }
+    if (changes.confirmationChannel !== undefined) {
+      next.confirmationChannel = requireChannel('confirmationChannel', changes.confirmationChannel);
     }
 
     next.updatedAt = now;
@@ -206,8 +222,11 @@ export class Newsletter {
   get dkimIdentifier(): string | null {
     return this.props.dkimIdentifier;
   }
-  get sendingChannel(): string | null {
-    return this.props.sendingChannel;
+  get campaignChannel(): string | null {
+    return this.props.campaignChannel;
+  }
+  get confirmationChannel(): string | null {
+    return this.props.confirmationChannel;
   }
   get createdAt(): Date {
     return this.props.createdAt;

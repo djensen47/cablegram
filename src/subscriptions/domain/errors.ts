@@ -46,6 +46,17 @@ export class SubscriptionNewsletterNotFoundError extends SubscriptionError {
   }
 }
 
+/**
+ * A double opt-in signup needs a confirmation email, and the newsletter has no
+ * confirmation channel to send it through (ADR-031) — it predates the field.
+ * Raised before the subscription is created or revived, so nothing is written.
+ */
+export class SubscriptionConfirmationChannelMissingError extends SubscriptionError {
+  constructor(readonly newsletterId: string) {
+    super(`Newsletter ${newsletterId} has no confirmation channel set`);
+  }
+}
+
 /** A requested state transition is not legal for the subscription's current status. */
 export class SubscriptionStateError extends SubscriptionError {
   constructor(reason: string) {

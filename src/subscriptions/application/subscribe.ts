@@ -6,7 +6,10 @@ import type { Clock } from '../../shared/clock/index.js';
 import { EMAIL_TYPES, type DeliveryGateway } from '../../shared/email/index.js';
 import { SUBSCRIPTION_TYPES } from '../types.js';
 import { Subscription } from '../domain/subscription.js';
-import { SubscriptionNewsletterNotFoundError } from '../domain/errors.js';
+import {
+  SubscriptionConfirmationChannelMissingError,
+  SubscriptionNewsletterNotFoundError,
+} from '../domain/errors.js';
 import type { SubscriptionRepository } from './subscription-repository.js';
 import type { NewsletterDirectory, NewsletterInfo } from './newsletter-directory.js';
 import type { SubscribeInput } from './dtos.js';
@@ -59,6 +62,9 @@ export class Subscribe {
       if (!LAPSED.includes(existing.status)) {
         return existing;
       }
+      // Reviving under double opt-in sends a confirmation: check its channel
+      // before the row changes (ADR-031).
+      this.requireConfirmationChannel(newsletter, doubleOptIn);
       existing.resubscribe({
         customFields: input.customFields,
         tags: input.tags,
@@ -73,6 +79,8 @@ export class Subscribe {
       return existing;
     }
 
+    // Same check for a new row, before it is written (ADR-031).
+    this.requireConfirmationChannel(newsletter, doubleOptIn);
     const subscription = Subscription.create({
       id: newId(),
       newsletterId: input.newsletterId,
@@ -90,10 +98,28 @@ export class Subscribe {
     return subscription;
   }
 
+  /**
+   * A double opt-in signup is only accepted when its confirmation can actually
+   * be sent. Checked *before* any write, so a newsletter that predates
+   * `confirmationChannel` refuses the signup cleanly instead of leaving a
+   * `pending` row that no email will ever confirm. Single opt-in sends nothing
+   * and needs no channel.
+   */
+  private requireConfirmationChannel(newsletter: NewsletterInfo, doubleOptIn: boolean): void {
+    if (doubleOptIn && newsletter.confirmationChannel === null) {
+      throw new SubscriptionConfirmationChannelMissingError(newsletter.id);
+    }
+  }
+
   private async sendConfirmation(
     newsletter: NewsletterInfo,
     subscription: Subscription,
   ): Promise<void> {
+    const sendingChannel = newsletter.confirmationChannel;
+    // Unreachable after `requireConfirmationChannel`, kept so the type is honest.
+    if (sendingChannel === null) {
+      throw new SubscriptionConfirmationChannelMissingError(newsletter.id);
+    }
     // The confirm endpoint's own path is the confirmation reference — no extra
     // config/host coupling; the caller renders it into a link if it fronts a UI.
     const confirmPath =
@@ -114,8 +140,10 @@ export class Subscribe {
         textBody: `Please confirm your subscription: ${confirmPath}`,
       },
       recipients: [{ email: subscription.email }],
-      // A confirmation is transactional, not a broadcast (ADR-008).
+      // A confirmation is transactional, not a broadcast (ADR-008), and goes
+      // through the newsletter's own confirmation channel (ADR-031).
       category: 'transactional',
+      sendingChannel,
       tag: 'subscription-confirmation',
     });
   }

@@ -13,6 +13,9 @@ import {
   NEWSLETTER_TYPES,
   InMemoryNewsletterRepository,
   CreateNewsletter,
+  Newsletter,
+  EmailAddress,
+  type NewsletterRepository,
 } from '../../newsletters/index.js';
 import {
   DELIVERABILITY_TYPES,
@@ -38,7 +41,8 @@ async function seedNewsletter(container: Container): Promise<string> {
       name: 'The Weekly Dispatch',
       fromName: 'Dispatch Editors',
       fromEmail: 'editors@dispatch.example',
-      sendingChannel: 'weekly-dispatch',
+      campaignChannel: 'weekly-dispatch',
+      confirmationChannel: 'weekly-confirmations',
     });
   return newsletter.id;
 }
@@ -67,6 +71,37 @@ describe('subscriptions routes', () => {
   it('requires a JWT', async () => {
     const res = await app.request(`/v1/newsletters/${newsletterId}/subscriptions`);
     expect(res.status).toBe(401);
+  });
+
+  it('answers 409 with the fix when a double opt-in newsletter has no confirmation channel (ADR-031)', async () => {
+    const now = new Date('2026-01-01T00:00:00Z');
+    await container.get<NewsletterRepository>(NEWSLETTER_TYPES.NewsletterRepository).create(
+      Newsletter.reconstitute({
+        id: 'legacy-1',
+        name: 'Legacy',
+        fromName: 'Editors',
+        fromEmail: EmailAddress.create('editors@dispatch.example'),
+        replyTo: null,
+        sendingDomain: null,
+        dkimIdentifier: null,
+        campaignChannel: 'legacy-stream',
+        confirmationChannel: null,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    );
+
+    const res = await app.request('/v1/newsletters/legacy-1/subscriptions', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ email: 'reader@dispatch.example', doubleOptIn: true }),
+    });
+
+    expect(res.status).toBe(409);
+    const { error } = (await res.json()) as { error: { message: string } };
+    expect(error.message).toContain('has no confirmation channel');
+    expect(error.message).toContain('cablegram newsletters update legacy-1 --confirmation-channel');
+    expect(gateway.sent).toHaveLength(0);
   });
 
   it('subscribes with double opt-in (201, pending) and sends one email', async () => {

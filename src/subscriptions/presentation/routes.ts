@@ -2,6 +2,7 @@ import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import type { Container } from 'inversify';
 import {
   BadRequestError,
+  ConflictError,
   NotFoundError,
   errorResponse,
   optionalJsonBody,
@@ -11,6 +12,7 @@ import {
 } from '../../shared/http/index.js';
 import { SUBSCRIPTION_TYPES } from '../types.js';
 import {
+  SubscriptionConfirmationChannelMissingError,
   SubscriptionError,
   SubscriptionNewsletterNotFoundError,
   SubscriptionNotFoundError,
@@ -45,6 +47,14 @@ function rethrowDomainError(err: unknown): never {
     err instanceof SubscriptionNewsletterNotFoundError
   ) {
     throw new NotFoundError(err.message);
+  }
+  if (err instanceof SubscriptionConfirmationChannelMissingError) {
+    // A fact about the newsletter's setup, not this request: say how to fix it.
+    throw new ConflictError(
+      `${err.message}, so a double opt-in confirmation cannot be sent. Set it with ` +
+        `PATCH /v1/newsletters/${err.newsletterId} ({"confirmationChannel": "<stream-id>"}), or ` +
+        `"cablegram newsletters update ${err.newsletterId} --confirmation-channel <stream-id>".`,
+    );
   }
   if (err instanceof SubscriptionError) {
     throw new BadRequestError(err.message);

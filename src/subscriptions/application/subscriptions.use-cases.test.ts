@@ -10,6 +10,9 @@ import {
   NEWSLETTER_TYPES,
   InMemoryNewsletterRepository,
   CreateNewsletter,
+  Newsletter,
+  EmailAddress,
+  type NewsletterRepository,
 } from '../../newsletters/index.js';
 import {
   SUBSCRIPTION_TYPES,
@@ -24,6 +27,7 @@ import {
   SubscriptionNewsletterNotFoundError,
   SubscriptionNotFoundError,
   SubscriptionStateError,
+  SubscriptionConfirmationChannelMissingError,
   InvalidSubscriptionEmailError,
   InvalidUnsubscribeTokenError,
 } from '../index.js';
@@ -40,7 +44,7 @@ const env = {
   BASE_URL: 'https://cablegram.test',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 't',
-  POSTMARK_TRANSACTIONAL_STREAM: 'outbound',
+  SYSTEM_EMAIL_CHANNEL: 'outbound',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
   POSTMARK_WEBHOOK_SECRET: 's',
 } as NodeJS.ProcessEnv;
@@ -74,7 +78,8 @@ async function seedNewsletter(container: Container): Promise<string> {
       name: 'The Weekly Dispatch',
       fromName: 'Dispatch Editors',
       fromEmail: 'editors@dispatch.example',
-      sendingChannel: 'weekly-dispatch',
+      campaignChannel: 'weekly-dispatch',
+      confirmationChannel: 'weekly-confirmations',
     });
   return newsletter.id;
 }
@@ -99,6 +104,85 @@ describe('subscriptions use cases', () => {
     expect(gateway.sent).toHaveLength(1);
     expect(gateway.sent[0]?.recipients).toEqual([{ email: 'reader@dispatch.example' }]);
     expect(gateway.sent[0]?.from.fromEmail).toBe('editors@dispatch.example');
+  });
+
+  describe('confirmation channel (ADR-031)', () => {
+    it("sends the confirmation through the newsletter's confirmation channel, not its campaign channel", async () => {
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: true });
+
+      expect(gateway.sent[0]).toMatchObject({
+        category: 'transactional',
+        sendingChannel: 'weekly-confirmations',
+      });
+    });
+
+    describe('a newsletter stored before the field existed', () => {
+      async function legacyNewsletter(): Promise<string> {
+        const now = new Date('2026-01-01T00:00:00Z');
+        await container.get<NewsletterRepository>(NEWSLETTER_TYPES.NewsletterRepository).create(
+          Newsletter.reconstitute({
+            id: 'legacy-1',
+            name: 'Legacy',
+            fromName: 'Editors',
+            fromEmail: EmailAddress.create('editors@dispatch.example'),
+            replyTo: null,
+            sendingDomain: null,
+            dkimIdentifier: null,
+            campaignChannel: 'legacy-stream',
+            confirmationChannel: null,
+            createdAt: now,
+            updatedAt: now,
+          }),
+        );
+        return 'legacy-1';
+      }
+
+      it('refuses a double opt-in signup before writing the row or sending', async () => {
+        const id = await legacyNewsletter();
+
+        await expect(
+          container
+            .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+            .execute({ newsletterId: id, email: 'reader@dispatch.example', doubleOptIn: true }),
+        ).rejects.toBeInstanceOf(SubscriptionConfirmationChannelMissingError);
+
+        // No `pending` row that no email will ever confirm.
+        const rows = await container
+          .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+          .execute({ newsletterId: id, limit: 50 });
+        expect(rows).toHaveLength(0);
+        expect(gateway.sent).toHaveLength(0);
+      });
+
+      it('refuses reviving a lapsed row under double opt-in, leaving it unchanged', async () => {
+        const id = await legacyNewsletter();
+        const subscribe = container.get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe);
+        const first = await subscribe.execute({ newsletterId: id, email: 'r@dispatch.example', doubleOptIn: false });
+        await container.get<Unsubscribe>(SUBSCRIPTION_TYPES.Unsubscribe).execute(id, first.id);
+
+        await expect(
+          subscribe.execute({ newsletterId: id, email: 'r@dispatch.example', doubleOptIn: true }),
+        ).rejects.toBeInstanceOf(SubscriptionConfirmationChannelMissingError);
+
+        const rows = await container
+          .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+          .execute({ newsletterId: id, limit: 50 });
+        expect(rows[0]?.status).toBe('unsubscribed');
+      });
+
+      it('still accepts a single opt-in signup, which sends no mail', async () => {
+        const id = await legacyNewsletter();
+
+        const subscription = await container
+          .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+          .execute({ newsletterId: id, email: 'reader@dispatch.example', doubleOptIn: false });
+
+        expect(subscription.status).toBe('subscribed');
+        expect(gateway.sent).toHaveLength(0);
+      });
+    });
   });
 
   it('single opt-in creates a subscribed subscription and sends no email', async () => {

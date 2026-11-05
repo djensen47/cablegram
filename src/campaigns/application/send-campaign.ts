@@ -11,7 +11,7 @@ import { RecipientOutcome } from '../domain/recipient-outcome.js';
 import {
   CampaignNotFoundError,
   CampaignNewsletterNotFoundError,
-  CampaignSendingChannelMissingError,
+  CampaignChannelMissingError,
 } from '../domain/errors.js';
 import type { CampaignRepository } from './campaign-repository.js';
 import type { SendRepository } from './send-repository.js';
@@ -79,10 +79,10 @@ export class SendCampaign {
     // …and so must the channel it goes through (ADR-030). Checked here, before
     // the send record or any outcome is written, so a newsletter that predates
     // the field leaves the campaign exactly as it was.
-    if (sender.sendingChannel === null) {
-      throw new CampaignSendingChannelMissingError(campaign.newsletterId);
+    if (sender.campaignChannel === null) {
+      throw new CampaignChannelMissingError(campaign.newsletterId);
     }
-    const sendingChannel = sender.sendingChannel;
+    const sendingChannel = sender.campaignChannel;
 
     // Gate 1: subscribed recipients narrowed by the query-time segment.
     const resolved = await this.recipients.resolve(campaign.newsletterId, campaign.segment());

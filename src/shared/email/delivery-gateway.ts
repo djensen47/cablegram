@@ -41,8 +41,8 @@ export interface SenderIdentity {
  *    password-reset and magic-link emails).
  * The adapter maps a category to which server token signs the request (a
  * transactional server may have its own token). Which provider **channel** the
- * mail goes through is a separate fact: a broadcast names its own
- * (`sendingChannel`, ADR-030); transactional mail uses one configured channel.
+ * mail goes through is a separate fact that every message names for itself
+ * (`sendingChannel`, ADR-030/031).
  */
 export type MessageCategory = 'broadcast' | 'transactional';
 
@@ -53,34 +53,30 @@ export interface RenderedMessage {
   readonly textBody?: string | null;
 }
 
-/** What every send carries, whatever its category. */
-interface BulkMessageBase {
+/**
+ * One logical send: the same rendered message to a whole recipient set. The
+ * gateway submits it to Postmark's Bulk API in a single call — the content is
+ * defined once and the recipients ride along in the request (ADR-008). There is
+ * no per-call recipient cap (only a 50 MB payload ceiling).
+ */
+export interface BulkMessage {
   readonly from: SenderIdentity;
   readonly content: RenderedMessage;
   readonly recipients: readonly EmailRecipient[];
+  /** The caller's declared intent; the adapter picks the signing token from it. */
+  readonly category: MessageCategory;
+  /**
+   * The provider channel this message goes through — required on **every**
+   * message (ADR-031), because a provider can carry several of each kind and
+   * the gateway must not pick one. It is a channel the operator configured, not
+   * a provider name baked into the caller: a newsletter's `campaignChannel` or
+   * `confirmationChannel`, or the system email channel for account mail. The
+   * adapter decides what it means (for Postmark, a message stream ID).
+   */
+  readonly sendingChannel: string;
   /** Optional correlation tag (e.g. a campaign id) echoed back on events. */
   readonly tag?: string;
 }
-
-/**
- * One logical broadcast: the same rendered message to a whole recipient set.
- * The gateway submits it to Postmark's Bulk API in a single call — the content
- * is defined once and the recipients ride along in the request (ADR-008). There
- * is no per-call recipient cap (only a 50 MB payload ceiling).
- *
- * The category is the caller's declared intent. A broadcast also names the
- * provider channel it goes through — the newsletter's `sendingChannel`
- * (ADR-030) — and the type makes that impossible to forget. It is a channel the
- * operator configured, not a provider name baked into the caller: the adapter
- * decides what it means (for Postmark, a message stream ID).
- */
-export type BulkMessage =
-  | (BulkMessageBase & {
-      readonly category: 'broadcast';
-      /** The newsletter's configured provider channel (ADR-030). */
-      readonly sendingChannel: string;
-    })
-  | (BulkMessageBase & { readonly category: 'transactional' });
 
 /**
  * The provider's acknowledgment of a bulk submission. Postmark's Bulk API

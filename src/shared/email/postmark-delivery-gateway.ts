@@ -122,12 +122,8 @@ export class PostmarkDeliveryGateway implements DeliveryGateway {
       Subject: message.content.subject,
       HtmlBody: message.content.htmlBody,
       // Stream IDs are chosen by the operator in Postmark, so none is assumed
-      // here (ADR-030): a broadcast goes through its newsletter's channel, and
-      // transactional mail through the one configured transactional stream.
-      MessageStream:
-        message.category === 'broadcast'
-          ? message.sendingChannel
-          : this.config.postmark.transactionalStream,
+      // here (ADR-030/031): every message names its own channel, verbatim.
+      MessageStream: message.sendingChannel,
       Messages: message.recipients.map((r) => {
         const entry: PostmarkBulkRecipient = { To: r.email };
         if (r.headers && r.headers.length > 0) {

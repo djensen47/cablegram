@@ -25,7 +25,8 @@ export class CreateNewsletter {
       replyTo: input.replyTo,
       sendingDomain: input.sendingDomain,
       dkimIdentifier: input.dkimIdentifier,
-      sendingChannel: input.sendingChannel,
+      campaignChannel: input.campaignChannel,
+      confirmationChannel: input.confirmationChannel,
       now: this.clock.now(),
     });
 

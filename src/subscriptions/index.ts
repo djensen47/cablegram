@@ -37,6 +37,7 @@ export {
   SubscriptionNotFoundError,
   SubscriptionNewsletterNotFoundError,
   SubscriptionStateError,
+  SubscriptionConfirmationChannelMissingError,
   InvalidUnsubscribeTokenError,
 } from './domain/errors.js';
 export type {

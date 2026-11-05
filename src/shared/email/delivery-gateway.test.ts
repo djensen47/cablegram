@@ -14,24 +14,18 @@ const env = {
   BASE_URL: 'https://cablegram.test',
   JWT_SECRET: 'a-sufficiently-long-jwt-signing-secret-value',
   POSTMARK_SERVER_TOKEN: 'server-token',
-  POSTMARK_TRANSACTIONAL_STREAM: 'outbound',
+  SYSTEM_EMAIL_CHANNEL: 'outbound',
   POSTMARK_WEBHOOK_SECRET: 's',
   SYSTEM_EMAIL_FROM_ADDRESS: 'system@cablegram.example',
 } as NodeJS.ProcessEnv;
 
 /**
  * A gateway wired with the two tokens the config resolves (fallback applied).
- * The transactional stream is deliberately not Postmark's usual `outbound`, so
- * a test can tell the configured value from an assumed one (ADR-030).
+ * It is given no stream at all: every message names its own (ADR-031).
  */
 function gatewayWith(serverToken: string, transactionalServerToken = serverToken) {
   return new PostmarkDeliveryGateway({
-    postmark: {
-      serverToken,
-      transactionalServerToken,
-      transactionalStream: 'account-mail',
-      webhookSecret: 's',
-    },
+    postmark: { serverToken, transactionalServerToken, webhookSecret: 's' },
   } as never);
 }
 
@@ -44,10 +38,16 @@ const message = {
   tag: 'campaign-42',
 } satisfies BulkMessage;
 
-/** The same content as a transactional send, which names no channel. */
-const { sendingChannel: _channel, ...transactionalBase } = message;
-void _channel;
-const transactional = { ...transactionalBase, category: 'transactional' as const } satisfies BulkMessage;
+/**
+ * The same content as a transactional send, through its own channel. Not
+ * Postmark's usual `outbound`, so a test can tell the given value from an
+ * assumed one.
+ */
+const transactional = {
+  ...message,
+  category: 'transactional' as const,
+  sendingChannel: 'account-mail',
+} satisfies BulkMessage;
 
 /** A captured `/email/bulk` request: its URL, parsed JSON body, and headers. */
 interface CapturedCall {
@@ -135,13 +135,14 @@ describe('PostmarkDeliveryGateway.send', () => {
       content: { subject: 'Hi', htmlBody: '<p>x</p>' },
       recipients: [{ email: 'c@example.com' }],
       category: 'transactional',
+      sendingChannel: 'account-mail',
     });
 
     const req = calls[0]!.body;
     expect(req).not.toHaveProperty('ReplyTo');
     expect(req).not.toHaveProperty('TextBody');
     expect(req).not.toHaveProperty('Tag');
-    // Transactional mail goes through the one configured transactional stream.
+    // Transactional mail goes through the channel the message names, verbatim.
     expect(req.MessageStream).toBe('account-mail');
     expect(req.Messages).toEqual([{ To: 'c@example.com' }]);
   });
