@@ -5,6 +5,9 @@
 Accepted — 2026-11-03. **Implemented** the same day. Amends [ADR-008](ADR-008-email-delivery-postmark.md)
 (the email port now carries a channel for broadcasts) and corrects
 [ADR-029](ADR-029-unsubscribe-handling.md)'s claim that every newsletter shares one stream.
+Amended by [ADR-031](ADR-031-confirmation-and-system-channels.md): `sendingChannel` is renamed
+`campaignChannel` (the old name still works), confirmations get their own per-newsletter channel, and
+§4's single `POSTMARK_TRANSACTIONAL_STREAM` is replaced by `SYSTEM_EMAIL_CHANNEL` for account mail.
 
 ## Context
 
