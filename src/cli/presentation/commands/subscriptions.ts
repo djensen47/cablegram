@@ -97,7 +97,10 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
     .option('--email <email>', 'address to subscribe')
     .option('--tag <tag>', 'tag (repeatable)', collect, [])
     .option('--field <key=value>', 'custom field (repeatable)', collect, [])
-    .option('--no-double-opt-in', 'subscribe immediately without a confirmation email')
+    // Both forms, so leaving them out sends nothing and the newsletter's own
+    // setting decides (ADR-032). commander leaves `doubleOptIn` undefined then.
+    .option('--double-opt-in', 'require email confirmation, whatever the newsletter is set to')
+    .option('--no-double-opt-in', 'subscribe immediately, whatever the newsletter is set to')
     .option('--signup-ip <ip>', 'the subscriber’s IP, as your signup form observed it')
     .option('--signup-user-agent <ua>', 'the subscriber’s user agent at signup')
     .action(async (newsletterId: string, raw) => {
@@ -107,8 +110,9 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
           email: emailFlag.optional(),
           tag: z.array(z.string().trim().min(1).max(64)).default([]),
           field: z.array(z.string()).default([]),
-          // commander maps `--no-double-opt-in` to `doubleOptIn: false`.
-          doubleOptIn: z.boolean().default(true),
+          // commander maps `--double-opt-in` / `--no-double-opt-in` to
+          // true / false; neither → undefined → the newsletter's setting.
+          doubleOptIn: z.boolean().optional(),
           // Consent evidence (ADR-023). Passed in rather than observed: even
           // here the request reaching the API comes from this machine, not from
           // the subscriber — this is for relaying what a form or forum recorded.

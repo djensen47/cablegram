@@ -224,6 +224,7 @@ describe('campaigns — the send integrator', () => {
             dkimIdentifier: null,
             campaignChannel: null,
             confirmationChannel: null,
+            doubleOptIn: false,
             createdAt: now,
             updatedAt: now,
           }),

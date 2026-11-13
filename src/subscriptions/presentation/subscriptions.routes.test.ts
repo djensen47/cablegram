@@ -86,6 +86,7 @@ describe('subscriptions routes', () => {
         dkimIdentifier: null,
         campaignChannel: 'legacy-stream',
         confirmationChannel: null,
+        doubleOptIn: false,
         createdAt: now,
         updatedAt: now,
       }),

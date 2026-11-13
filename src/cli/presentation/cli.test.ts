@@ -278,6 +278,15 @@ describe('newsletters', () => {
     expect(api.calls).toHaveLength(0);
   });
 
+  it('sets the opt-in mode with --double-opt-in / --no-double-opt-in (ADR-032)', async () => {
+    const { api, deps } = harness();
+
+    await run(deps, ['newsletters', 'update', 'n1', '--double-opt-in']);
+    await run(deps, ['newsletters', 'update', 'n1', '--no-double-opt-in']);
+
+    expect(api.calls.map((c) => c.body)).toEqual([{ doubleOptIn: true }, { doubleOptIn: false }]);
+  });
+
   it('sends only the named fields on update, and treats "null" as an explicit clear', async () => {
     const { api, deps } = harness();
 
@@ -631,6 +640,22 @@ describe('subscriptions consent evidence', () => {
 
     expect(code).toBe(EXIT.ok);
     expect(api.calls[0]?.body).toMatchObject({ signupIp: '203.0.113.1' });
+  });
+
+  it("leaves the opt-in mode to the newsletter when no flag is given (ADR-032)", async () => {
+    const { api, deps } = harness();
+    api.responses.set('POST /v1/newsletters/n1/subscriptions', { id: 's1', status: 'subscribed' });
+
+    await run(deps, ['subscriptions', 'add', 'n1', '--email', 'a@example.com']);
+    await run(deps, ['subscriptions', 'add', 'n1', '--email', 'b@example.com', '--double-opt-in']);
+    await run(deps, ['subscriptions', 'add', 'n1', '--email', 'c@example.com', '--no-double-opt-in']);
+
+    // Omitted means "not sent", so the newsletter's own setting decides. The
+    // key may be present as `undefined`, which JSON drops from the request.
+    expect((api.calls[0]?.body as { doubleOptIn?: boolean }).doubleOptIn).toBeUndefined();
+    expect(JSON.stringify(api.calls[0]?.body)).not.toContain('doubleOptIn');
+    expect(api.calls[1]?.body).toMatchObject({ doubleOptIn: true });
+    expect(api.calls[2]?.body).toMatchObject({ doubleOptIn: false });
   });
 
   it('rejects a malformed IP at the CLI edge, before the round trip', async () => {

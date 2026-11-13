@@ -368,6 +368,13 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   and `Subscribe` are on an explicit **ignore list** — deliberate drops (ADR-020), so recording them
   would be noise. Classification stays in the `shared/email` leaf (one place decides what we handle);
   the write stays in `campaigns` (a leaf owns no repository).
+- **Opt-in mode is a newsletter setting, single opt-in by default**
+  ([ADR-032](docs/adrs/ADR-032-newsletter-opt-in-mode.md)). `Newsletter.doubleOptIn` (create/PATCH,
+  `--double-opt-in` / `--no-double-opt-in`) defaults to **`false`**, and a pre-ADR-032 newsletter reads as
+  `false` — no migration. `Subscribe` uses the request's `doubleOptIn` when given, otherwise the
+  newsletter's: the request flag is a deliberate **override**, kept, not the source of truth.
+  `subscriptions add` with neither flag sends **nothing** (don't reintroduce a CLI default of `true`).
+  The ADR-031 guard still applies to whatever it resolves to.
 - **Import ≠ subscribe, and `--on-conflict` has exactly two modes**
   ([ADR-022](docs/adrs/ADR-022-subscriber-import.md)). `Subscribe` derives status from `doubleOptIn`,
   so it can only ever make `pending`/`subscribed` — structurally unable to carry a migration.

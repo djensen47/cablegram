@@ -14,6 +14,7 @@ export interface CreateNewsletterInput {
   dkimIdentifier?: string | null;
   campaignChannel: string;
   confirmationChannel: string;
+  doubleOptIn?: boolean;
 }
 
 export interface UpdateNewsletterInput {
@@ -25,6 +26,7 @@ export interface UpdateNewsletterInput {
   dkimIdentifier?: string | null;
   campaignChannel?: string;
   confirmationChannel?: string;
+  doubleOptIn?: boolean;
 }
 
 export interface ListNewslettersInput {

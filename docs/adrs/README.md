@@ -48,6 +48,7 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [029](ADR-029-unsubscribe-handling.md) | Unsubscribe Handling — who owns the link, cablegram or the provider | Accepted — implemented |
 | [030](ADR-030-sending-channels.md) | Sending Channels — a newsletter names the stream it sends through | Accepted — implemented |
 | [031](ADR-031-confirmation-and-system-channels.md) | Confirmation and System Channels — every email names its stream | Accepted — implemented |
+| [032](ADR-032-newsletter-opt-in-mode.md) | Newsletter Opt-In Mode — set once per newsletter, single opt-in by default | Accepted — implemented |
 
 ## How to read these
 

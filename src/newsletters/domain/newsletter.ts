@@ -72,6 +72,13 @@ export interface NewsletterProps {
    * are refused until one is set; single opt-in sends no mail and is unaffected.
    */
   confirmationChannel: string | null;
+  /**
+   * Whether a signup to this newsletter must be confirmed by email before it
+   * counts (ADR-032). `false` — single opt-in — is the default, including for a
+   * newsletter stored before the field existed. A signup request may still
+   * override it either way.
+   */
+  doubleOptIn: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -89,6 +96,8 @@ export interface CreateNewsletterProps {
   campaignChannel: string;
   /** Required, for the same reason (ADR-031). */
   confirmationChannel: string;
+  /** Defaults to `false` — single opt-in (ADR-032). */
+  doubleOptIn?: boolean;
   now: Date;
 }
 
@@ -104,6 +113,7 @@ export interface UpdateNewsletterProps {
   campaignChannel?: string;
   /** May be changed, never cleared (ADR-031). */
   confirmationChannel?: string;
+  doubleOptIn?: boolean;
 }
 
 function requireText(value: string, field: string): string {
@@ -165,6 +175,7 @@ export class Newsletter {
       dkimIdentifier: optionalDkim(input.dkimIdentifier),
       campaignChannel: requireChannel('campaignChannel', input.campaignChannel),
       confirmationChannel: requireChannel('confirmationChannel', input.confirmationChannel),
+      doubleOptIn: input.doubleOptIn ?? false,
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -196,6 +207,7 @@ export class Newsletter {
     if (changes.confirmationChannel !== undefined) {
       next.confirmationChannel = requireChannel('confirmationChannel', changes.confirmationChannel);
     }
+    if (changes.doubleOptIn !== undefined) next.doubleOptIn = changes.doubleOptIn;
 
     next.updatedAt = now;
     this.props = next;
@@ -227,6 +239,9 @@ export class Newsletter {
   }
   get confirmationChannel(): string | null {
     return this.props.confirmationChannel;
+  }
+  get doubleOptIn(): boolean {
+    return this.props.doubleOptIn;
   }
   get createdAt(): Date {
     return this.props.createdAt;

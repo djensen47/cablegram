@@ -18,6 +18,8 @@ export interface NewsletterInfo {
    * or `null` on a newsletter created before the field existed.
    */
   readonly confirmationChannel: string | null;
+  /** The newsletter's own opt-in mode (ADR-032); a signup without one follows it. */
+  readonly doubleOptIn: boolean;
 }
 
 export interface NewsletterDirectory {

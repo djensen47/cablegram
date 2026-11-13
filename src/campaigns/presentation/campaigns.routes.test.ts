@@ -187,6 +187,7 @@ describe('campaigns routes', () => {
         dkimIdentifier: null,
         campaignChannel: null,
         confirmationChannel: null,
+        doubleOptIn: false,
         createdAt: now,
         updatedAt: now,
       }),

@@ -86,7 +86,11 @@ export const SubscribeSchema = z
     doubleOptIn: z
       .boolean()
       .optional()
-      .openapi({ description: 'Per-newsletter opt-in toggle; defaults to true (double opt-in).' }),
+      .openapi({
+        description:
+          'Overrides the newsletter\u2019s opt-in mode for this signup. Omitted \u2192 the ' +
+          'newsletter\u2019s `doubleOptIn` setting decides, which defaults to single opt-in (ADR-032).',
+      }),
     signupIp: ipField.optional().openapi({
       description:
         'The **subscriber’s** IP, as your signup form observed it (ADR-023). cablegram cannot ' +

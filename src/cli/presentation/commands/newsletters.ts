@@ -16,6 +16,7 @@ const columns: Column<NewsletterDto>[] = [
   // (confirmation), so both are shown rather than left to be discovered.
   { header: 'campaign channel', value: (n) => n.campaignChannel ?? '(not set)' },
   { header: 'confirmation channel', value: (n) => n.confirmationChannel ?? '(not set)' },
+  { header: 'opt-in', value: (n) => (n.doubleOptIn ? 'double' : 'single') },
   { header: 'created', value: (n) => shortDate(n.createdAt) },
 ];
 
@@ -48,6 +49,8 @@ const CAMPAIGN_CHANNEL_HELP = 'provider channel for campaigns (Postmark Broadcas
 const CONFIRMATION_CHANNEL_HELP =
   'provider channel for subscription confirmations (Postmark Transactional stream ID)';
 const SENDING_CHANNEL_HELP = 'deprecated alias for --campaign-channel';
+const DOUBLE_OPT_IN_HELP = 'signups must confirm by email (default: single opt-in)';
+const SINGLE_OPT_IN_HELP = 'signups are subscribed immediately (the default)';
 
 /**
  * `--reply-to`, `--sending-domain` and `--dkim-identifier` are nullable on the
@@ -108,6 +111,8 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
     .option('--campaign-channel <id>', CAMPAIGN_CHANNEL_HELP)
     .option('--confirmation-channel <id>', CONFIRMATION_CHANNEL_HELP)
     .option('--sending-channel <id>', SENDING_CHANNEL_HELP)
+    .option('--double-opt-in', DOUBLE_OPT_IN_HELP)
+    .option('--no-double-opt-in', SINGLE_OPT_IN_HELP)
     .action(async (raw) => {
       const c = ctx();
       const flags = parseFlags(
@@ -121,6 +126,7 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
           campaignChannel: channelFlag.optional(),
           confirmationChannel: channelFlag.optional(),
           sendingChannel: channelFlag.optional(),
+          doubleOptIn: z.boolean().optional(),
         }),
         raw,
       );
@@ -158,6 +164,7 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
         dkimIdentifier: flags.dkimIdentifier,
         campaignChannel,
         confirmationChannel,
+        doubleOptIn: flags.doubleOptIn,
       });
 
       c.printer.data(newsletter);
@@ -176,6 +183,8 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
     .option('--campaign-channel <id>', `${CAMPAIGN_CHANNEL_HELP}; cannot be cleared`)
     .option('--confirmation-channel <id>', `${CONFIRMATION_CHANNEL_HELP}; cannot be cleared`)
     .option('--sending-channel <id>', SENDING_CHANNEL_HELP)
+    .option('--double-opt-in', DOUBLE_OPT_IN_HELP)
+    .option('--no-double-opt-in', SINGLE_OPT_IN_HELP)
     .action(async (id: string, raw) => {
       const c = ctx();
       const flags = parseFlags(
@@ -189,6 +198,7 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
           campaignChannel: channelFlag.optional(),
           confirmationChannel: channelFlag.optional(),
           sendingChannel: channelFlag.optional(),
+          doubleOptIn: z.boolean().optional(),
         }),
         raw,
       );

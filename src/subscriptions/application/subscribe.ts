@@ -46,7 +46,9 @@ export class Subscribe {
       throw new SubscriptionNewsletterNotFoundError(input.newsletterId);
     }
 
-    const doubleOptIn = input.doubleOptIn ?? true;
+    // The request may choose; otherwise the newsletter's own setting decides
+    // (ADR-032), and that defaults to single opt-in.
+    const doubleOptIn = input.doubleOptIn ?? newsletter.doubleOptIn;
     const email = normalizeEmailAddress(input.email);
     const existing = await this.repository.findByNewsletterAndEmail(input.newsletterId, email);
 
