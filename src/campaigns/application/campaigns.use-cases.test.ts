@@ -194,6 +194,31 @@ describe('campaigns — the send integrator', () => {
     expect(gateway.sent[0]?.recipients.map((r) => r.email)).toEqual(['vip@dispatch.example']);
   });
 
+  it("passes the provider's own template variables through to it unchanged (ADR-033)", async () => {
+    await subscribe(container, newsletterId, 'keep1@dispatch.example');
+    const bodyHtml =
+      '<p>Hi {{ FirstName }}</p><a href="{{{ pm:unsubscribe }}}">Unsubscribe</a>';
+    const campaign = await container.get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign).execute({
+      newsletterId,
+      name: 'March',
+      subject: 'Hello {{FirstName}}',
+      bodyHtml,
+    });
+
+    await container.get<SendCampaign>(CAMPAIGN_TYPES.SendCampaign).execute(campaign.id);
+    await container
+      .get<SendTestCampaign>(CAMPAIGN_TYPES.SendTestCampaign)
+      .execute({ campaignId: campaign.id, addresses: ['me@example.com'], prefixSubject: false });
+
+    // The real send and the proof both hand Postmark the author's source.
+    for (const sent of gateway.sent) {
+      expect(sent.content.htmlBody).toBe(bodyHtml);
+      expect(sent.content.subject).toBe('Hello {{FirstName}}');
+      expect(sent.content.textBody).toContain('{{ FirstName }}');
+    }
+    expect(gateway.sent).toHaveLength(2);
+  });
+
   describe('sending channel (ADR-030)', () => {
     it("submits through the newsletter's own channel", async () => {
       await subscribe(container, newsletterId, 'keep1@dispatch.example');
