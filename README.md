@@ -146,8 +146,9 @@ users).
   clicks. The opt-out comes back as Postmark's **Subscription Change** webhook (enable it on the
   broadcast stream's webhook), and cablegram marks that subscriber `unsubscribed` on the campaign's
   newsletter only. Postmark suppresses per **stream**, so give each newsletter its own stream
-  (`campaignChannel`, below): two newsletters on one stream share one opt-out list. Don't put `{{{ pm:unsubscribe }}}` in a body: cablegram's renderer
-  blanks it, and Postmark then appends its default link.
+  (`campaignChannel`, below): two newsletters on one stream share one opt-out list. Postmark appends its link to the footer, or you
+  can place it yourself with `{{{ pm:unsubscribe }}}`, which cablegram passes through untouched
+  ([ADR-033](docs/adrs/ADR-033-provider-variable-passthrough.md)).
 
 ```bash
 # First-run bootstrap (open, one-time):
