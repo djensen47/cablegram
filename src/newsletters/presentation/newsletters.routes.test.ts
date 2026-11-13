@@ -140,6 +140,19 @@ describe('newsletters routes', () => {
     expect(doc.components?.securitySchemes).toHaveProperty('BearerAuth');
   });
 
+  it('returns the opt-in mode, single by default, and changes it on update (ADR-032)', async () => {
+    const created = (await (await create()).json()) as { id: string; doubleOptIn: boolean };
+    expect(created.doubleOptIn).toBe(false);
+
+    const res = await app.request(`/v1/newsletters/${created.id}`, {
+      method: 'PATCH',
+      headers: auth,
+      body: JSON.stringify({ doubleOptIn: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { doubleOptIn: boolean }).doubleOptIn).toBe(true);
+  });
+
   describe('campaign and confirmation channels (ADR-030, ADR-031)', () => {
     async function patch(id: string, patchBody: Record<string, unknown>) {
       return app.request(`/v1/newsletters/${id}`, {

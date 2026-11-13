@@ -132,6 +132,27 @@ describe('newsletters use cases', () => {
     expect([...ids].sort()).toEqual(ids);
   });
 
+  describe('opt-in mode (ADR-032)', () => {
+    it('defaults a new newsletter to single opt-in', async () => {
+      const created = await container
+        .get<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter)
+        .execute(validInput);
+      expect(created.doubleOptIn).toBe(false);
+    });
+
+    it('creates with double opt-in, and switches it on update', async () => {
+      const created = await container
+        .get<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter)
+        .execute({ ...validInput, doubleOptIn: true });
+      expect(created.doubleOptIn).toBe(true);
+
+      const updated = await container
+        .get<UpdateNewsletter>(NEWSLETTER_TYPES.UpdateNewsletter)
+        .execute(created.id, { doubleOptIn: false });
+      expect(updated.doubleOptIn).toBe(false);
+    });
+  });
+
   describe('campaign and confirmation channels (ADR-030, ADR-031)', () => {
     it('stores both channels given at creation, trimmed', async () => {
       const created = await container
@@ -176,6 +197,7 @@ describe('newsletters use cases', () => {
           dkimIdentifier: null,
           campaignChannel: null,
           confirmationChannel: null,
+          doubleOptIn: false,
           createdAt: now,
           updatedAt: now,
         }),

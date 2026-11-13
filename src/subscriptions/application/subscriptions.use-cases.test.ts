@@ -106,6 +106,54 @@ describe('subscriptions use cases', () => {
     expect(gateway.sent[0]?.from.fromEmail).toBe('editors@dispatch.example');
   });
 
+  describe("the newsletter's opt-in mode (ADR-032)", () => {
+    it('defaults to single opt-in when neither the newsletter nor the signup says', async () => {
+      const subscription = await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example' });
+
+      expect(subscription.status).toBe('subscribed');
+      expect(gateway.sent).toHaveLength(0);
+    });
+
+    it("follows a double opt-in newsletter's setting when the signup does not say", async () => {
+      const doi = await container.get<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter).execute({
+        name: 'Confirmed List',
+        fromName: 'Editors',
+        fromEmail: 'editors@dispatch.example',
+        campaignChannel: 'confirmed-list',
+        confirmationChannel: 'confirmed-list-confirmations',
+        doubleOptIn: true,
+      });
+
+      const subscription = await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId: doi.id, email: 'reader@dispatch.example' });
+
+      expect(subscription.status).toBe('pending');
+      expect(gateway.sent).toHaveLength(1);
+    });
+
+    it("lets the signup override the newsletter's setting either way", async () => {
+      const subscribe = container.get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe);
+      // A single opt-in newsletter, asked for double opt-in:
+      const confirmed = await subscribe.execute({ newsletterId, email: 'a@dispatch.example', doubleOptIn: true });
+      expect(confirmed.status).toBe('pending');
+
+      // A double opt-in newsletter, asked for single opt-in:
+      const doi = await container.get<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter).execute({
+        name: 'Confirmed List',
+        fromName: 'Editors',
+        fromEmail: 'editors@dispatch.example',
+        campaignChannel: 'confirmed-list',
+        confirmationChannel: 'confirmed-list-confirmations',
+        doubleOptIn: true,
+      });
+      const immediate = await subscribe.execute({ newsletterId: doi.id, email: 'b@dispatch.example', doubleOptIn: false });
+      expect(immediate.status).toBe('subscribed');
+    });
+  });
+
   describe('confirmation channel (ADR-031)', () => {
     it("sends the confirmation through the newsletter's confirmation channel, not its campaign channel", async () => {
       await container
@@ -132,6 +180,7 @@ describe('subscriptions use cases', () => {
             dkimIdentifier: null,
             campaignChannel: 'legacy-stream',
             confirmationChannel: null,
+            doubleOptIn: false,
             createdAt: now,
             updatedAt: now,
           }),
@@ -235,7 +284,8 @@ describe('subscriptions use cases', () => {
 
   it('is idempotent: re-subscribing an active membership returns the same row, no extra email', async () => {
     const subscribe = container.get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe);
-    const first = await subscribe.execute({ newsletterId, email: 'reader@dispatch.example' });
+    // Explicitly double opt-in: the newsletter itself defaults to single (ADR-032).
+    const first = await subscribe.execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: true });
     const second = await subscribe.execute({ newsletterId, email: 'READER@dispatch.example' });
 
     expect(second.id).toBe(first.id);

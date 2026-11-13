@@ -78,6 +78,8 @@ describe('MongoNewsletterRepository (contract)', () => {
     const found = await repo.findById('legacy-1');
     expect(found?.campaignChannel).toBeNull();
     expect(found?.confirmationChannel).toBeNull();
+    // ADR-032: no stored opt-in mode means single opt-in, the default.
+    expect(found?.doubleOptIn).toBe(false);
 
     // An update writes the fields onto that same document — no migration step.
     found!.update(
@@ -116,6 +118,13 @@ describe('MongoNewsletterRepository (contract)', () => {
     const raw = await db.collection(NEWSLETTER_COLLECTIONS.newsletters).findOne({ _id: 'v310-1' as never });
     expect(raw).toMatchObject({ campaignChannel: 'newsletter', confirmationChannel: 'outbound' });
     expect(raw).not.toHaveProperty('sendingChannel');
+  });
+
+  it('round-trips a double opt-in setting (ADR-032)', async () => {
+    const newsletter = make();
+    newsletter.update({ doubleOptIn: true }, new Date('2026-02-01T00:00:00Z'));
+    await repo.create(newsletter);
+    expect((await repo.findById(newsletter.id))?.doubleOptIn).toBe(true);
   });
 
   it('returns null for an unknown id', async () => {

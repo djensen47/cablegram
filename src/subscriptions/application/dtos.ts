@@ -18,9 +18,10 @@ export interface SubscribeInput {
   customFields?: CustomFields;
   tags?: string[];
   /**
-   * Per-newsletter opt-in toggle. `true` (the default) → the subscription is
-   * created `pending` and one confirmation email is sent; `false` (single
-   * opt-in) → it is created `subscribed` with no email.
+   * Overrides the newsletter's opt-in mode for this one signup (ADR-032).
+   * `true` → created `pending` and one confirmation email is sent; `false`
+   * (single opt-in) → created `subscribed` with no email. Omitted → the
+   * newsletter's `doubleOptIn` setting decides.
    */
   doubleOptIn?: boolean;
   /**

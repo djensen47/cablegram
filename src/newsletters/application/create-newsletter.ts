@@ -27,6 +27,7 @@ export class CreateNewsletter {
       dkimIdentifier: input.dkimIdentifier,
       campaignChannel: input.campaignChannel,
       confirmationChannel: input.confirmationChannel,
+      doubleOptIn: input.doubleOptIn,
       now: this.clock.now(),
     });
 

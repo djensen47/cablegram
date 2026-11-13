@@ -29,6 +29,10 @@ const CONFIRMATION_CHANNEL_DESCRIPTION =
   'channel because Postmark suppresses per stream: on the campaign stream, someone who once ' +
   'unsubscribed could never receive a re-signup\u2019s confirmation.';
 
+const DOUBLE_OPT_IN_DESCRIPTION =
+  'Whether signups to this newsletter must be confirmed by email (ADR-032). `false` \u2014 single ' +
+  'opt-in, subscribed immediately \u2014 is the default. A signup request can override it.';
+
 const LEGACY_SENDING_CHANNEL_DESCRIPTION =
   'Deprecated alias for `campaignChannel` (its name in 3.1.0), still accepted. Pass one or the ' +
   'other; passing both with different values is a 400.';
@@ -54,6 +58,7 @@ export const NewsletterSchema = z
         'existed; double opt-in signups to it are refused until one is set.',
       example: 'weekly-dispatch-confirmations',
     }),
+    doubleOptIn: z.boolean().openapi({ description: DOUBLE_OPT_IN_DESCRIPTION, example: false }),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -82,6 +87,7 @@ export const CreateNewsletterSchema = z
       description: `${CONFIRMATION_CHANNEL_DESCRIPTION} Required; there is no default.`,
       example: 'weekly-dispatch-confirmations',
     }),
+    doubleOptIn: z.boolean().optional().openapi({ description: DOUBLE_OPT_IN_DESCRIPTION, example: false }),
   })
   .openapi('CreateNewsletter');
 
@@ -106,6 +112,7 @@ export const UpdateNewsletterSchema = z
       description: `${CONFIRMATION_CHANNEL_DESCRIPTION} Can be changed but not cleared.`,
       example: 'weekly-dispatch-confirmations',
     }),
+    doubleOptIn: z.boolean().optional().openapi({ description: DOUBLE_OPT_IN_DESCRIPTION, example: false }),
   })
   .openapi('UpdateNewsletter');
 
@@ -159,6 +166,7 @@ export function toNewsletterResponse(newsletter: Newsletter): NewsletterResponse
     dkimIdentifier: newsletter.dkimIdentifier,
     campaignChannel: newsletter.campaignChannel,
     confirmationChannel: newsletter.confirmationChannel,
+    doubleOptIn: newsletter.doubleOptIn,
     createdAt: newsletter.createdAt.toISOString(),
     updatedAt: newsletter.updatedAt.toISOString(),
   };
