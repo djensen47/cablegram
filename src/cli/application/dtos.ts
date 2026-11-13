@@ -37,6 +37,8 @@ export interface NewsletterDto {
   campaignChannel: string | null;
   /** The provider channel (Postmark stream ID) confirmations go through; `null` on a newsletter that predates it (ADR-031). */
   confirmationChannel: string | null;
+  /** Whether signups need email confirmation (ADR-032); `false` is the default. */
+  doubleOptIn: boolean;
   createdAt: string;
   updatedAt: string;
 }
