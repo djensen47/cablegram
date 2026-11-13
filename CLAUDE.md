@@ -225,8 +225,8 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   global list, never the recipient's delivery outcome. Known, accepted gaps under `provider`: Postmark
   suppresses **per stream**, so two newsletters on the same `campaignChannel` share one opt-out list
   (give each its own stream — ADR-030 corrected ADR-029's "every newsletter shares one stream"); a
-  re-subscribe may stay blocked at Postmark; `{{{ pm:unsubscribe }}}` is blanked by the Handlebars
-  render, so Postmark's default footer link is what appears.
+  re-subscribe may stay blocked at Postmark; `{{{ pm:unsubscribe }}}` passes through to Postmark
+  (ADR-033), so a body can place the link, or Postmark appends its default footer link.
 - **Every email names its channel; no stream ID is ever assumed**
   ([ADR-030](docs/adrs/ADR-030-sending-channels.md), [ADR-031](docs/adrs/ADR-031-confirmation-and-system-channels.md)).
   `BulkMessage.sendingChannel` is **required on every message**; `category` (`broadcast` |
@@ -432,9 +432,21 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   vocabulary is a closed set, and nothing verifies a template's `{{firstName}}` against what's stored;
   (2) **nothing renders it** — `send-campaign.ts` renders ONCE against an empty model because a campaign
   is one Bulk call with a shared body (ADR-008), so the per-recipient projection is resolved and then
-  dropped and `Hi {{firstName}}` sends "Hi " to everyone. Typing is theoretical until rendering exists,
+  dropped; since ADR-033 `Hi {{firstName}}` reaches Postmark as written (no longer "Hi "), but nothing
+  supplies its value. Typing is theoretical until rendering exists,
   so **rendering is the decision that comes first** — and it's an ADR-008 change. Don't "fix" either by
   accident.
+- **The renderer passes through every variable the model doesn't supply**
+  ([ADR-033](docs/adrs/ADR-033-provider-variable-passthrough.md)). Postmark uses the same `{{…}}`
+  braces (`{{{ pm:unsubscribe }}}`, `{{FirstName}}` filled from a `TemplateModel`), and rendering them
+  against cablegram's empty model used to blank them. `HandlebarsTemplateRenderer` now parses the
+  source and turns each **bare** variable reference whose first name isn't a model key back into the
+  exact source text before compiling; supplied values still render and are still HTML-escaped.
+  Deliberately narrow: helper calls **with arguments** still go to Handlebars (an unknown helper is
+  still refused — the no-code-execution test must keep passing); only the top level and `if`/`unless`
+  are judged (inside `each`/`with`/a section a name means the item); `this`/`@data`/`../` are always
+  Handlebars'. Postmark **block sections** are not covered. Don't "fix" a passed-through typo by
+  blanking unknowns again.
 - **A test send is the SAME send aimed elsewhere — its whole value is that it shares code, not that
   it resembles the real path** ([ADR-025](docs/adrs/ADR-025-campaign-test-send.md), #36).
   `POST /v1/campaigns/{id}/test` / `cablegram campaigns test <id> --to a@x.com` (repeatable, **max 5**,

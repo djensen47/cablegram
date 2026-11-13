@@ -108,6 +108,8 @@ Operational steps, recorded here because none of them is visible to the code:
    `/webhooks/postmark`. Without it, opt-outs never reach cablegram.
 3. Campaign bodies carry **no** `{{{ pm:unsubscribe }}}`: cablegram renders bodies through Handlebars
    against an empty model (ADR-024), which blanks it, and Postmark then appends its default link.
+   *(Amended by [ADR-033](ADR-033-provider-variable-passthrough.md): the placeholder now passes through
+   to Postmark unchanged, so a body may place it.)*
 
 ## Consequences
 

@@ -48,7 +48,10 @@ all the way to `campaigns`' `RecipientResolver` — then `send-campaign.ts` rend
 empty model**, because a campaign is one Bulk call with a shared body
 ([ADR-008](ADR-008-email-delivery-postmark.md)). The projected values are never read. A template
 saying `Hi {{firstName}}` currently sends "Hi " to everyone, and the `email` port has no per-recipient
-content field at all — `EmailRecipient` carries only `email` and `headers`.
+content field at all — `EmailRecipient` carries only `email` and `headers`. *(Amended by
+[ADR-033](ADR-033-provider-variable-passthrough.md): a variable the model does not supply now passes
+through to the provider as written, so `{{firstName}}` reaches Postmark rather than becoming "Hi ".
+Nothing supplies its value yet, so this question is still open.)*
 
 These two are entangled, and the order matters: **typing the bag is theoretical until personalization
 actually renders.** If bodies stay shared, `customFields` is inert storage and a schema for it

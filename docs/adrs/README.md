@@ -49,6 +49,7 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [030](ADR-030-sending-channels.md) | Sending Channels — a newsletter names the stream it sends through | Accepted — implemented |
 | [031](ADR-031-confirmation-and-system-channels.md) | Confirmation and System Channels — every email names its stream | Accepted — implemented |
 | [032](ADR-032-newsletter-opt-in-mode.md) | Newsletter Opt-In Mode — set once per newsletter, single opt-in by default | Accepted — implemented |
+| [033](ADR-033-provider-variable-passthrough.md) | Provider Variable Pass-Through — render what cablegram supplies, leave the rest | Accepted — implemented |
 
 ## How to read these
 
