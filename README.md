@@ -35,7 +35,8 @@ cablegram gives you the moving parts of a newsletter platform as a plain JSON AP
 
 - **Newsletters** — your publications, each with its own sender identity (from-name/email, reply-to,
   sending domain / DKIM).
-- **Subscriptions** — who receives a given newsletter, with single or double opt-in, tags for
+- **Subscriptions** — who receives a given newsletter, with single or double opt-in (set per
+  newsletter, single by default — [ADR-032](docs/adrs/ADR-032-newsletter-opt-in-mode.md)), tags for
   segmenting, and custom fields ([ADR-024](docs/adrs/ADR-024-custom-fields.md) — stored per
   subscriber, but **not yet rendered into a campaign**, which sends one shared body).
 - **Templates** — reusable, Handlebars-rendered message bodies (`{{firstName}}`, `{{weekOf}}`, …).
@@ -189,8 +190,9 @@ TPL=$(curl -sX POST localhost:3000/v1/templates -H "$A" -H "$J" -d '{
   "bodyHtml": "<p>Hi {{firstName}}, here is your digest.</p>"
 }' | jq -r .id)
 
-# 3. Add a subscriber. doubleOptIn defaults to true (sends a confirmation);
-#    pass false for single opt-in (immediately subscribed). customFields are stored
+# 3. Add a subscriber. Opt-in follows the newsletter's `doubleOptIn` setting,
+#    which defaults to single opt-in (immediately subscribed, ADR-032); pass
+#    `doubleOptIn` here to override it for one signup. customFields are stored
 #    per subscriber — but note they are NOT rendered into a campaign yet (ADR-024).
 curl -sX POST "localhost:3000/v1/newsletters/$NL/subscriptions" -H "$A" -H "$J" -d '{
   "email": "reader@dispatch.example",
