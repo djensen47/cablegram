@@ -194,6 +194,29 @@ describe('subscriptions routes', () => {
     expect(page2.meta.nextCursor).toBeNull();
   });
 
+  it('looks up one subscription by email, normalized like stored addresses (#82)', async () => {
+    await subscribe({ email: 'a@dispatch.example', doubleOptIn: false });
+    await subscribe({ email: 'b@dispatch.example', doubleOptIn: false });
+
+    const found = await app.request(
+      `/v1/newsletters/${newsletterId}/subscriptions?email=${encodeURIComponent(' B@Dispatch.Example ')}`,
+      { headers: auth },
+    );
+    expect(found.status).toBe(200);
+    const page = (await found.json()) as {
+      data: { email: string }[];
+      meta: { nextCursor: string | null };
+    };
+    expect(page.data.map((s) => s.email)).toEqual(['b@dispatch.example']);
+    expect(page.meta.nextCursor).toBeNull();
+
+    const missing = await app.request(
+      `/v1/newsletters/${newsletterId}/subscriptions?email=nobody@dispatch.example`,
+      { headers: auth },
+    );
+    expect(((await missing.json()) as { data: unknown[] }).data).toHaveLength(0);
+  });
+
   it('serves the subscriptions paths in the generated OpenAPI document', async () => {
     const res = await app.request('/openapi.json');
     expect(res.status).toBe(200);

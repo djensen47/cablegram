@@ -61,6 +61,7 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
     .description('List a newsletter’s subscriptions')
     .option('--status <status>', 'pending | subscribed | unsubscribed | bounced | complained')
     .option('--tag <tag>', 'only subscriptions carrying this tag')
+    .option('--email <address>', 'only the subscription for this address (case-insensitive)')
     .option('--limit <n>', 'page size (1-100)', '20')
     .option('--cursor <cursor>', 'continue from a previous page')
     .option('--all', 'fetch every page')
@@ -70,12 +71,13 @@ export function registerSubscriptionCommands(program: Command, ctx: () => Comman
         paginationFlags.extend({
           status: z.enum(['pending', 'subscribed', 'unsubscribed', 'bounced', 'complained']).optional(),
           tag: z.string().trim().min(1).max(64).optional(),
+          email: z.string().trim().min(1).max(320).optional(),
         }),
         raw,
       );
 
       const api = await c.api();
-      const query = { status: flags.status, tag: flags.tag };
+      const query = { status: flags.status, tag: flags.tag, email: flags.email };
 
       if (flags.all) {
         const data = await api.listAll<SubscriptionDto>(basePath(newsletterId), query);

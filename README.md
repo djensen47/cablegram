@@ -358,7 +358,7 @@ always-current contract — this table is the map.
 ### Subscriptions (nested under a newsletter)
 | Method | Path | Notes |
 |---|---|---|
-| POST · GET | `/v1/newsletters/{id}/subscriptions` | Subscribe / list (`?status=&tag=`) |
+| POST · GET | `/v1/newsletters/{id}/subscriptions` | Subscribe / list (`?status=&tag=&email=`) |
 | POST | `/v1/newsletters/{id}/subscriptions/import` | **Import** up to 1000 rows, each with its own `status` — restoring a list from another provider, not subscribing it. Sends no email ([ADR-022](docs/adrs/ADR-022-subscriber-import.md)) |
 | POST | `/v1/newsletters/{id}/subscriptions/{subId}/confirm` | Confirm a pending (double opt-in) subscription |
 | POST | `/v1/newsletters/{id}/subscriptions/{subId}/unsubscribe` | Unsubscribe (operator; JWT) |

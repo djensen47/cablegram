@@ -76,6 +76,7 @@ export class InMemorySubscriptionRepository implements SubscriptionRepository {
       .filter((s) => s.newsletterId === options.newsletterId)
       .filter((s) => options.status === undefined || s.status === options.status)
       .filter((s) => options.tag === undefined || s.tags.includes(options.tag))
+      .filter((s) => options.email === undefined || s.email === options.email)
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const after = options.cursor;
     const filtered = after === undefined ? ordered : ordered.filter((s) => s.id > after);
