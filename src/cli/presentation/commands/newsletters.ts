@@ -17,6 +17,7 @@ const columns: Column<NewsletterDto>[] = [
   { header: 'campaign channel', value: (n) => n.campaignChannel ?? '(not set)' },
   { header: 'confirmation channel', value: (n) => n.confirmationChannel ?? '(not set)' },
   { header: 'opt-in', value: (n) => (n.doubleOptIn ? 'double' : 'single') },
+  { header: 'public signup', value: (n) => (n.publicSignup ? 'on' : 'off') },
   { header: 'created', value: (n) => shortDate(n.createdAt) },
 ];
 
@@ -51,6 +52,8 @@ const CONFIRMATION_CHANNEL_HELP =
 const SENDING_CHANNEL_HELP = 'deprecated alias for --campaign-channel';
 const DOUBLE_OPT_IN_HELP = 'signups must confirm by email (default: single opt-in)';
 const SINGLE_OPT_IN_HELP = 'signups are subscribed immediately (the default)';
+const PUBLIC_SIGNUP_HELP = 'accept signups from the public POST /v1/subscribe route (default: off)';
+const NO_PUBLIC_SIGNUP_HELP = 'refuse public signups (the default)';
 
 /**
  * `--reply-to`, `--sending-domain` and `--dkim-identifier` are nullable on the
@@ -113,6 +116,8 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
     .option('--sending-channel <id>', SENDING_CHANNEL_HELP)
     .option('--double-opt-in', DOUBLE_OPT_IN_HELP)
     .option('--no-double-opt-in', SINGLE_OPT_IN_HELP)
+    .option('--public-signup', PUBLIC_SIGNUP_HELP)
+    .option('--no-public-signup', NO_PUBLIC_SIGNUP_HELP)
     .action(async (raw) => {
       const c = ctx();
       const flags = parseFlags(
@@ -127,6 +132,7 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
           confirmationChannel: channelFlag.optional(),
           sendingChannel: channelFlag.optional(),
           doubleOptIn: z.boolean().optional(),
+          publicSignup: z.boolean().optional(),
         }),
         raw,
       );
@@ -165,6 +171,7 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
         campaignChannel,
         confirmationChannel,
         doubleOptIn: flags.doubleOptIn,
+        publicSignup: flags.publicSignup,
       });
 
       c.printer.data(newsletter);
@@ -185,6 +192,8 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
     .option('--sending-channel <id>', SENDING_CHANNEL_HELP)
     .option('--double-opt-in', DOUBLE_OPT_IN_HELP)
     .option('--no-double-opt-in', SINGLE_OPT_IN_HELP)
+    .option('--public-signup', PUBLIC_SIGNUP_HELP)
+    .option('--no-public-signup', NO_PUBLIC_SIGNUP_HELP)
     .action(async (id: string, raw) => {
       const c = ctx();
       const flags = parseFlags(
@@ -199,6 +208,7 @@ export function registerNewsletterCommands(program: Command, ctx: () => CommandC
           confirmationChannel: channelFlag.optional(),
           sendingChannel: channelFlag.optional(),
           doubleOptIn: z.boolean().optional(),
+          publicSignup: z.boolean().optional(),
         }),
         raw,
       );
