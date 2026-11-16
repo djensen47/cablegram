@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.0](https://github.com/djensen47/cablegram/compare/v3.4.0...v3.5.0) (2026-11-16)
+
+
+### Features
+
+* **subscriptions:** look up a subscription by email ([#86](https://github.com/djensen47/cablegram/issues/86)) ([950a0e3](https://github.com/djensen47/cablegram/commit/950a0e3f1abba89a6357a57a8b035fd534783f37)), closes [#82](https://github.com/djensen47/cablegram/issues/82)
+
 ## [3.4.0](https://github.com/djensen47/cablegram/compare/v3.3.1...v3.4.0) (2026-11-16)
 
 
