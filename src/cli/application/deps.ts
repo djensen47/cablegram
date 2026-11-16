@@ -20,4 +20,9 @@ export interface CliDeps {
   createClient(credentials: StoredCredentials): ApiClient;
   /** Injected so tests can pin time rather than race token expiry. */
   now(): Date;
+  /**
+   * The installed package's version, shown by `--version` (#63). Read from
+   * `package.json` by `main.ts`; tests pass their own.
+   */
+  version: string;
 }

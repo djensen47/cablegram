@@ -2,6 +2,7 @@
 import type { CliDeps } from './application/deps.js';
 import { FetchApiClient } from './infrastructure/fetch-api-client.js';
 import { FileCredentialStore } from './infrastructure/file-credential-store.js';
+import { readPackageVersion } from './infrastructure/package-version.js';
 import { run } from './presentation/program.js';
 
 /**
@@ -20,6 +21,7 @@ const deps: CliDeps = {
   store,
   createClient: (credentials) => new FetchApiClient(credentials, store),
   now: () => new Date(),
+  version: readPackageVersion(),
 };
 
 const exitCode = await run(deps, process.argv.slice(2));

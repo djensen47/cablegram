@@ -90,7 +90,7 @@ function harness(initial: StoredCredentials | null = loggedIn()) {
     location: () => '/tmp/cablegram-test.json',
   };
 
-  const deps: CliDeps = { store, createClient: () => api, now: () => NOW };
+  const deps: CliDeps = { store, createClient: () => api, now: () => NOW, version: '9.8.7-test' };
   return { api, deps, credentials: () => stored };
 }
 
@@ -682,6 +682,23 @@ describe('subscriptions consent evidence', () => {
     await run(deps, ['subscriptions', 'confirm', 'n1', 's1', '--ip', '203.0.113.9']);
 
     expect(api.calls[0]?.body).toMatchObject({ ip: '203.0.113.9' });
+  });
+});
+
+describe('--version (#63)', () => {
+  it('prints the version it was given, not a hard-coded one', async () => {
+    const { deps } = harness();
+
+    const code = await run(deps, ['--version']);
+
+    expect(code).toBe(EXIT.ok);
+    expect(stdout.trim()).toBe('9.8.7-test');
+  });
+
+  it('answers -v the same way', async () => {
+    const { deps } = harness();
+    await run(deps, ['-v']);
+    expect(stdout.trim()).toBe('9.8.7-test');
   });
 });
 
