@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.4.0](https://github.com/djensen47/cablegram/compare/v3.3.1...v3.4.0) (2026-11-16)
+
+
+### Features
+
+* public, captcha-protected signup route (POST /v1/subscribe) ([#77](https://github.com/djensen47/cablegram/issues/77)) ([3c2c678](https://github.com/djensen47/cablegram/commit/3c2c678cea91d0d2cad58cd61327010f8b973c53))
+
+
+### Bug Fixes
+
+* **email:** read Postmark's bulk request id from `Id`, not `ID` ([#79](https://github.com/djensen47/cablegram/issues/79)) ([bc9ce14](https://github.com/djensen47/cablegram/commit/bc9ce14a1f44ca5a53afc1f37c84f44eac8f6ed7))
+
 ## [3.3.1](https://github.com/djensen47/cablegram/compare/v3.3.0...v3.3.1) (2026-11-16)
 
 
