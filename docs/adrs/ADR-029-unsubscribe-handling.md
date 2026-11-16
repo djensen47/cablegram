@@ -6,7 +6,9 @@ Accepted — 2026-11-02. **Implemented** the same day. Its shared-stream consequ
 [ADR-030](ADR-030-sending-channels.md). Amends [ADR-015](ADR-015-public-token-unsubscribe.md)
 (its per-recipient `List-Unsubscribe` header is no longer unconditional) and
 [ADR-027](ADR-027-library-entrypoint.md) (an unset `BASE_URL` is no longer a silent hazard — it is a
-startup error under the default mode).
+startup error under the default mode). **Amended 2026-11-16** (§3): an opt-out also arrives as a
+`Bounce` webhook of type `Unsubscribe`, which the first real send showed and the original decision
+missed.
 
 ## Context
 
@@ -80,6 +82,17 @@ them would never reach the provider's list.
 | `SuppressSending: false` (a reactivation) | unhandled: `SubscriptionChange:Reactivation` |
 | anything else | unhandled: `SubscriptionChange:<reason>:<origin>` |
 
+**It also claims a `Bounce` webhook whose `Type` is `Unsubscribe`** (amended 2026-11-16) as the same
+`unsubscribed` event. Postmark's bounce table lists that type (code 16) as "Unsubscribe or Remove
+request". The original decision assumed every opt-out was a `SubscriptionChange`. The first real send
+showed otherwise: ten people unsubscribed; the two who used the link in the body or footer arrived as a
+`SubscriptionChange` and were applied, and **the other eight arrived as this bounce type**. It was in
+none of the parser's bounce tables, so each was counted under `Bounce:Unsubscribe` and the address
+stayed subscribed — found by reading `GET /v1/webhooks/unhandled`, which is what that record is for
+(ADR-021). Postmark's docs do not say what produces the type, so that observation is the evidence. It
+is treated as an opt-out and not as a bounce: the mail was not refused, so there is no global
+suppression (ADR-018), no `bounced` status and no change to the delivery outcome.
+
 `RecordDeliveryEvents` resolves the `Tag` (the campaign id) to its newsletter, exactly as for a bounce,
 and calls the domain's `subscription.unsubscribe()` on **that newsletter's** membership. It never
 touches the global suppression list (ADR-018 — an opt-out is a fact about a relationship), and it never
@@ -91,7 +104,11 @@ and origin values without saying which one a footer click produces, so this is t
 "the recipient did it" and no wider. If a real opt-out arrives labelled differently, it lands in
 `GET /v1/webhooks/unhandled` under its own key instead of being guessed at — and the first real send
 should be checked for exactly that. Reactivations carry no `Tag`, and an operator suppression made in
-Postmark's UI (`Customer`/`Admin`) is not the subscriber's act, so neither is applied.
+Postmark's UI (`Customer`/`Admin`) is not the subscriber's act, so neither is applied. A reactivation
+would not be applied even with a tag: Postmark's docs say an address is reactivated only "manually …
+in Postmark's UI or using the API", so it is an operator's act too, and re-subscribing on it would let
+a click in Postmark undo someone's opt-out. Bringing a subscriber back takes both steps — reactivate
+in Postmark, re-subscribe in cablegram.
 
 ### 4. `BASE_URL` is required when cablegram owns the link
 
