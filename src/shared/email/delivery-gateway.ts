@@ -101,6 +101,10 @@ export interface SendAcknowledgment {
  * Submit a rendered broadcast to a recipient set. Injected as an interface only
  * (ADR-003); `PostmarkDeliveryGateway` is the production binding and
  * `InMemoryDeliveryGateway` the DI-rebind test double.
+ *
+ * A failure says whether a retry is safe (ADR-035). `EmailRejectedError` means
+ * the provider refused and holds nothing. **Any other failure means the
+ * provider may hold the submission**, and sending again may deliver it twice.
  */
 export interface DeliveryGateway {
   send(message: BulkMessage): Promise<SendAcknowledgment>;

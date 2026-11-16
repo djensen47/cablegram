@@ -3,6 +3,8 @@ import type { Container } from 'inversify';
 import { buildContainer } from '../di/index.js';
 import {
   EMAIL_TYPES,
+  EmailDeliveryError,
+  EmailRejectedError,
   InMemoryDeliveryGateway,
   PostmarkDeliveryGateway,
   type BulkMessage,
@@ -216,20 +218,70 @@ describe('PostmarkDeliveryGateway.send', () => {
     expect(ack.bulkRequestId).toBe('');
   });
 
-  it('throws EmailDeliveryError on a non-2xx provider response', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('bad token', { status: 401 }));
-    const gateway = gatewayWith('t');
+  // A failure has to say whether a retry is safe (ADR-035). Only an answer in
+  // which Postmark refused is a rejection; everything else leaves open that it
+  // took the submission, and the caller must not send again on its own.
+  describe('failures: rejected vs. unknown', () => {
+    it.each([401, 413, 422, 429])('treats HTTP %i as a rejection — nothing was accepted', async (status) => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('refused', { status }));
 
-    await expect(gateway.send(message)).rejects.toThrow(/Postmark bulk send failed \(HTTP 401\)/);
+      const failure = await gatewayWith('t').send(message).catch((e: unknown) => e);
+
+      expect(failure).toBeInstanceOf(EmailRejectedError);
+      expect((failure as EmailRejectedError).status).toBe(status);
+      expect((failure as Error).message).toContain(`Postmark bulk send failed (HTTP ${status}): refused`);
+    });
+
+    it.each([500, 502, 503])('treats HTTP %i as unknown, not as a rejection', async (status) => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('oops', { status }));
+
+      const failure = await gatewayWith('t').send(message).catch((e: unknown) => e);
+
+      expect(failure).toBeInstanceOf(EmailDeliveryError);
+      expect(failure).not.toBeInstanceOf(EmailRejectedError);
+      expect((failure as EmailDeliveryError).status).toBe(status);
+    });
+
+    it('treats a request that got no answer as unknown, keeping the cause', async () => {
+      const cause = new TypeError('fetch failed');
+      vi.spyOn(globalThis, 'fetch').mockRejectedValue(cause);
+
+      const failure = await gatewayWith('t').send(message).catch((e: unknown) => e);
+
+      expect(failure).toBeInstanceOf(EmailDeliveryError);
+      expect(failure).not.toBeInstanceOf(EmailRejectedError);
+      expect((failure as Error).message).toBe('Postmark bulk send got no answer: fetch failed');
+      expect((failure as Error).cause).toBe(cause);
+    });
+
+    it('treats a 200 that does not say Accepted as unknown', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ Status: 'Failed', Message: 'nope' }), { status: 200 }),
+      );
+
+      const failure = await gatewayWith('t').send(message).catch((e: unknown) => e);
+
+      expect((failure as Error).message).toMatch(/not accepted/);
+      expect(failure).not.toBeInstanceOf(EmailRejectedError);
+    });
   });
 
-  it('throws when the provider returns 200 but does not accept the submission', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ Status: 'Failed', Message: 'nope' }), { status: 200 }),
-    );
-    const gateway = gatewayWith('t');
+  it('logs the bulk request id as soon as Postmark accepts', async () => {
+    stubBulk('bulk-req-7');
+    const lines: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((line: string) => void lines.push(line));
 
-    await expect(gateway.send(message)).rejects.toThrow(/not accepted/);
+    await gatewayWith('t').send(message);
+
+    expect(lines.map((l) => JSON.parse(l) as Record<string, unknown>)).toContainEqual(
+      expect.objectContaining({
+        event: 'bulk_submitted',
+        bulkRequestId: 'bulk-req-7',
+        tag: 'campaign-42',
+        sendingChannel: 'weekly-dispatch',
+        recipientCount: 2,
+      }),
+    );
   });
 
   it('does not read an `ID` field: the request id is `Id`', async () => {
@@ -241,7 +293,10 @@ describe('PostmarkDeliveryGateway.send', () => {
     const gateway = gatewayWith('t');
 
     // ...and the error says what actually happened: accepted, but no id.
-    await expect(gateway.send(message)).rejects.toThrow(/accepted the bulk send but returned no request id/);
+    const failure = await gateway.send(message).catch((e: unknown) => e);
+    expect((failure as Error).message).toMatch(/accepted the bulk send but returned no request id/);
+    // Postmark has the broadcast, so this must never read as "safe to retry".
+    expect(failure).not.toBeInstanceOf(EmailRejectedError);
   });
 });
 
