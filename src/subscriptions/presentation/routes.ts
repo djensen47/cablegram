@@ -193,10 +193,10 @@ export function createSubscriptionRoutes(container: Container): OpenAPIHono<AppE
 
   app.openapi(listRoute, async (c) => {
     const { newsletterId } = c.req.valid('param');
-    const { limit, cursor, status, tag } = c.req.valid('query');
+    const { limit, cursor, status, tag, email } = c.req.valid('query');
     const rows = await container
       .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
-      .execute({ newsletterId, status, tag, limit, cursor });
+      .execute({ newsletterId, status, tag, email, limit, cursor });
     const page = toPage(rows, limit, (s) => s.id);
     return c.json({ data: page.data.map(toSubscriptionResponse), meta: page.meta }, 200);
   });

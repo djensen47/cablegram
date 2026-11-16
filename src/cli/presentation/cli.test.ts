@@ -629,6 +629,26 @@ describe('suppressions', () => {
   });
 });
 
+describe('subscriptions list', () => {
+  it('passes --email through as the lookup query (#82)', async () => {
+    const { api, deps } = harness();
+    api.responses.set('/v1/newsletters/n1/subscriptions', {
+      data: [{ id: 's1', email: 'a@example.com', status: 'subscribed', tags: [] }],
+      meta: { nextCursor: null },
+    });
+
+    const code = await run(deps, ['subscriptions', 'list', 'n1', '--email', 'A@Example.com']);
+
+    expect(code).toBe(EXIT.ok);
+    expect(api.calls[0]).toMatchObject({
+      method: 'GET',
+      path: '/v1/newsletters/n1/subscriptions',
+      query: { email: 'A@Example.com' },
+    });
+    expect(stdout).toContain('a@example.com');
+  });
+});
+
 describe('subscriptions consent evidence', () => {
   it('relays a signup IP the operator observed elsewhere', async () => {
     // The "copied an address off the forum" case: cablegram cannot observe the

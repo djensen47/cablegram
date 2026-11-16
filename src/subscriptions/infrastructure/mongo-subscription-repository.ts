@@ -130,6 +130,8 @@ export class MongoSubscriptionRepository implements SubscriptionRepository {
       // A scalar-array equality match selects documents whose `tags` contains
       // the value (Mongo array-contains semantics) — the `has` equivalent.
       ...(options.tag === undefined ? {} : { tags: options.tag }),
+      // With `newsletterId`, served by the unique `(newsletterId, email)` index.
+      ...(options.email === undefined ? {} : { email: options.email }),
       ...(options.cursor === undefined ? {} : { _id: { $gt: options.cursor } }),
     };
     const docs = await this.collection.find(filter).sort({ _id: 1 }).limit(options.limit).toArray();

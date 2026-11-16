@@ -198,10 +198,25 @@ export const ImportResultSchema = z
   })
   .openapi('ImportResult');
 
-/** Query filters for the list route: pagination + query-time status/tag segment. */
+/** Query filters for the list route: pagination + query-time status/tag segment + one address. */
 export const ListSubscriptionsQuerySchema = paginationQuerySchema.extend({
   status: z.enum(SUBSCRIPTION_STATUSES).optional(),
   tag: z.string().trim().min(1).max(64).optional(),
+  // A lookup, not an input: bounded but not checked with `.email()`, so a stored
+  // address that zod's validator happens to reject can still be found. An
+  // address with no membership is simply an empty page.
+  email: z
+    .string()
+    .trim()
+    .min(1)
+    .max(320)
+    .optional()
+    .openapi({
+      description:
+        'Return only the membership for this address (case-insensitive; normalized like stored ' +
+        'addresses). At most one row.',
+      example: 'reader@dispatch.example',
+    }),
 });
 
 export const NewsletterIdParamSchema = z.object({

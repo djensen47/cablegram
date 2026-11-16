@@ -108,6 +108,8 @@ export interface ListSubscriptionsInput {
   newsletterId: string;
   status?: SubscriptionStatus;
   tag?: string;
+  /** Look up one address; normalized here the same way stored addresses are. */
+  email?: string;
   /** Page size requested by the caller. */
   limit: number;
   cursor?: string;

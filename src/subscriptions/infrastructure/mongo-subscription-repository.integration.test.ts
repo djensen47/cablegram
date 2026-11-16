@@ -155,6 +155,13 @@ describe('MongoSubscriptionRepository (contract)', () => {
     const vipOnly = await repo.list({ newsletterId, tag: 'vip', limit: 10 });
     expect(vipOnly.map((s) => s.email).sort()).toEqual(['a@dispatch.example', 'c@dispatch.example']);
 
+    const byEmail = await repo.list({ newsletterId, email: 'b@dispatch.example', limit: 10 });
+    expect(byEmail.map((s) => s.email)).toEqual(['b@dispatch.example']);
+    // Scoped to the newsletter: the same lookup elsewhere finds nothing.
+    expect(
+      await repo.list({ newsletterId: 'nl-other', email: 'b@dispatch.example', limit: 10 }),
+    ).toHaveLength(0);
+
     const firstPage = await repo.list({ newsletterId, limit: 2 });
     const secondPage = await repo.list({ newsletterId, limit: 2, cursor: firstPage[1]?.id });
     expect(firstPage).toHaveLength(2);

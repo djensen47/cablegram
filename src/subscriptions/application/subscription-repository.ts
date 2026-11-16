@@ -24,6 +24,12 @@ export interface ListSubscriptionsOptions {
   /** Optional query-time filters (not materialized segments). */
   status?: SubscriptionStatus;
   tag?: string;
+  /**
+   * Exact match on the stored address, already normalized by the caller. With
+   * `newsletterId` this is the `(newsletterId, email)` membership key, so the
+   * result holds at most one row.
+   */
+  email?: string;
   /** Max rows to return. Callers pass `pageSize + 1` to detect a next page. */
   limit: number;
   /** Exclusive lower bound: return subscriptions whose id sorts after this one. */
