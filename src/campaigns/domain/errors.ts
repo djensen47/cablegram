@@ -5,8 +5,8 @@
  * matching.
  */
 export abstract class CampaignError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = new.target.name;
   }
 }
@@ -71,5 +71,52 @@ export class CampaignContentError extends CampaignError {
 export class SendNotFoundError extends CampaignError {
   constructor(readonly campaignId: string) {
     super(`No send record for campaign: ${campaignId}`);
+  }
+}
+
+/**
+ * The provider refused the submission, so nothing was sent. The campaign is
+ * `failed` and may be sent again once the cause is fixed (ADR-035). `reason` is
+ * the provider's own answer — it is what says what to fix.
+ */
+export class CampaignSendRejectedError extends CampaignError {
+  constructor(
+    readonly campaignId: string,
+    readonly reason: string,
+    options?: ErrorOptions,
+  ) {
+    super(`The provider refused the send for campaign ${campaignId}: ${reason}`, options);
+  }
+}
+
+/**
+ * The submission ended without a definite answer: the provider may or may not
+ * hold the broadcast. The campaign stays `sending` and is not retried, because
+ * a retry could mail the list twice (ADR-035).
+ */
+export class CampaignSendOutcomeUnknownError extends CampaignError {
+  constructor(
+    readonly campaignId: string,
+    readonly reason: string,
+    options?: ErrorOptions,
+  ) {
+    super(`The outcome of the send for campaign ${campaignId} is unknown: ${reason}`, options);
+  }
+}
+
+/**
+ * A send was started for this campaign and never confirmed either way: it may
+ * still be running, the process may have died, or the provider's answer was
+ * lost. Another send must not start until that one is settled (ADR-035).
+ */
+export class CampaignSendUnresolvedError extends CampaignError {
+  constructor(
+    readonly campaignId: string,
+    readonly startedAt: Date,
+  ) {
+    super(
+      `Campaign ${campaignId} has a send that was started at ${startedAt.toISOString()} ` +
+        `and never confirmed`,
+    );
   }
 }

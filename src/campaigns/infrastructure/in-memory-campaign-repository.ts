@@ -27,10 +27,6 @@ export class InMemoryCampaignRepository implements CampaignRepository {
     this.store.set(campaign.id, copyOf(campaign));
   }
 
-  async update(campaign: Campaign): Promise<void> {
-    this.store.set(campaign.id, copyOf(campaign));
-  }
-
   async saveIfStatus(campaign: Campaign, from: readonly CampaignStatus[]): Promise<boolean> {
     const stored = this.store.get(campaign.id);
     if (stored === undefined || !from.includes(stored.status)) return false;

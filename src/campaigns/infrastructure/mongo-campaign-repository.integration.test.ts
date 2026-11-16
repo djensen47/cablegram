@@ -51,16 +51,16 @@ describe('MongoCampaignRepository (contract)', () => {
     expect(found?.recipientCount).toBe(campaign.recipientCount);
   });
 
-  it('updates in place, including a status transition and recipientCount', async () => {
+  it('stores each status transition in place, including recipientCount', async () => {
     const campaign = make();
     await repo.create(campaign);
 
     campaign.markSending('send-1', new Date('2026-01-02T00:00:00Z'));
-    await repo.update(campaign);
+    expect(await repo.saveIfStatus(campaign, SENDABLE_STATUSES)).toBe(true);
     expect((await repo.findById(campaign.id))?.status).toBe('sending');
 
     campaign.markSent(2, new Date('2026-01-03T00:00:00Z'));
-    await repo.update(campaign);
+    expect(await repo.saveIfStatus(campaign, ['sending'])).toBe(true);
     const sent = await repo.findById(campaign.id);
     expect(sent?.status).toBe('sent');
     expect(sent?.recipientCount).toBe(2);

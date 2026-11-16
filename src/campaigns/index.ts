@@ -25,6 +25,7 @@ export { InMemoryUnhandledEventRepository } from './infrastructure/in-memory-unh
 export {
   Campaign,
   CAMPAIGN_STATUSES,
+  SENDABLE_STATUSES,
   isCampaignStatus,
   zeroStats,
   type CampaignId,
@@ -49,6 +50,9 @@ export {
   CampaignChannelMissingError,
   CampaignStateError,
   CampaignContentError,
+  CampaignSendRejectedError,
+  CampaignSendOutcomeUnknownError,
+  CampaignSendUnresolvedError,
   SendNotFoundError,
 } from './domain/errors.js';
 export type { CampaignRepository, ListCampaignsOptions } from './application/campaign-repository.js';

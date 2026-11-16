@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import type { Container } from 'inversify';
 import {
+  AppError,
   BadRequestError,
   ConflictError,
   NotFoundError,
@@ -15,6 +16,9 @@ import {
   CampaignNewsletterNotFoundError,
   CampaignNotFoundError,
   CampaignChannelMissingError,
+  CampaignSendOutcomeUnknownError,
+  CampaignSendRejectedError,
+  CampaignSendUnresolvedError,
   CampaignStateError,
   SendNotFoundError,
 } from '../domain/errors.js';
@@ -78,6 +82,33 @@ function rethrowDomainError(err: unknown): never {
       `${err.message}. Set it with PATCH /v1/newsletters/${err.newsletterId} ` +
         `({"campaignChannel": "<stream-id>"}), or ` +
         `"cablegram newsletters update ${err.newsletterId} --campaign-channel <stream-id>".`,
+    );
+  }
+  // The three ways a send ends without going out cleanly (ADR-035). What the
+  // caller needs from each is the same thing: may I send again?
+  if (err instanceof CampaignSendRejectedError) {
+    // Yes. The provider's own answer is in the message — it says what to fix.
+    throw new AppError(
+      `${err.message}. Nothing was sent; the campaign is "failed" and can be sent again once ` +
+        `that is fixed.`,
+      502,
+      'send_rejected',
+    );
+  }
+  if (err instanceof CampaignSendOutcomeUnknownError) {
+    // No — and not "later" either. The provider may have it.
+    throw new AppError(
+      `${err.message}. The campaign is left in "sending" and will not be sent again.`,
+      502,
+      'send_outcome_unknown',
+    );
+  }
+  if (err instanceof CampaignSendUnresolvedError) {
+    // The same state, met by a later request: a conflict, with the same code.
+    throw new AppError(
+      `${err.message}. It may still be in progress. Another send was not started.`,
+      409,
+      'send_outcome_unknown',
     );
   }
   if (err instanceof CampaignError) {
@@ -181,17 +212,24 @@ const sendRoute = createRoute({
   tags: ['campaigns'],
   summary: 'Send a campaign now',
   description:
-    'Resolves subscribed recipients, drops suppressed addresses, renders once and hands one broadcast to the provider. Re-sending a sent campaign is a no-op.',
+    'Resolves subscribed recipients, drops suppressed addresses, renders once and hands one ' +
+    'broadcast to the provider. Safe to repeat: it never submits a campaign twice. Re-sending a ' +
+    'sent campaign is a no-op; repeating a send the provider accepted but that was not fully ' +
+    'recorded finishes the recording. A 502 `send_rejected` means the provider refused and ' +
+    'nothing went out (the campaign is `failed` and can be sent again). A 502 or 409 ' +
+    '`send_outcome_unknown` means a send was started and never confirmed; the campaign stays ' +
+    '`sending` and is not sent again.',
   security,
   request: { params: CampaignIdParamSchema },
   responses: {
     200: {
       content: { 'application/json': { schema: CampaignSchema } },
-      description: 'The campaign after the send (status sent, with aggregate stats)',
+      description: 'The campaign after the send (status sent)',
     },
     400: badRequestResponse,
     404: notFoundResponse,
     409: conflictResponse,
+    502: errorResponse('The provider refused the send, or gave no definite answer'),
     ...authedResponses,
   },
 });

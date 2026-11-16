@@ -50,10 +50,6 @@ export class MongoCampaignRepository implements CampaignRepository {
     await this.collection.insertOne(toDoc(campaign));
   }
 
-  async update(campaign: Campaign): Promise<void> {
-    await this.collection.replaceOne({ _id: campaign.id }, toDoc(campaign));
-  }
-
   async saveIfStatus(campaign: Campaign, from: readonly CampaignStatus[]): Promise<boolean> {
     // The guard is in the filter, so the store evaluates it in the same
     // operation as the write — the same shape as `applyEvent` (ADR-019). A
