@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.3.0](https://github.com/djensen47/cablegram/compare/v3.2.0...v3.3.0) (2026-11-13)
+
+
+### Features
+
+* pass through template variables cablegram does not supply ([#74](https://github.com/djensen47/cablegram/issues/74)) ([5f4d02f](https://github.com/djensen47/cablegram/commit/5f4d02f93d1a1b1433bd2b0c36d7d5a226935c97))
+* per-newsletter opt-in mode, defaulting to single opt-in ([#72](https://github.com/djensen47/cablegram/issues/72)) ([3d7b026](https://github.com/djensen47/cablegram/commit/3d7b026aca3653ecda32e92c8db5d15557d94ea2))
+
 ## [3.2.0](https://github.com/djensen47/cablegram/compare/v3.1.0...v3.2.0) (2026-11-05)
 
 
