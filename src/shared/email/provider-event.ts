@@ -13,6 +13,10 @@
  *   - Subscription    RecordType "SubscriptionChange", Recipient, MessageID, ChangedAt,
  *     change                     SuppressSending, SuppressionReason, Origin
  *
+ * A recipient opting out reaches us in **two** shapes, and both become
+ * `unsubscribed`: a subscription change, and a `Bounce` whose `Type` is
+ * `Unsubscribe` (see `OPT_OUT_BOUNCE_TYPES`).
+ *
  * Note the address field differs by type: `Recipient` for delivery/open/click/
  * subscription change, `Email` for bounce/complaint. Every type carries `Tag`,
  * which is the campaign id echoed back from the send — the only correlation
@@ -36,9 +40,10 @@ export type DeliveryEventType =
   | 'open'
   | 'click'
   /**
-   * The recipient opted out through the **provider's** unsubscribe link
-   * (ADR-029, `UNSUBSCRIBE_HANDLING=provider`). A consent fact, not a delivery
-   * outcome — it changes the membership, never the recipient's outcome status.
+   * The recipient opted out **through the provider** (ADR-029): its unsubscribe
+   * link, or an unsubscribe request it reports as a bounce. A consent fact, not
+   * a delivery outcome — it changes the membership, never the recipient's
+   * outcome status.
    */
   | 'unsubscribed';
 
@@ -96,6 +101,25 @@ export const UNPARSEABLE_EVENT_KEY = '__unparseable';
  * people to stop reading it.
  */
 const IGNORED_BOUNCE_TYPES = new Set(['AutoResponder', 'Subscribe']);
+
+/**
+ * Bounce `Type` values that are **the recipient asking to leave**, not a
+ * delivery failure. Postmark's bounce table describes `Unsubscribe` (code 16)
+ * as "Unsubscribe or Remove request".
+ *
+ * This is here because of what the first real send showed (2026-11-16): ten
+ * people unsubscribed. The two who used the link in the body or footer arrived
+ * as a `SubscriptionChange` and were applied. The other eight arrived as a
+ * `Bounce` of this type — which was in none of the tables below, so each was
+ * counted as unhandled (`Bounce:Unsubscribe`) and the address stayed
+ * subscribed. Postmark's docs do not say what produces this type, so that
+ * observation is the evidence: an opt-out Postmark itself lists as an
+ * unsubscribe can reach us as a bounce.
+ *
+ * It maps to `unsubscribed`, not to a bounce: the mail was not refused, and an
+ * opt-out is a fact about one newsletter, never the global list (ADR-018).
+ */
+const OPT_OUT_BOUNCE_TYPES = new Set(['Unsubscribe']);
 
 /** Keys are bounded so a hostile or malformed `RecordType` cannot bloat a row. */
 const MAX_KEY_LENGTH = 100;
@@ -286,6 +310,9 @@ function classifyOne(payload: unknown): Classification {
       }
       if (TRANSIENT_BOUNCE_TYPES.has(type)) {
         return addressed('soft-bounce', recordType, payload.Email, payload);
+      }
+      if (OPT_OUT_BOUNCE_TYPES.has(type)) {
+        return addressed('unsubscribed', recordType, payload.Email, payload);
       }
       if (IGNORED_BOUNCE_TYPES.has(type)) return ignored;
       // A bounce type in neither table is the exact case worth catching: both
