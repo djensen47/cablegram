@@ -65,8 +65,19 @@ function stubBulk(id = 'bulk-req-1'): { calls: CapturedCall[] } {
       body: JSON.parse(String(init?.body)) as Record<string, unknown>,
       headers: init?.headers as Record<string, string>,
     });
+    // Postmark's documented Bulk API response, keys and casing as published:
+    // the request id is `Id`. A stub with `ID` here once hid a production bug.
     return new Response(
-      JSON.stringify({ ID: id, Status: 'Accepted', SubmittedAt: '2026-07-20T00:00:00.000Z' }),
+      JSON.stringify({
+        Id: id,
+        SubmittedAt: '2026-07-20T00:00:00.000Z',
+        Status: 'Accepted',
+        TotalMessages: 2,
+        PercentageCompleted: 0.0,
+        ReleasedCount: 0,
+        FailedCount: 0,
+        Subject: 'Issue #1',
+      }),
       { status: 200 },
     );
   });
@@ -219,6 +230,18 @@ describe('PostmarkDeliveryGateway.send', () => {
     const gateway = gatewayWith('t');
 
     await expect(gateway.send(message)).rejects.toThrow(/not accepted/);
+  });
+
+  it('does not read an `ID` field: the request id is `Id`', async () => {
+    // The pre-fix shape. An accepted response that carries the id under the
+    // wrong key must not be mistaken for a success with an id...
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ID: 'wrong-key', Status: 'Accepted' }), { status: 200 }),
+    );
+    const gateway = gatewayWith('t');
+
+    // ...and the error says what actually happened: accepted, but no id.
+    await expect(gateway.send(message)).rejects.toThrow(/accepted the bulk send but returned no request id/);
   });
 });
 

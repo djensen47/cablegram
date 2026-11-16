@@ -40,9 +40,14 @@ interface PostmarkBulkRecipient {
   Headers?: PostmarkHeader[];
 }
 
-/** The bulk submission acknowledgment Postmark returns (HTTP 200, async). */
+/**
+ * The bulk submission acknowledgment Postmark returns (HTTP 200, async).
+ * Pinned against the live Bulk API docs: the request id is **`Id`**, not `ID`.
+ * It was once read as `ID`, which is never present, so every accepted send was
+ * reported as a failure after Postmark had already started delivering it.
+ */
 interface PostmarkBulkResponse {
-  ID?: string;
+  Id?: string;
   Status?: string;
   SubmittedAt?: string;
 }
@@ -101,15 +106,23 @@ export class PostmarkDeliveryGateway implements DeliveryGateway {
     }
 
     const body = (await response.json()) as PostmarkBulkResponse;
-    if (body.Status !== 'Accepted' || !body.ID) {
+    if (body.Status !== 'Accepted') {
       throw new EmailDeliveryError(
         `Postmark bulk send was not accepted (status: ${body.Status ?? 'unknown'})`,
         response.status,
       );
     }
+    // Accepted means Postmark has the broadcast and will deliver it, so a
+    // missing id must say exactly that — not "not accepted".
+    if (!body.Id) {
+      throw new EmailDeliveryError(
+        'Postmark accepted the bulk send but returned no request id (Id)',
+        response.status,
+      );
+    }
 
     return {
-      bulkRequestId: body.ID,
+      bulkRequestId: body.Id,
       status: 'accepted',
       submittedAt: body.SubmittedAt ?? new Date().toISOString(),
       recipientCount,

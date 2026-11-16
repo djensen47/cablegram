@@ -148,7 +148,7 @@ counted in `CampaignStats`, on the wire in `StatsSchema`, in the CLI report, and
 Checked against Postmark's live docs rather than restated from memory, and there is no source to
 wire it to:
 
-- `POST /email/bulk` is asynchronous. The response is `{ID, Status, SubmittedAt}` — a submission
+- `POST /email/bulk` is asynchronous. The response is `{Id, Status, SubmittedAt}` — a submission
   ack with no per-message results and no `ErrorCode`. (`POST /email/batch` *does* return per-message
   error codes, but that is the synchronous endpoint this system deliberately does not use, ADR-008.)
 - A request the provider will not take at all comes back 422 and throws, which fails the whole

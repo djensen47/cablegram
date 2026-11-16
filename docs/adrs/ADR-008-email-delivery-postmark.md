@@ -53,7 +53,7 @@ Two things kept separate on purpose:
   `deliverability` suppression list** (two gates — subscribed *and* not suppressed), renders content
   (via `templates`), and calls `DeliveryGateway.send(...)` **once** with the surviving recipient set.
 - The gateway issues **one** `POST /email/bulk` call; Postmark performs the fan-out
-  **asynchronously** — the response is a submission acknowledgment (`{ ID, Status, SubmittedAt }`),
+  **asynchronously** — the response is a submission acknowledgment (`{ Id, Status, SubmittedAt }`),
   not per-recipient results. cablegram does **not** run a queue, a worker, or a resumable batch cursor
   — the ephemeral-function problem is Postmark's to solve, not ours. The campaign's `SendRecord`
   persists the returned request id and submission time (`bulkRequestId`, `submittedAt`) so later
