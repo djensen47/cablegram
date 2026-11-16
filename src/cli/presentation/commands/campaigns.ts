@@ -233,6 +233,20 @@ export function registerCampaignCommands(program: Command, ctx: () => CommandCon
         return;
       }
 
+      // A send was already started for this campaign (ADR-035). The server
+      // never starts a second one from here: it either finishes recording a
+      // send the provider accepted, or refuses and says how to settle it. So
+      // there is no audience to count and nothing to confirm — just ask.
+      if (campaign.status === 'sending' && !flags.dryRun) {
+        const finished = await api.post<CampaignDto>(`/v1/campaigns/${encodeURIComponent(id)}/send`);
+        c.printer.data(finished);
+        c.printer.success(
+          `Finished recording "${finished.name}" — ${finished.recipientCount} recipient(s) accepted. ` +
+            'Nothing was sent again.',
+        );
+        return;
+      }
+
       // Count from the subscriber list, not from campaign.recipientCount —
       // that is written *by* the send, so before one it is zero. This is an
       // estimate, and says so: the server applies the suppression list at send
@@ -273,6 +287,54 @@ export function registerCampaignCommands(program: Command, ctx: () => CommandCon
         `Sent "${sent.name}" — ${sent.recipientCount} recipient(s) accepted.`,
       );
       c.printer.dim(`Per-recipient outcomes arrive by webhook: cablegram campaigns report ${id}`);
+    });
+
+  campaigns
+    .command('resolve <id>')
+    .description('Record what happened to a send left in "sending" — check the provider first')
+    .option('--sent', 'the provider has this send: mark the campaign sent')
+    .option('--not-sent', 'the provider has nothing: mark it failed, so it can be sent again')
+    .action(async (id: string, raw) => {
+      const c = ctx();
+      const flags = parseFlags(
+        z
+          .object({ sent: z.boolean().default(false), notSent: z.boolean().default(false) })
+          // Deliberately no default and no prompt: this is the operator's
+          // statement about what the provider shows, and it has to be made.
+          .refine((f) => f.sent !== f.notSent, {
+            message: 'pass exactly one of --sent or --not-sent',
+          }),
+        raw,
+      );
+      const api = await c.api();
+      const path = `/v1/campaigns/${encodeURIComponent(id)}`;
+
+      const campaign = await api.get<CampaignDto>(path);
+      if (campaign.status !== 'sending') {
+        c.printer.warn(
+          `Campaign ${id} is "${campaign.status}" — only a campaign left in "sending" has a send to resolve.`,
+        );
+        return;
+      }
+
+      await confirmAction(
+        flags.sent
+          ? `Mark "${campaign.name}" as sent? Do this only if the provider shows the send.`
+          : `Mark "${campaign.name}" as NOT sent? It can then be sent again, to the whole list. ` +
+              'Do this only if the provider shows nothing for it.',
+        c.assumeYes,
+      );
+
+      const resolved = await api.post<CampaignDto>(`${path}/send/resolve`, {
+        outcome: flags.sent ? 'sent' : 'not-sent',
+      });
+
+      c.printer.data(resolved);
+      c.printer.success(
+        flags.sent
+          ? `Marked "${resolved.name}" as sent — ${resolved.recipientCount} recipient(s).`
+          : `Marked "${resolved.name}" as failed. Send it again with: cablegram campaigns send ${id}`,
+      );
     });
 
   campaigns

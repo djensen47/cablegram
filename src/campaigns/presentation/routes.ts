@@ -74,7 +74,7 @@ function howToResolve(campaignId: string): string {
   return (
     `Check the provider for messages tagged ${campaignId}, then record what happened: ` +
     `POST /v1/campaigns/${campaignId}/send/resolve with {"outcome": "sent"} or ` +
-    `{"outcome": "not-sent"}.`
+    `{"outcome": "not-sent"}, or "cablegram campaigns resolve ${campaignId} --sent" / "--not-sent".`
   );
 }
 
