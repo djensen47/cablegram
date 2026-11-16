@@ -14,6 +14,11 @@ export {
   createPublicUnsubscribeRoutes,
   PUBLIC_UNSUBSCRIBE_PATH,
 } from './presentation/public-unsubscribe-routes.js';
+// Public, open signup router (mounted at /v1/subscribe, ADR-034).
+export {
+  createPublicSubscribeRoutes,
+  PUBLIC_SUBSCRIBE_PATH,
+} from './presentation/public-subscribe-routes.js';
 
 // In-memory repository: the DI-rebind test double (ADR-003).
 export { InMemorySubscriptionRepository } from './infrastructure/in-memory-subscription-repository.js';
@@ -39,6 +44,8 @@ export {
   SubscriptionStateError,
   SubscriptionConfirmationChannelMissingError,
   InvalidUnsubscribeTokenError,
+  PublicSignupUnavailableError,
+  InvalidCaptchaError,
 } from './domain/errors.js';
 export type {
   SubscriptionRepository,
@@ -58,6 +65,7 @@ export type {
 
 // Use case classes (resolved from the container by token; typed here for tests).
 export { Subscribe } from './application/subscribe.js';
+export { PublicSubscribe, type PublicSubscribeInput } from './application/public-subscribe.js';
 export { ImportSubscriptions } from './application/import-subscriptions.js';
 export { ConfirmSubscription } from './application/confirm-subscription.js';
 export { Unsubscribe } from './application/unsubscribe.js';

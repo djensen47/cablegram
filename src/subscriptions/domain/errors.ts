@@ -57,6 +57,20 @@ export class SubscriptionConfirmationChannelMissingError extends SubscriptionErr
   }
 }
 
+/** Public signup has no captcha secret configured, so it is off (ADR-034). */
+export class PublicSignupUnavailableError extends SubscriptionError {
+  constructor(reason = 'public signup is not configured') {
+    super(`Public signup is unavailable: ${reason}`);
+  }
+}
+
+/** The public signup's captcha token was rejected — missing, forged, expired or reused (ADR-034). */
+export class InvalidCaptchaError extends SubscriptionError {
+  constructor() {
+    super('Captcha verification failed');
+  }
+}
+
 /** A requested state transition is not legal for the subscription's current status. */
 export class SubscriptionStateError extends SubscriptionError {
   constructor(reason: string) {

@@ -39,6 +39,8 @@ export interface NewsletterDto {
   confirmationChannel: string | null;
   /** Whether signups need email confirmation (ADR-032); `false` is the default. */
   doubleOptIn: boolean;
+  /** Whether the public signup route accepts signups for it (ADR-034); `false` by default. */
+  publicSignup: boolean;
   createdAt: string;
   updatedAt: string;
 }

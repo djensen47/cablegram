@@ -278,6 +278,15 @@ describe('newsletters', () => {
     expect(api.calls).toHaveLength(0);
   });
 
+  it('opens and closes public signup with --public-signup / --no-public-signup (ADR-034)', async () => {
+    const { api, deps } = harness();
+
+    await run(deps, ['newsletters', 'update', 'n1', '--public-signup']);
+    await run(deps, ['newsletters', 'update', 'n1', '--no-public-signup']);
+
+    expect(api.calls.map((c) => c.body)).toEqual([{ publicSignup: true }, { publicSignup: false }]);
+  });
+
   it('sets the opt-in mode with --double-opt-in / --no-double-opt-in (ADR-032)', async () => {
     const { api, deps } = harness();
 

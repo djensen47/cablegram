@@ -30,6 +30,15 @@ export interface SubscribeInput {
    * operator's backend, so its IP is the operator's, not the subscriber's.
    */
   evidence?: ConsentEvidence;
+  /**
+   * Whether a lapsed membership (unsubscribed, bounced, complained) may be
+   * revived when the signup resolves to **single** opt-in. Defaults to `true`
+   * for the operator's own calls. The public signup (ADR-034) passes `false`:
+   * a public form proves nothing about who typed the address, so it must not
+   * re-subscribe someone who left without a confirmation email. Not on the
+   * HTTP schema — an operator request cannot set it.
+   */
+  reviveLapsedWithoutConfirmation?: boolean;
 }
 
 /**

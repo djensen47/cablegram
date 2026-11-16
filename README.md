@@ -128,6 +128,39 @@ users).
   as a clickable link or as a raw token depends on `EMAIL_LINK_ENABLED` (see Configuration) — cablegram
   is headless, so with no front-end configured the email carries the token plus the API path to post it
   to. Account emails are sent as **transactional** mail from the configured `SYSTEM_EMAIL_FROM_ADDRESS`.
+- **Public signup** (`POST /v1/subscribe`) is open and called straight from a form on your site
+  ([ADR-034](docs/adrs/ADR-034-public-signup.md)). Every signup must carry a **Cloudflare Turnstile**
+  token (`TURNSTILE_SECRET_KEY`; without it the route answers 503), the newsletter must have
+  `publicSignup` turned on (`cablegram newsletters update <id> --public-signup`), and opt-in follows the
+  newsletter. The answer is always `202 {"status":"accepted"}`, so it never reveals who is on the list,
+  and a public single opt-in signup never re-subscribes an address that unsubscribed. cablegram records
+  the visitor's IP and user agent as consent evidence. Allow your site's origin with
+  `CORS_ALLOWED_ORIGINS`. A minimal form:
+
+  ```html
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <form id="signup">
+    <input type="email" name="email" required />
+    <div class="cf-turnstile" data-sitekey="YOUR_TURNSTILE_SITE_KEY"></div>
+    <button>Subscribe</button>
+  </form>
+  <script>
+    document.getElementById('signup').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const res = await fetch('https://api.example.org/newsletter/v1/subscribe', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          newsletterId: 'YOUR_NEWSLETTER_ID',
+          email: form.get('email'),
+          captchaToken: form.get('cf-turnstile-response'),
+        }),
+      });
+      // 202 → thanks; 400 captcha_failed → ask them to retry the captcha
+    });
+  </script>
+  ```
 - **Public unsubscribe** (`/v1/unsubscribe`) is open but **token-authenticated**: the link carries
   `newsletterId`, `subscriptionId`, `email` and a stateless `HMAC-SHA256` **token** bound to the
   `(newsletter, subscription)` pair, so it needs no login yet can't be forged or replayed against another
@@ -329,6 +362,7 @@ always-current contract — this table is the map.
 | POST | `/v1/newsletters/{id}/subscriptions/import` | **Import** up to 1000 rows, each with its own `status` — restoring a list from another provider, not subscribing it. Sends no email ([ADR-022](docs/adrs/ADR-022-subscriber-import.md)) |
 | POST | `/v1/newsletters/{id}/subscriptions/{subId}/confirm` | Confirm a pending (double opt-in) subscription |
 | POST | `/v1/newsletters/{id}/subscriptions/{subId}/unsubscribe` | Unsubscribe (operator; JWT) |
+| POST | `/v1/subscribe` | **Public** signup from a browser form — no JWT; a Cloudflare Turnstile `captchaToken` is required, the newsletter must have `publicSignup` on, always answers `202` (ADR-034) |
 | GET · POST | `/v1/unsubscribe?newsletterId=&subscriptionId=&token=&email=` | **Public** unsubscribe — no JWT, the HMAC `token` authenticates (ADR-015). `POST` performs it (returns JSON; RFC 8058 one-click target); `GET` changes no state — it redirects to `UNSUBSCRIBE_URL` if set, else renders a built-in page |
 
 Statuses: `pending` · `subscribed` · `unsubscribed` · `bounced` · `complained`. Only `subscribed` is
@@ -464,6 +498,8 @@ All configuration is environment variables (no config files on disk). See [`.env
 | `UNSUBSCRIBE_HANDLING` | no | `cablegram` | Who owns the unsubscribe link (ADR-029). `cablegram`: every send carries cablegram's `List-Unsubscribe` headers. `provider`: cablegram sends none and the provider's link is used; opt-outs arrive by webhook. |
 | `BASE_URL` | when `UNSUBSCRIBE_HANDLING=cablegram` | — | The API's **own** public origin (e.g. `https://api.example.com`), including any mount prefix. The per-recipient `List-Unsubscribe` header always points at `${BASE_URL}/v1/unsubscribe` (ADR-015). Missing under `cablegram` → the app refuses to start. |
 | `UNSUBSCRIBE_URL` | no | — | Your **own** unsubscribe page. When set, `GET /v1/unsubscribe` redirects the browser here (forwarding `newsletterId`/`subscriptionId`/`token`/`email`) and your page POSTs back to `/v1/unsubscribe`. Unset → `GET` serves a built-in page. |
+| `TURNSTILE_SECRET_KEY` | no | — | Cloudflare Turnstile secret key for the public signup route (`POST /v1/subscribe`, ADR-034). Unset → that route answers 503 (off, never unprotected). |
+| `CORS_ALLOWED_ORIGINS` | no | — | Comma-separated browser origins allowed to call the public signup route cross-origin, e.g. `https://www.example.org`. Bare origins only (no path, no trailing slash). |
 | `UNSUBSCRIBE_TOKEN_SECRET` | no | *(= `JWT_SECRET`)* | HMAC secret for the stateless unsubscribe token. Falls back to `JWT_SECRET`; set separately to decouple link validity from JWT-secret rotation. |
 
 ## Gotchas worth knowing

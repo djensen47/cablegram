@@ -25,6 +25,8 @@ interface NewsletterDoc {
   confirmationChannel?: string | null;
   /** Absent before ADR-032; read as `false` (single opt-in), the default. */
   doubleOptIn?: boolean;
+  /** Absent before ADR-034; read as `false` (closed to public signup). */
+  publicSignup?: boolean;
   /**
    * `campaignChannel`'s stored name in 3.1.0 (ADR-030, renamed by ADR-031).
    * Read as a fallback only, so a channel set under 3.1.0 carries over; the next
@@ -90,6 +92,7 @@ function toDoc(newsletter: Newsletter): NewsletterDoc {
     campaignChannel: newsletter.campaignChannel,
     confirmationChannel: newsletter.confirmationChannel,
     doubleOptIn: newsletter.doubleOptIn,
+    publicSignup: newsletter.publicSignup,
     createdAt: newsletter.createdAt,
     updatedAt: newsletter.updatedAt,
   };
@@ -107,6 +110,7 @@ function toDomain(doc: NewsletterDoc): Newsletter {
     campaignChannel: doc.campaignChannel ?? doc.sendingChannel ?? null,
     confirmationChannel: doc.confirmationChannel ?? null,
     doubleOptIn: doc.doubleOptIn ?? false,
+    publicSignup: doc.publicSignup ?? false,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });

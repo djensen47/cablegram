@@ -79,6 +79,13 @@ export interface NewsletterProps {
    * override it either way.
    */
   doubleOptIn: boolean;
+  /**
+   * Whether the public signup route (`POST /v1/subscribe`, ADR-034) accepts
+   * signups for this newsletter. Off by default: an open, unauthenticated
+   * route is something an operator turns on per newsletter, not something a
+   * newsletter gets by existing.
+   */
+  publicSignup: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -98,6 +105,8 @@ export interface CreateNewsletterProps {
   confirmationChannel: string;
   /** Defaults to `false` — single opt-in (ADR-032). */
   doubleOptIn?: boolean;
+  /** Defaults to `false` — closed to public signup (ADR-034). */
+  publicSignup?: boolean;
   now: Date;
 }
 
@@ -114,6 +123,7 @@ export interface UpdateNewsletterProps {
   /** May be changed, never cleared (ADR-031). */
   confirmationChannel?: string;
   doubleOptIn?: boolean;
+  publicSignup?: boolean;
 }
 
 function requireText(value: string, field: string): string {
@@ -176,6 +186,7 @@ export class Newsletter {
       campaignChannel: requireChannel('campaignChannel', input.campaignChannel),
       confirmationChannel: requireChannel('confirmationChannel', input.confirmationChannel),
       doubleOptIn: input.doubleOptIn ?? false,
+      publicSignup: input.publicSignup ?? false,
       createdAt: input.now,
       updatedAt: input.now,
     });
@@ -208,6 +219,7 @@ export class Newsletter {
       next.confirmationChannel = requireChannel('confirmationChannel', changes.confirmationChannel);
     }
     if (changes.doubleOptIn !== undefined) next.doubleOptIn = changes.doubleOptIn;
+    if (changes.publicSignup !== undefined) next.publicSignup = changes.publicSignup;
 
     next.updatedAt = now;
     this.props = next;
@@ -242,6 +254,9 @@ export class Newsletter {
   }
   get doubleOptIn(): boolean {
     return this.props.doubleOptIn;
+  }
+  get publicSignup(): boolean {
+    return this.props.publicSignup;
   }
   get createdAt(): Date {
     return this.props.createdAt;

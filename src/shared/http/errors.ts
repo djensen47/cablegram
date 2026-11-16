@@ -34,6 +34,13 @@ export class ForbiddenError extends AppError {
   }
 }
 
+/** A dependency the request needs is not configured or not reachable (ADR-034). */
+export class ServiceUnavailableError extends AppError {
+  constructor(message = 'Service unavailable') {
+    super(message, 503, 'service_unavailable');
+  }
+}
+
 export class NotFoundError extends AppError {
   constructor(message = 'Not found') {
     super(message, 404, 'not_found');

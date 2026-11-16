@@ -20,6 +20,8 @@ export interface NewsletterInfo {
   readonly confirmationChannel: string | null;
   /** The newsletter's own opt-in mode (ADR-032); a signup without one follows it. */
   readonly doubleOptIn: boolean;
+  /** Whether the public signup route accepts signups for it (ADR-034). */
+  readonly publicSignup: boolean;
 }
 
 export interface NewsletterDirectory {

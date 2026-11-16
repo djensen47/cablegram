@@ -17,6 +17,8 @@ import {
   createSubscriptionRoutes,
   createPublicUnsubscribeRoutes,
   PUBLIC_UNSUBSCRIBE_PATH,
+  createPublicSubscribeRoutes,
+  PUBLIC_SUBSCRIBE_PATH,
 } from './subscriptions/index.js';
 import { createDeliverabilityRoutes } from './deliverability/index.js';
 import { createTemplateRoutes } from './templates/index.js';
@@ -47,6 +49,9 @@ const OPEN_V1_PATHS = new Set([
   // recipient (or their mail client) reaches this with no session, authenticated
   // by the HMAC token in the query, not a JWT.
   PUBLIC_UNSUBSCRIBE_PATH,
+  // Public, captcha-protected signup from a browser form (ADR-034): the
+  // visitor has no session; a Turnstile token stands in for one.
+  PUBLIC_SUBSCRIBE_PATH,
 ]);
 
 /**
@@ -124,6 +129,8 @@ export function createApp(container: Container): OpenAPIHono<AppEnv> {
   // Public unsubscribe (open; listed in OPEN_V1_PATHS above). Mounted at
   // /v1/unsubscribe — a fixed path, so the exact-match open-path gate covers it.
   v1.route('/unsubscribe', createPublicUnsubscribeRoutes(container));
+  // Public signup (open; listed in OPEN_V1_PATHS above, ADR-034).
+  v1.route('/subscribe', createPublicSubscribeRoutes(container));
   v1.route('/suppressions', createDeliverabilityRoutes(container));
   v1.route('/templates', createTemplateRoutes(container));
   v1.route('/campaigns', createCampaignRoutes(container));

@@ -91,6 +91,23 @@ export interface AppConfig {
     readonly sendingChannel: string;
   };
   /**
+   * Public signup (ADR-034): `POST /v1/subscribe`, called from a browser form.
+   */
+  readonly publicSignup: {
+    /**
+     * Cloudflare Turnstile secret key. Every public signup must carry a token
+     * Turnstile accepts; when this is unset, public signup answers 503 rather
+     * than running unprotected.
+     */
+    readonly turnstileSecretKey: string | null;
+    /**
+     * Browser origins allowed to call the public signup route cross-origin
+     * (CORS), e.g. `https://www.example.org`. Empty means no cross-origin
+     * access: a form on another site cannot post to it.
+     */
+    readonly corsAllowedOrigins: readonly string[];
+  };
+  /**
    * Deprecated env vars this process was started with, and what replaces each.
    * The composition root logs one line per entry at startup.
    */
@@ -186,6 +203,36 @@ const schema = z
     // Optional distinct token for transactional sends; falls back to the
     // broadcast token below when unset (a single-server Postmark setup).
     POSTMARK_TRANSACTIONAL_SERVER_TOKEN: z.string().min(1).optional(),
+    // Public signup (ADR-034). The Turnstile secret is optional: without it the
+    // public route answers 503 instead of accepting unverified signups.
+    TURNSTILE_SECRET_KEY: z.string().trim().min(1).optional(),
+    // Comma-separated browser origins for the public signup route's CORS.
+    CORS_ALLOWED_ORIGINS: z
+      .string()
+      .optional()
+      .transform((v, ctx) => {
+        const origins = (v ?? '')
+          .split(',')
+          .map((o) => o.trim())
+          .filter((o) => o.length > 0);
+        for (const origin of origins) {
+          let parsed: URL | null = null;
+          try {
+            parsed = new URL(origin);
+          } catch {
+            parsed = null;
+          }
+          // An origin is scheme + host (+ port) and nothing else; a path or a
+          // trailing slash would never match the browser's Origin header.
+          if (parsed === null || parsed.origin !== origin) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `"${origin}" is not an origin (expected e.g. https://www.example.org, no path)`,
+            });
+          }
+        }
+        return origins;
+      }),
     // Deprecated name for SYSTEM_EMAIL_CHANNEL (ADR-031); still honoured when
     // the new one is unset. Before ADR-031 it also carried confirmations.
     POSTMARK_TRANSACTIONAL_STREAM: z.string().trim().min(1).optional(),
@@ -299,6 +346,10 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
       fromName: e.SYSTEM_EMAIL_FROM_NAME,
       // The new name wins when both are set; the refinement guarantees one is.
       sendingChannel: (e.SYSTEM_EMAIL_CHANNEL ?? e.POSTMARK_TRANSACTIONAL_STREAM)!,
+    },
+    publicSignup: {
+      turnstileSecretKey: e.TURNSTILE_SECRET_KEY ?? null,
+      corsAllowedOrigins: e.CORS_ALLOWED_ORIGINS,
     },
     deprecatedEnv:
       e.POSTMARK_TRANSACTIONAL_STREAM !== undefined

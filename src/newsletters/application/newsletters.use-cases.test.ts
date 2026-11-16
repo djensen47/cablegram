@@ -132,6 +132,18 @@ describe('newsletters use cases', () => {
     expect([...ids].sort()).toEqual(ids);
   });
 
+  it('is closed to public signup by default, and opens on update (ADR-034)', async () => {
+    const created = await container
+      .get<CreateNewsletter>(NEWSLETTER_TYPES.CreateNewsletter)
+      .execute(validInput);
+    expect(created.publicSignup).toBe(false);
+
+    const opened = await container
+      .get<UpdateNewsletter>(NEWSLETTER_TYPES.UpdateNewsletter)
+      .execute(created.id, { publicSignup: true });
+    expect(opened.publicSignup).toBe(true);
+  });
+
   describe('opt-in mode (ADR-032)', () => {
     it('defaults a new newsletter to single opt-in', async () => {
       const created = await container
@@ -198,6 +210,7 @@ describe('newsletters use cases', () => {
           campaignChannel: null,
           confirmationChannel: null,
           doubleOptIn: false,
+          publicSignup: false,
           createdAt: now,
           updatedAt: now,
         }),

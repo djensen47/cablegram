@@ -15,6 +15,7 @@ export interface CreateNewsletterInput {
   campaignChannel: string;
   confirmationChannel: string;
   doubleOptIn?: boolean;
+  publicSignup?: boolean;
 }
 
 export interface UpdateNewsletterInput {
@@ -27,6 +28,7 @@ export interface UpdateNewsletterInput {
   campaignChannel?: string;
   confirmationChannel?: string;
   doubleOptIn?: boolean;
+  publicSignup?: boolean;
 }
 
 export interface ListNewslettersInput {

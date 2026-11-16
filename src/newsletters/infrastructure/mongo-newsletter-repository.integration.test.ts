@@ -80,6 +80,8 @@ describe('MongoNewsletterRepository (contract)', () => {
     expect(found?.confirmationChannel).toBeNull();
     // ADR-032: no stored opt-in mode means single opt-in, the default.
     expect(found?.doubleOptIn).toBe(false);
+    // ADR-034: no stored setting means closed to public signup.
+    expect(found?.publicSignup).toBe(false);
 
     // An update writes the fields onto that same document — no migration step.
     found!.update(

@@ -17,6 +17,7 @@ export {
   UnauthorizedError,
   ForbiddenError,
   NotFoundError,
+  ServiceUnavailableError,
   ConflictError,
 } from './errors.js';
 export {

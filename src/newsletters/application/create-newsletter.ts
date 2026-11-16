@@ -28,6 +28,7 @@ export class CreateNewsletter {
       campaignChannel: input.campaignChannel,
       confirmationChannel: input.confirmationChannel,
       doubleOptIn: input.doubleOptIn,
+      publicSignup: input.publicSignup,
       now: this.clock.now(),
     });
 
