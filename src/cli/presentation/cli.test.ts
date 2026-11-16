@@ -327,6 +327,81 @@ describe('newsletters', () => {
   });
 });
 
+describe('campaigns resolve', () => {
+  const stuck = {
+    id: 'c1',
+    name: 'July Update',
+    newsletterId: 'n1',
+    status: 'sending',
+    segmentTags: [],
+    recipientCount: 0,
+    sentAt: null,
+  };
+
+  it('records --sent', async () => {
+    const { api, deps } = harness();
+    api.responses.set('/v1/campaigns/c1', stuck);
+    api.responses.set('POST /v1/campaigns/c1/send/resolve', {
+      ...stuck,
+      status: 'sent',
+      recipientCount: 3,
+    });
+
+    const code = await run(deps, ['--yes', 'campaigns', 'resolve', 'c1', '--sent']);
+
+    expect(code).toBe(EXIT.ok);
+    expect(api.calls.at(-1)).toMatchObject({
+      method: 'POST',
+      path: '/v1/campaigns/c1/send/resolve',
+      body: { outcome: 'sent' },
+    });
+    expect(stderr).toContain('as sent — 3 recipient(s)');
+  });
+
+  it('records --not-sent and says how to send again', async () => {
+    const { api, deps } = harness();
+    api.responses.set('/v1/campaigns/c1', stuck);
+    api.responses.set('POST /v1/campaigns/c1/send/resolve', { ...stuck, status: 'failed' });
+
+    const code = await run(deps, ['--yes', 'campaigns', 'resolve', 'c1', '--not-sent']);
+
+    expect(code).toBe(EXIT.ok);
+    expect(api.calls.at(-1)).toMatchObject({ body: { outcome: 'not-sent' } });
+    expect(stderr).toContain('cablegram campaigns send c1');
+  });
+
+  it('needs exactly one of --sent / --not-sent, and asks nothing of the server without it', async () => {
+    const { api, deps } = harness();
+
+    expect(await run(deps, ['--yes', 'campaigns', 'resolve', 'c1'])).toBe(EXIT.usage);
+    expect(await run(deps, ['--yes', 'campaigns', 'resolve', 'c1', '--sent', '--not-sent'])).toBe(
+      EXIT.usage,
+    );
+    expect(api.calls).toHaveLength(0);
+  });
+
+  it('never resolves without confirmation', async () => {
+    const { api, deps } = harness();
+    api.responses.set('/v1/campaigns/c1', stuck);
+
+    const code = await run(deps, ['campaigns', 'resolve', 'c1', '--not-sent']);
+
+    expect(code).toBe(EXIT.usage);
+    expect(api.calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('does nothing for a campaign that is not sending', async () => {
+    const { api, deps } = harness();
+    api.responses.set('/v1/campaigns/c1', { ...stuck, status: 'draft' });
+
+    const code = await run(deps, ['--yes', 'campaigns', 'resolve', 'c1', '--sent']);
+
+    expect(code).toBe(EXIT.ok);
+    expect(stderr).toMatch(/only a campaign left in "sending"/);
+    expect(api.calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+});
+
 describe('campaigns send', () => {
   const draft = {
     id: 'c1',
@@ -381,6 +456,22 @@ describe('campaigns send', () => {
     // Segment filtering is applied to the estimate.
     expect(JSON.parse(stdout)).toMatchObject({ estimatedRecipients: 1 });
     expect(api.calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('asks the server to finish a campaign left in sending, without counting or confirming', async () => {
+    const { api, deps } = harness();
+    api.responses.set('/v1/campaigns/c1', { ...draft, status: 'sending' });
+    api.responses.set('POST /v1/campaigns/c1/send', { ...draft, status: 'sent', recipientCount: 3 });
+
+    // No --yes: there is nothing to confirm, because nothing can be sent.
+    const code = await run(deps, ['campaigns', 'send', 'c1']);
+
+    expect(code).toBe(EXIT.ok);
+    expect(api.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      'GET /v1/campaigns/c1',
+      'POST /v1/campaigns/c1/send',
+    ]);
+    expect(stderr).toContain('Nothing was sent again');
   });
 
   it('is a no-op on an already-sent campaign', async () => {

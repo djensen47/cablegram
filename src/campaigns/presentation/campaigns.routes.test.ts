@@ -173,6 +173,120 @@ describe('campaigns routes', () => {
     expect(gateway.sent).toHaveLength(1);
   });
 
+  // What the caller is told when a send does not go through cleanly (ADR-035).
+  // The status and code have to answer one question: may I send again?
+  describe('a send that fails', () => {
+    async function readyCampaign(): Promise<string> {
+      await container
+        .get<Subscribe>(SUBSCRIPTION_TYPES.Subscribe)
+        .execute({ newsletterId, email: 'reader@dispatch.example', doubleOptIn: false });
+      const res = await createCampaign({ newsletterId, name: 'Go', templateId });
+      return ((await res.json()) as { id: string }).id;
+    }
+
+    const send = (id: string) =>
+      app.request(`/v1/campaigns/${id}/send`, { method: 'POST', headers: auth });
+
+    async function statusOf(id: string): Promise<string> {
+      const res = await app.request(`/v1/campaigns/${id}`, { headers: auth });
+      return ((await res.json()) as { status: string }).status;
+    }
+
+    it('answers 502 send_rejected when the provider refuses — and the campaign can be sent again', async () => {
+      const id = await readyCampaign();
+      gateway.refuseNext();
+
+      const res = await send(id);
+
+      expect(res.status).toBe(502);
+      const { error } = (await res.json()) as { error: { code: string; message: string } };
+      expect(error.code).toBe('send_rejected');
+      expect(error.message).toContain('no such stream');
+      expect(error.message).toContain('can be sent again');
+      expect(await statusOf(id)).toBe('failed');
+
+      expect((await send(id)).status).toBe(200);
+      expect(gateway.sent).toHaveLength(1);
+    });
+
+    it('answers 502 send_outcome_unknown when the answer is lost, then 409 on every repeat', async () => {
+      const id = await readyCampaign();
+      gateway.loseNextAnswer();
+
+      const first = await send(id);
+
+      expect(first.status).toBe(502);
+      const lost = (await first.json()) as { error: { code: string; message: string } };
+      expect(lost.error.code).toBe('send_outcome_unknown');
+      expect(lost.error.message).toContain('will not be sent again');
+      expect(await statusOf(id)).toBe('sending');
+
+      const repeat = await send(id);
+
+      expect(repeat.status).toBe(409);
+      const refused = (await repeat.json()) as { error: { code: string; message: string } };
+      expect(refused.error.code).toBe('send_outcome_unknown');
+      expect(refused.error.message).toContain('Another send was not started');
+      // Both responses say how to get out of the state they report.
+      expect(lost.error.message).toContain(`POST /v1/campaigns/${id}/send/resolve`);
+      expect(refused.error.message).toContain(`POST /v1/campaigns/${id}/send/resolve`);
+      // The provider was asked exactly once.
+      expect(gateway.calls).toBe(1);
+    });
+
+    describe('POST /send/resolve', () => {
+      const resolve = (id: string, body: unknown, headers = auth) =>
+        app.request(`/v1/campaigns/${id}/send/resolve`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        });
+
+      it('records `sent` for a campaign left in sending (200)', async () => {
+        const id = await readyCampaign();
+        gateway.loseNextAnswer();
+        await send(id);
+
+        const res = await resolve(id, { outcome: 'sent' });
+
+        expect(res.status).toBe(200);
+        const json = (await res.json()) as { status: string; recipientCount: number };
+        expect(json).toMatchObject({ status: 'sent', recipientCount: 1 });
+        expect(gateway.calls).toBe(1);
+      });
+
+      it('refuses `not-sent` for a send that only just started (409)', async () => {
+        const id = await readyCampaign();
+        gateway.dropNext();
+        await send(id);
+
+        const res = await resolve(id, { outcome: 'not-sent' });
+
+        expect(res.status).toBe(409);
+        const { error } = (await res.json()) as { error: { message: string } };
+        expect(error.message).toContain('may still be in progress');
+        expect(await statusOf(id)).toBe('sending');
+      });
+
+      it('answers 409 for a campaign that is not sending, 404 for an unknown one', async () => {
+        const id = await readyCampaign();
+
+        expect((await resolve(id, { outcome: 'sent' })).status).toBe(409);
+        expect((await resolve('missing', { outcome: 'sent' })).status).toBe(404);
+      });
+
+      it('rejects any other outcome (400) and requires a JWT (401)', async () => {
+        const id = await readyCampaign();
+
+        expect((await resolve(id, { outcome: 'maybe' })).status).toBe(400);
+        expect((await resolve(id, {})).status).toBe(400);
+        expect(
+          (await resolve(id, { outcome: 'sent' }, { 'content-type': 'application/json' })).status,
+        ).toBe(401);
+      });
+    });
+  });
+
   it('answers 409 with the fix when the newsletter has no campaign channel (ADR-030/031)', async () => {
     // A newsletter stored before the field existed.
     const now = new Date('2026-01-01T00:00:00Z');

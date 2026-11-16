@@ -35,5 +35,5 @@ export type {
   UnhandledProviderEvent,
 } from './provider-event.js';
 
-// Gateway failure type.
-export { EmailDeliveryError } from './errors.js';
+// Gateway failure types: outcome unknown (the base) vs. definitely refused.
+export { EmailDeliveryError, EmailRejectedError } from './errors.js';

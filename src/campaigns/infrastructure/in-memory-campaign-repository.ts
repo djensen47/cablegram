@@ -1,5 +1,5 @@
 import { injectable } from 'inversify';
-import type { Campaign, CampaignId } from '../domain/campaign.js';
+import { Campaign, type CampaignId, type CampaignStatus } from '../domain/campaign.js';
 import type {
   CampaignRepository,
   ListCampaignsOptions,
@@ -11,21 +11,32 @@ import type {
  * exclusive cursor, `limit` cap and the `newsletterId`/`status` query filters —
  * so use-case and route tests exercise the same behavior the Mongo-backed
  * repository must honor.
+ *
+ * That includes **what a read is**. Mongo builds a new object from stored state
+ * on every read, so two requests each hold their own copy and neither sees the
+ * other's unsaved changes. This double used to hand every reader the one stored
+ * object, which made two overlapping sends look safe here while both submitted
+ * against the real store (ADR-035). It now copies on the way in and on the way
+ * out.
  */
 @injectable()
 export class InMemoryCampaignRepository implements CampaignRepository {
   private readonly store = new Map<string, Campaign>();
 
   async create(campaign: Campaign): Promise<void> {
-    this.store.set(campaign.id, campaign);
+    this.store.set(campaign.id, copyOf(campaign));
   }
 
-  async update(campaign: Campaign): Promise<void> {
-    this.store.set(campaign.id, campaign);
+  async saveIfStatus(campaign: Campaign, from: readonly CampaignStatus[]): Promise<boolean> {
+    const stored = this.store.get(campaign.id);
+    if (stored === undefined || !from.includes(stored.status)) return false;
+    this.store.set(campaign.id, copyOf(campaign));
+    return true;
   }
 
   async findById(id: CampaignId): Promise<Campaign | null> {
-    return this.store.get(id) ?? null;
+    const stored = this.store.get(id);
+    return stored === undefined ? null : copyOf(stored);
   }
 
   async list(options: ListCampaignsOptions): Promise<Campaign[]> {
@@ -35,10 +46,30 @@ export class InMemoryCampaignRepository implements CampaignRepository {
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const after = options.cursor;
     const filtered = after === undefined ? ordered : ordered.filter((c) => c.id > after);
-    return filtered.slice(0, options.limit);
+    return filtered.slice(0, options.limit).map(copyOf);
   }
 
   async delete(id: CampaignId): Promise<boolean> {
     return this.store.delete(id);
   }
+}
+
+/** A detached copy — what a stored document turns into on its way through a driver. */
+function copyOf(campaign: Campaign): Campaign {
+  return Campaign.reconstitute({
+    id: campaign.id,
+    newsletterId: campaign.newsletterId,
+    name: campaign.name,
+    templateId: campaign.templateId,
+    subject: campaign.subject,
+    bodyHtml: campaign.bodyHtml,
+    bodyText: campaign.bodyText,
+    segmentTags: [...campaign.segmentTags],
+    status: campaign.status,
+    sendId: campaign.sendId,
+    recipientCount: campaign.recipientCount,
+    createdAt: campaign.createdAt,
+    updatedAt: campaign.updatedAt,
+    sentAt: campaign.sentAt,
+  });
 }

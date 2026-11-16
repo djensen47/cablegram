@@ -101,6 +101,11 @@ collection name — don't reintroduce a shared registry.
   Postmark Bulk call (`POST /email/bulk`) via `email.send()`. The response is a submission ack (a
   request id), not per-recipient results — `SendRecord` persists it as `bulkRequestId`/`submittedAt`.
   Postmark owns the fan-out — **no queue, no worker, no cursor.**
+- **A send is never submitted twice** ([ADR-035](docs/adrs/ADR-035-send-outcome-and-retry.md)). The
+  Bulk call takes no idempotency key, so the guarantee is built around it: a conditional claim
+  (`draft`/`failed` → `sending`), `failed` only when the send is **known not to have gone out**, and
+  `sending` — never retried — for everything unknown. See the gotcha below before touching
+  `send-campaign.ts`.
 - **Events:** Postmark webhook → `email.parseProviderEvent()` normalizes → `campaigns` records the
   outcome; hard bounce/complaint → add address to the `deliverability` suppression list. The webhook
   is **HTTP Basic-Auth** protected (Postmark has no HMAC/signing) — `POSTMARK_WEBHOOK_SECRET` is the
@@ -151,6 +156,36 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   ordinary domain data, not a tenant scope — no tenant/account id on entities.
 - **No `events` component and no `delivery` component** — events are facts applied to aggregates;
   sending is the shared `email` adapter.
+- **A send that errors is not a send that failed — `failed` means *known not to have gone out***
+  ([ADR-035](docs/adrs/ADR-035-send-outcome-and-retry.md)). Postmark's Bulk API has no idempotency
+  key, so a second submission is a second broadcast to the whole list. `SendCampaign` once marked
+  `failed` in one `catch` around the provider call *and* the writes after it, and a `failed` campaign
+  can be sent again — so a lost answer, or a Mongo blip after Postmark accepted, got the list mailed
+  twice on retry. **Don't put the provider call and the post-acceptance writes back under one
+  `catch`, and don't mark `failed` on an error you have not classified.** The rules: the `email` leaf
+  classifies — **`EmailRejectedError` (4xx only) = refused, nothing accepted**; the base
+  `EmailDeliveryError` = **unknown** (no answer, 5xx, unreadable 200), and unknown is the base class
+  on purpose. Refused → `failed`, `502 send_rejected`. Unknown → the campaign **stays `sending`**,
+  `502 send_outcome_unknown`, then `409` with the same code on every later `POST /send`. **Accepted is
+  final**: the ack is stored *first* (`bulkRequestId` is the proof), then `markAccepted`, then `sent`,
+  and a repeated `POST /send` that finds the stored ack **finishes the bookkeeping without calling the
+  provider**. The claim is **`CampaignRepository.saveIfStatus(campaign, from)`** — the status check is
+  in the write's filter (same shape as ADR-019's `applyEvent`), made *before* the send record and
+  outcome rows, so the loser of a race writes nothing. **There is no `update(campaign)`** — an
+  unconditional replace from a stale read is how two overlapping sends both submitted; editing a
+  campaign uses `saveIfStatus` too. The way out of `sending` is an operator's answer:
+  **`POST /v1/campaigns/{id}/send/resolve`** `{"outcome": "sent" | "not-sent"}` /
+  `cablegram campaigns resolve <id> --sent | --not-sent` (`ResolveSend`). `not-sent` makes the campaign
+  sendable again, so it is **refused** when the send has a stored ack, when delivery events have
+  arrived for it, and for **15 minutes** after the send started (`NOT_SENT_WAIT_MS`) — a running
+  request and a dead one look identical (ADR-009), and 15 minutes outlasts Node's `fetch` timeouts.
+  **Don't add a timeout to the Postmark call without revisiting that number** (a timeout also turns a
+  slow acceptance into an unknown). No new status, collection or timer. **The in-memory campaign and
+  send repositories copy on read and write** — sharing one object between "stored" and "in use" is
+  what hid the race from the unit suite, so don't simplify them back; the race itself is only provable
+  in the integration suite. The gateway logs `bulk_submitted` with the request id before the caller
+  stores anything. The `Idempotency-Key` header is **not** what makes a send safe to repeat (its store
+  is per-process, #62).
 - **No scheduled campaigns (v1).** Sending is on-demand only (`POST /v1/campaigns/{id}/send`); a
   campaign's lifecycle is `draft → sending → sent | failed` (no `scheduled` status, no `scheduledAt`).
   Scheduled sends + their time trigger are **deferred to Phase 2** — do not reintroduce a

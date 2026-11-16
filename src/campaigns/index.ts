@@ -25,6 +25,7 @@ export { InMemoryUnhandledEventRepository } from './infrastructure/in-memory-unh
 export {
   Campaign,
   CAMPAIGN_STATUSES,
+  SENDABLE_STATUSES,
   isCampaignStatus,
   zeroStats,
   type CampaignId,
@@ -49,6 +50,9 @@ export {
   CampaignChannelMissingError,
   CampaignStateError,
   CampaignContentError,
+  CampaignSendRejectedError,
+  CampaignSendOutcomeUnknownError,
+  CampaignSendUnresolvedError,
   SendNotFoundError,
 } from './domain/errors.js';
 export type { CampaignRepository, ListCampaignsOptions } from './application/campaign-repository.js';
@@ -75,6 +79,13 @@ export { ListCampaigns } from './application/list-campaigns.js';
 export { UpdateCampaign } from './application/update-campaign.js';
 export { DeleteCampaign } from './application/delete-campaign.js';
 export { SendCampaign } from './application/send-campaign.js';
+export {
+  ResolveSend,
+  SEND_RESOLUTIONS,
+  NOT_SENT_WAIT_MS,
+  type ResolveSendInput,
+  type SendResolution,
+} from './application/resolve-send.js';
 export {
   SendTestCampaign,
   MAX_TEST_RECIPIENTS,

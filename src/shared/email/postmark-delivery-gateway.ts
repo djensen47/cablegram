@@ -1,8 +1,9 @@
 import { inject, injectable } from 'inversify';
 import { TYPES } from '../di/index.js';
 import type { AppConfig } from '../config/index.js';
+import { logLine } from '../http/index.js';
 import type { BulkMessage, DeliveryGateway, SendAcknowledgment } from './delivery-gateway.js';
-import { EmailDeliveryError } from './errors.js';
+import { EmailDeliveryError, EmailRejectedError } from './errors.js';
 
 /** Postmark REST base. Pinned; no SDK, raw `fetch` keeps the bundle thin. */
 const POSTMARK_API_BASE = 'https://api.postmarkapp.com';
@@ -81,28 +82,46 @@ export class PostmarkDeliveryGateway implements DeliveryGateway {
       };
     }
 
-    const response = await fetch(`${POSTMARK_API_BASE}/email/bulk`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        // A token *is* a server in Postmark: broadcast mail signs with the
-        // broadcast token, transactional mail with the transactional token
-        // (which falls back to the broadcast token when not separately set).
-        'X-Postmark-Server-Token':
-          message.category === 'broadcast'
-            ? this.config.postmark.serverToken
-            : this.config.postmark.transactionalServerToken,
-      },
-      body: JSON.stringify(this.toRequest(message)),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${POSTMARK_API_BASE}/email/bulk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          // A token *is* a server in Postmark: broadcast mail signs with the
+          // broadcast token, transactional mail with the transactional token
+          // (which falls back to the broadcast token when not separately set).
+          'X-Postmark-Server-Token':
+            message.category === 'broadcast'
+              ? this.config.postmark.serverToken
+              : this.config.postmark.transactionalServerToken,
+        },
+        body: JSON.stringify(this.toRequest(message)),
+      });
+    } catch (cause) {
+      // No answer at all (refused, reset, timed out). The request may still
+      // have arrived, so this is the unknown case — never a rejection.
+      throw new EmailDeliveryError(
+        `Postmark bulk send got no answer: ${cause instanceof Error ? cause.message : String(cause)}`,
+        undefined,
+        undefined,
+        { cause },
+      );
+    }
 
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
-      throw new EmailDeliveryError(
-        `Postmark bulk send failed (HTTP ${response.status})${detail ? `: ${detail}` : ''}`,
-        response.status,
-      );
+      const failure = `Postmark bulk send failed (HTTP ${response.status})${detail ? `: ${detail}` : ''}`;
+      // A 4xx is Postmark refusing the request, and it refuses a bulk request
+      // whole: "the entire request is rejected with a 422, and no messages in
+      // it are processed". A 5xx is not a refusal — Postmark's own wording for
+      // a 500 is that "in most cases the message is lost", which is not a
+      // promise — so it stays unknown (ADR-035).
+      if (response.status >= 400 && response.status < 500) {
+        throw new EmailRejectedError(failure, response.status);
+      }
+      throw new EmailDeliveryError(failure, response.status);
     }
 
     const body = (await response.json()) as PostmarkBulkResponse;
@@ -120,6 +139,17 @@ export class PostmarkDeliveryGateway implements DeliveryGateway {
         response.status,
       );
     }
+
+    // Written before the caller stores anything: if its next write fails, this
+    // line is the only record that Postmark took the submission (ADR-035).
+    logLine({
+      level: 'info',
+      event: 'bulk_submitted',
+      bulkRequestId: body.Id,
+      tag: message.tag ?? null,
+      sendingChannel: message.sendingChannel,
+      recipientCount,
+    });
 
     return {
       bulkRequestId: body.Id,

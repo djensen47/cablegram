@@ -3,7 +3,7 @@
 import { MongoClient, type Db } from 'mongodb';
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest';
 import { newId } from '../../shared/ids/index.js';
-import { Campaign } from '../domain/campaign.js';
+import { Campaign, SENDABLE_STATUSES } from '../domain/campaign.js';
 import { MongoCampaignRepository } from './mongo-campaign-repository.js';
 import { CAMPAIGN_COLLECTIONS } from './collections.js';
 
@@ -51,20 +51,90 @@ describe('MongoCampaignRepository (contract)', () => {
     expect(found?.recipientCount).toBe(campaign.recipientCount);
   });
 
-  it('updates in place, including a status transition and recipientCount', async () => {
+  it('stores each status transition in place, including recipientCount', async () => {
     const campaign = make();
     await repo.create(campaign);
 
     campaign.markSending('send-1', new Date('2026-01-02T00:00:00Z'));
-    await repo.update(campaign);
+    expect(await repo.saveIfStatus(campaign, SENDABLE_STATUSES)).toBe(true);
     expect((await repo.findById(campaign.id))?.status).toBe('sending');
 
     campaign.markSent(2, new Date('2026-01-03T00:00:00Z'));
-    await repo.update(campaign);
+    expect(await repo.saveIfStatus(campaign, ['sending'])).toBe(true);
     const sent = await repo.findById(campaign.id);
     expect(sent?.status).toBe('sent');
     expect(sent?.recipientCount).toBe(2);
     expect(sent?.sentAt).toEqual(new Date('2026-01-03T00:00:00Z'));
+  });
+
+  // The conditional write (ADR-035). The last test is the reason it exists, and
+  // it can only be shown here: a single-threaded double cannot lose a race.
+  describe('saveIfStatus', () => {
+    it('writes when the stored status is one of `from`', async () => {
+      const campaign = make();
+      await repo.create(campaign);
+
+      campaign.markSending('send-1', new Date('2026-01-02T00:00:00Z'));
+      expect(await repo.saveIfStatus(campaign, SENDABLE_STATUSES)).toBe(true);
+
+      const stored = await repo.findById(campaign.id);
+      expect(stored?.status).toBe('sending');
+      expect(stored?.sendId).toBe('send-1');
+    });
+
+    it('writes nothing and returns false when the stored status is not', async () => {
+      const campaign = make();
+      await repo.create(campaign);
+      campaign.markSending('send-1', new Date('2026-01-02T00:00:00Z'));
+      await repo.saveIfStatus(campaign, SENDABLE_STATUSES);
+
+      // A second request that still holds the `draft` it read earlier.
+      const stale = make();
+      const late = Campaign.reconstitute({
+        id: campaign.id,
+        newsletterId,
+        name: 'Edited too late',
+        templateId: 'tpl-1',
+        subject: null,
+        bodyHtml: null,
+        bodyText: null,
+        segmentTags: [],
+        status: 'draft',
+        sendId: null,
+        recipientCount: 0,
+        createdAt: stale.createdAt,
+        updatedAt: new Date('2026-01-02T00:00:01Z'),
+        sentAt: null,
+      });
+      expect(await repo.saveIfStatus(late, SENDABLE_STATUSES)).toBe(false);
+
+      const stored = await repo.findById(campaign.id);
+      expect(stored?.status).toBe('sending');
+      expect(stored?.name).toBe('March Dispatch');
+    });
+
+    it('returns false for a row that does not exist', async () => {
+      expect(await repo.saveIfStatus(make(), SENDABLE_STATUSES)).toBe(false);
+    });
+
+    it('lets exactly one of two concurrent claims through', async () => {
+      const campaign = make();
+      await repo.create(campaign);
+
+      // Two requests, each with its own read of the same `draft`.
+      const a = (await repo.findById(campaign.id))!;
+      const b = (await repo.findById(campaign.id))!;
+      a.markSending('send-a', new Date('2026-01-02T00:00:00Z'));
+      b.markSending('send-b', new Date('2026-01-02T00:00:00Z'));
+
+      const [wonA, wonB] = await Promise.all([
+        repo.saveIfStatus(a, SENDABLE_STATUSES),
+        repo.saveIfStatus(b, SENDABLE_STATUSES),
+      ]);
+
+      expect([wonA, wonB].filter(Boolean)).toHaveLength(1);
+      expect((await repo.findById(campaign.id))?.sendId).toBe(wonA ? 'send-a' : 'send-b');
+    });
   });
 
   it('lists id-ordered, filtered by newsletterId and status', async () => {

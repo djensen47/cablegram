@@ -4,7 +4,10 @@
 
 Accepted — 2026-07-19. Amended by [ADR-030](ADR-030-sending-channels.md): a broadcast names the
 newsletter's own `sendingChannel` (a Postmark stream ID), and transactional mail uses the configured
-`POSTMARK_TRANSACTIONAL_STREAM`; no stream ID is assumed.
+`POSTMARK_TRANSACTIONAL_STREAM`; no stream ID is assumed. Amended by
+[ADR-035](ADR-035-send-outcome-and-retry.md): what a send does when the Bulk call does not come back
+cleanly — a campaign is `failed` only when the send is known not to have gone out, and is never
+submitted twice.
 
 ## Context
 

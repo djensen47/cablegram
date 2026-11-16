@@ -12,10 +12,15 @@ export type CampaignId = Id;
  * The campaign lifecycle (ADR-011). A closed set so every caller and the send
  * pipeline agree on the vocabulary:
  * - `draft`     — created, editable, not yet sent.
- * - `sending`   — a send is in flight; persisted **before** the provider call so
- *   a crash leaves a recoverable state reconciled by webhooks (ADR-008).
+ * - `sending`   — a send was started and has not been confirmed either way.
+ *   Persisted **before** the provider call (ADR-008). Normally it lasts for one
+ *   request. It outlasts the request when the process died or the provider gave
+ *   no definite answer, and then it stays until the outcome is settled — it is
+ *   never retried from here, because a retry could mail the list twice
+ *   (ADR-035).
  * - `sent`      — the provider accepted the broadcast; re-sending is a no-op.
- * - `failed`    — the provider call threw; the campaign may be re-sent (retry).
+ * - `failed`    — the send is known not to have gone out: the provider refused
+ *   it, or an operator settled it that way. The campaign may be re-sent.
  */
 export const CAMPAIGN_STATUSES = ['draft', 'sending', 'sent', 'failed'] as const;
 
@@ -24,6 +29,15 @@ export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number];
 export function isCampaignStatus(value: string): value is CampaignStatus {
   return (CAMPAIGN_STATUSES as readonly string[]).includes(value);
 }
+
+/**
+ * The statuses a campaign may be edited or sent from: nothing is in flight and
+ * nothing went out. Exported because the rule has to hold in the store as well
+ * as in memory — a write checks it again against the stored row
+ * (`CampaignRepository.saveIfStatus`), since the copy a request holds may be
+ * stale by the time it writes (ADR-035).
+ */
+export const SENDABLE_STATUSES: readonly CampaignStatus[] = ['draft', 'failed'];
 
 /**
  * Aggregate delivery stats for a send, **counted from the outcomes collection
@@ -226,7 +240,7 @@ export class Campaign {
 
   /** `true` while the campaign may still be edited or sent (not sent/sending). */
   private get isEditable(): boolean {
-    return this.props.status === 'draft' || this.props.status === 'failed';
+    return SENDABLE_STATUSES.includes(this.props.status);
   }
 
   /**
@@ -264,13 +278,30 @@ export class Campaign {
     this.props = { ...this.props, status: 'sending', sendId, recipientCount: 0, updatedAt: now };
   }
 
-  /** Complete the send: record how many addresses went out, and mark `sent`. */
+  /**
+   * Complete the send: record how many addresses went out, and mark `sent`.
+   * Only a `sending` campaign has a send to complete.
+   */
   markSent(recipientCount: number, now: Date): void {
+    if (this.props.status !== 'sending') {
+      throw new CampaignStateError(
+        `cannot complete a send for a campaign in status "${this.props.status}"`,
+      );
+    }
     this.props = { ...this.props, status: 'sent', recipientCount, sentAt: now, updatedAt: now };
   }
 
-  /** Abandon an in-flight send: mark `failed` so it may be retried. */
+  /**
+   * Give up a send that is **known not to have gone out**: mark `failed` so the
+   * campaign may be sent again. Never the answer to "we are not sure" — an
+   * unsure send stays `sending` (ADR-035).
+   */
   markFailed(now: Date): void {
+    if (this.props.status !== 'sending') {
+      throw new CampaignStateError(
+        `cannot fail a send for a campaign in status "${this.props.status}"`,
+      );
+    }
     this.props = { ...this.props, status: 'failed', updatedAt: now };
   }
 
@@ -318,6 +349,9 @@ export class Campaign {
   }
   get isSent(): boolean {
     return this.props.status === 'sent';
+  }
+  get isSending(): boolean {
+    return this.props.status === 'sending';
   }
   get sendId(): string | null {
     return this.props.sendId;

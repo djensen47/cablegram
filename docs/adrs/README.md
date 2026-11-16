@@ -51,6 +51,7 @@ APIs only**. These ADRs are its first settled set of architecture decisions.
 | [032](ADR-032-newsletter-opt-in-mode.md) | Newsletter Opt-In Mode — set once per newsletter, single opt-in by default | Accepted — implemented |
 | [033](ADR-033-provider-variable-passthrough.md) | Provider Variable Pass-Through — render what cablegram supplies, leave the rest | Accepted — implemented |
 | [034](ADR-034-public-signup.md) | Public Signup — an open, captcha-protected subscribe route | Accepted — implemented |
+| [035](ADR-035-send-outcome-and-retry.md) | Send Outcome and Retry — a send that errors is not a send that failed | Accepted — implemented |
 
 ## How to read these
 

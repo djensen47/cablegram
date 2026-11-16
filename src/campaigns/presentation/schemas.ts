@@ -5,6 +5,7 @@ import type { Send } from '../domain/send.js';
 import { OUTCOME_STATUSES, type RecipientOutcome } from '../domain/recipient-outcome.js';
 import type { UnhandledEventRecord } from '../application/unhandled-event-repository.js';
 import { MAX_TEST_RECIPIENTS, type TestSendResult } from '../application/send-test-campaign.js';
+import { SEND_RESOLUTIONS } from '../application/resolve-send.js';
 
 /**
  * zod-OpenAPI schemas for the campaigns API. These are the single source of
@@ -126,6 +127,22 @@ export const TestSendSchema = z
       .openapi({ description: 'null when every requested address was suppressed.' }),
   })
   .openapi('TestSend');
+
+/**
+ * An operator's answer for a send whose outcome cablegram does not know
+ * (ADR-035). The two values come from the use case, so the edge cannot drift
+ * from what it accepts.
+ */
+export const ResolveSendSchema = z
+  .object({
+    outcome: z.enum(SEND_RESOLUTIONS).openapi({
+      description:
+        '`sent`: the provider has this send — the campaign becomes `sent`. `not-sent`: the ' +
+        'provider has nothing — the campaign becomes `failed` and can be sent again.',
+      example: 'sent',
+    }),
+  })
+  .openapi('ResolveSend');
 
 /** Query filters for the list route: pagination + newsletter/status filters. */
 export const ListCampaignsQuerySchema = paginationQuerySchema.extend({
