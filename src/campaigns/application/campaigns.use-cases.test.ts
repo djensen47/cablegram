@@ -40,6 +40,7 @@ import {
   SendCampaign,
   GetSend,
   ListRecipientOutcomes,
+  ListUnhandledEvents,
   RecordDeliveryEvents,
   CampaignNotFoundError,
   CampaignStateError,
@@ -596,6 +597,91 @@ describe('campaigns — the send integrator', () => {
         await container.get<SendCampaign>(CAMPAIGN_TYPES.SendCampaign).execute(next.id);
 
         expect(gateway.sent[1]?.recipients.map((r) => r.email)).toEqual(['keep2@dispatch.example']);
+      });
+
+      // The same opt-out in its other shape. On the first real send most
+      // unsubscribes arrived this way and were dropped; this is that case.
+      describe('arriving as a Bounce of type Unsubscribe', () => {
+        const unsubscribeBounce = (campaignId: string): unknown => ({
+          RecordType: 'Bounce',
+          Type: 'Unsubscribe',
+          TypeCode: 16,
+          MessageID: 'in-memory-1-0',
+          MessageStream: 'broadcast',
+          Email: 'Keep1@Dispatch.example',
+          BouncedAt: '2026-11-16T21:25:00Z',
+          Inactive: false,
+          Tag: campaignId,
+        });
+
+        it('unsubscribes the recipient from that newsletter', async () => {
+          const campaignId = await sendToTwo();
+
+          await container
+            .get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents)
+            .execute(unsubscribeBounce(campaignId));
+
+          const rows = await container
+            .get<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions)
+            .execute({ newsletterId, limit: 50 });
+          const byAddress = Object.fromEntries(rows.map((r) => [r.email, r.status]));
+          expect(byAddress['keep1@dispatch.example']).toBe('unsubscribed');
+          expect(byAddress['keep2@dispatch.example']).toBe('subscribed');
+        });
+
+        it('is not treated as a bounce: no suppression, no bounced outcome, no bounced status', async () => {
+          const campaignId = await sendToTwo();
+
+          await container
+            .get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents)
+            .execute(unsubscribeBounce(campaignId));
+
+          // Not on the global list: the mailbox works, the person left (ADR-018).
+          const suppressed = await container
+            .get<FilterSuppressed>(DELIVERABILITY_TYPES.FilterSuppressed)
+            .execute(['keep1@dispatch.example']);
+          expect(suppressed).toEqual([]);
+
+          // The mail was not refused, so the delivery record says nothing new.
+          const outcomes = await container
+            .get<ListRecipientOutcomes>(CAMPAIGN_TYPES.ListRecipientOutcomes)
+            .execute({ campaignId, limit: 100 });
+          expect(outcomes.find((o) => o.address === 'keep1@dispatch.example')?.status).toBe(
+            'accepted',
+          );
+          const { stats } = await container.get<GetSend>(CAMPAIGN_TYPES.GetSend).execute(campaignId);
+          expect(stats).toMatchObject({ bounced: 0, softBounced: 0 });
+        });
+
+        it('is no longer counted as unhandled', async () => {
+          const campaignId = await sendToTwo();
+
+          await container
+            .get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents)
+            .execute(unsubscribeBounce(campaignId));
+
+          const unhandled = await container
+            .get<ListUnhandledEvents>(CAMPAIGN_TYPES.ListUnhandledEvents)
+            .execute();
+          expect(unhandled.map((u) => u.key)).not.toContain('Bounce:Unsubscribe');
+        });
+
+        it('drops the next campaign to that newsletter for that address', async () => {
+          const campaignId = await sendToTwo();
+          await container
+            .get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents)
+            .execute(unsubscribeBounce(campaignId));
+
+          const templateId = await seedTemplate(container);
+          const next = await container
+            .get<CreateCampaign>(CAMPAIGN_TYPES.CreateCampaign)
+            .execute({ newsletterId, name: 'April', templateId });
+          await container.get<SendCampaign>(CAMPAIGN_TYPES.SendCampaign).execute(next.id);
+
+          expect(gateway.sent[1]?.recipients.map((r) => r.email)).toEqual([
+            'keep2@dispatch.example',
+          ]);
+        });
       });
 
       it('ignores an opt-out from a test send — its tag is not a campaign (ADR-025)', async () => {

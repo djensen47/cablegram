@@ -252,11 +252,19 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   don't add a `postmark` value. Under `provider`, `unsubscribeHeaders()` returns nothing (so the real
   send *and* the test send carry no cablegram headers — two competing `List-Unsubscribe` sets would let
   the mail client pick), Postmark's broadcast stream appends its own footer link + headers, and the
-  opt-out comes back as Postmark's **`SubscriptionChange`** webhook. `parseProviderEvent` claims only
-  `SuppressSending: true` + `ManualSuppression` + `Origin: Recipient` as an `unsubscribed` event —
+  opt-out comes back from Postmark in **two shapes, and both become an `unsubscribed` event**. One is
+  the **`SubscriptionChange`** webhook: `parseProviderEvent` claims only
+  `SuppressSending: true` + `ManualSuppression` + `Origin: Recipient` —
   deliberately narrow, because Postmark's docs don't say what a footer click produces; `HardBounce`/
   `SpamComplaint` reasons are **ignored** (their own webhooks carry them); reactivations and operator
-  (`Customer`/`Admin`) suppressions go to the ADR-021 unhandled record. The event maps `Tag` →
+  (`Customer`/`Admin`) suppressions go to the ADR-021 unhandled record. The other is a **`Bounce`
+  webhook of `Type: Unsubscribe`** (`OPT_OUT_BOUNCE_TYPES`) — "Unsubscribe or Remove request" in
+  Postmark's bounce table. On the first real send (2026-11-16) the body/footer link produced the
+  first shape and **eight of ten opt-outs produced the second**, which was in no bounce table, so
+  they were counted as `Bounce:Unsubscribe` and left subscribed. **It is an opt-out, not a bounce:
+  don't move it into the permanent or transient set** (no global suppression, no `bounced` status, no
+  outcome change). A reactivation is deliberately **not** applied: Postmark's docs say only an
+  operator can reactivate, so it says nothing about what the subscriber wants. The event maps `Tag` →
   campaign → newsletter and calls `subscription.unsubscribe()` on **that newsletter only** — never the
   global list, never the recipient's delivery outcome. Known, accepted gaps under `provider`: Postmark
   suppresses **per stream**, so two newsletters on the same `campaignChannel` share one opt-out list

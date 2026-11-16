@@ -176,9 +176,9 @@ users).
 - **Or let the email provider own the link** (`UNSUBSCRIBE_HANDLING=provider`,
   [ADR-029](docs/adrs/ADR-029-unsubscribe-handling.md)). cablegram then sends **no** unsubscribe
   headers; Postmark's broadcast stream adds its own footer link and headers and suppresses whoever
-  clicks. The opt-out comes back as Postmark's **Subscription Change** webhook (enable it on the
-  broadcast stream's webhook), and cablegram marks that subscriber `unsubscribed` on the campaign's
-  newsletter only. Postmark suppresses per **stream**, so give each newsletter its own stream
+  clicks. The opt-out comes back as Postmark's **Subscription Change** webhook, or as a **Bounce**
+  webhook of type `Unsubscribe` (enable both on the broadcast stream's webhook), and cablegram marks
+  that subscriber `unsubscribed` on the campaign's newsletter only. Postmark suppresses per **stream**, so give each newsletter its own stream
   (`campaignChannel`, below): two newsletters on one stream share one opt-out list. Postmark appends its link to the footer, or you
   can place it yourself with `{{{ pm:unsubscribe }}}`, which cablegram passes through untouched
   ([ADR-033](docs/adrs/ADR-033-provider-variable-passthrough.md)).
