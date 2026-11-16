@@ -299,6 +299,7 @@ cablegram templates create --name "Weekly digest" --subject "Your {{weekOf}} dig
 cablegram campaigns test <campaign-id> --to me@example.com   # proof to your own inbox
 cablegram campaigns send <campaign-id> --dry-run    # recipient count, sends nothing
 cablegram campaigns send <campaign-id>              # confirms first; --yes to skip
+cablegram campaigns resolve <campaign-id> --sent    # or --not-sent: settle a send left in "sending"
 cablegram campaigns report <campaign-id> --failures
 cablegram webhooks unhandled                        # anything Postmark sends that we drop
 ```
@@ -430,10 +431,25 @@ custom field, so it can never render into a campaign. An import with no `--sourc
 | POST · GET | `/v1/campaigns` | Create / list (`?newsletterId=&status=`) |
 | GET · PATCH · DELETE | `/v1/campaigns/{id}` | Get / update (only while not yet sent) / delete |
 | POST | `/v1/campaigns/{id}/test` | Test send: same render + delivery path, up to 5 named addresses, records nothing |
-| POST | `/v1/campaigns/{id}/send` | Send now |
+| POST | `/v1/campaigns/{id}/send` | Send now. Safe to repeat: it never submits a campaign twice |
+| POST | `/v1/campaigns/{id}/send/resolve` | Record what happened to a send left in `sending`: `{"outcome": "sent" \| "not-sent"}` |
 | GET | `/v1/campaigns/{id}/send` | Send record: per-recipient outcomes + stats |
 
 Statuses: `draft` · `sending` · `sent` · `failed`.
+
+**A send that errors is not always a send that failed**
+([ADR-035](docs/adrs/ADR-035-send-outcome-and-retry.md)). A campaign goes out as one request to the
+provider, and when that request errors, what matters is whether the provider has it:
+
+- **`failed`** — it does not. The provider refused the request (`502 send_rejected`, with its reason).
+  Fix the cause and send again.
+- **`sending`** — unknown. The request got no definite answer, or the process died mid-send
+  (`502 send_outcome_unknown`; `409` with the same code on every later attempt). cablegram will not
+  send it again, because the list may already be receiving it. Look at the provider for messages
+  tagged with the campaign id, then record what you find with `/send/resolve`. `not-sent` is refused
+  when cablegram already holds evidence the send went out, and for 15 minutes after it started.
+- If the provider accepted the send and cablegram failed while recording it, running the send again
+  finishes the recording. Nothing is submitted a second time.
 
 ### Suppressions (`deliverability`)
 | Method | Path | Notes |
