@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.1](https://github.com/djensen47/cablegram/compare/v3.3.0...v3.3.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* **cli:** report the installed version, not a hardcoded 0.1.0 ([#75](https://github.com/djensen47/cablegram/issues/75)) ([a21b9b2](https://github.com/djensen47/cablegram/commit/a21b9b201e69d0220b71f7d4ed47712217f24d51)), closes [#63](https://github.com/djensen47/cablegram/issues/63)
+
 ## [3.3.0](https://github.com/djensen47/cablegram/compare/v3.2.0...v3.3.0) (2026-11-13)
 
 
