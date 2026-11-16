@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Container } from 'inversify';
-import { buildContainer } from '../../shared/di/index.js';
+import { buildContainer, TYPES as SHARED_TYPES } from '../../shared/di/index.js';
+import type { Clock } from '../../shared/clock/index.js';
 import {
   EMAIL_TYPES,
   InMemoryDeliveryGateway,
@@ -29,7 +30,10 @@ import {
   GetSend,
   RecordDeliveryEvents,
   SendCampaign,
+  ResolveSend,
+  NOT_SENT_WAIT_MS,
   UpdateCampaign,
+  CampaignNotFoundError,
   CampaignSendOutcomeUnknownError,
   CampaignSendRejectedError,
   CampaignSendUnresolvedError,
@@ -61,7 +65,18 @@ const env = {
 
 const AUDIENCE = ['a@dispatch.example', 'b@dispatch.example', 'c@dispatch.example'];
 
-/** A store hiccup: the named write throws `times` times, then works. */
+/** Real time, plus whatever a test has let pass. */
+class TestClock implements Clock {
+  private ahead = 0;
+  now(): Date {
+    return new Date(Date.now() + this.ahead);
+  }
+  advance(ms: number): void {
+    this.ahead += ms;
+  }
+}
+
+/** A store hiccup: the write it is thrown from fails once, then works. */
 class StoreDown extends Error {
   constructor() {
     super('mongo: connection reset');
@@ -128,11 +143,14 @@ describe('sending a campaign again after a failure (ADR-035)', () => {
   let campaigns: FlakyCampaignRepository;
   let sends: FlakySendRepository;
   let outcomes: FlakyOutcomeRepository;
+  let clock: TestClock;
   let campaignId: string;
   let send: SendCampaign;
 
   beforeEach(async () => {
     container = buildContainer(env);
+    clock = new TestClock();
+    container.rebind<Clock>(SHARED_TYPES.Clock).toConstantValue(clock);
     campaigns = new FlakyCampaignRepository();
     sends = new FlakySendRepository();
     outcomes = new FlakyOutcomeRepository();
@@ -349,6 +367,125 @@ describe('sending a campaign again after a failure (ADR-035)', () => {
       }
       await expect(send.execute(campaignId)).rejects.toBeInstanceOf(CampaignSendUnresolvedError);
       expect(gateway.calls).toBe(1);
+    });
+  });
+
+  // The way out of `sending`. Only someone who can look at the provider knows
+  // what happened, so they say — and `not-sent`, the answer that makes the
+  // campaign sendable again, is refused whenever cablegram knows better.
+  describe('resolving a send left in `sending`', () => {
+    const resolve = (outcome: 'sent' | 'not-sent') =>
+      container.get<ResolveSend>(CAMPAIGN_TYPES.ResolveSend).execute({ campaignId, outcome });
+
+    /** Long enough that the original request cannot still be running. */
+    const waitItOut = () => clock.advance(NOT_SENT_WAIT_MS + 1);
+
+    it('has nothing to resolve unless the campaign is `sending`', async () => {
+      await expect(resolve('sent')).rejects.toBeInstanceOf(CampaignStateError);
+      await expect(resolve('not-sent')).rejects.toBeInstanceOf(CampaignStateError);
+      expect(await status()).toBe('draft');
+
+      await expect(
+        container
+          .get<ResolveSend>(CAMPAIGN_TYPES.ResolveSend)
+          .execute({ campaignId: 'missing', outcome: 'sent' }),
+      ).rejects.toBeInstanceOf(CampaignNotFoundError);
+    });
+
+    describe('as sent', () => {
+      it('completes the campaign and raises its recipients, with no provider call', async () => {
+        gateway.loseNextAnswer();
+        await send.execute(campaignId).catch(() => undefined);
+
+        const resolved = await resolve('sent');
+
+        expect(resolved.status).toBe('sent');
+        expect(resolved.recipientCount).toBe(AUDIENCE.length);
+        expect(resolved.sentAt).not.toBeNull();
+        const { stats } = await container.get<GetSend>(CAMPAIGN_TYPES.GetSend).execute(campaignId);
+        expect(stats.accepted).toBe(AUDIENCE.length);
+
+        // And it is now an ordinary sent campaign: sending again is a no-op.
+        expect((await send.execute(campaignId)).status).toBe('sent');
+        expect(gateway.calls).toBe(1);
+      });
+
+      it('is refused when no send record was ever opened — nothing was submitted', async () => {
+        sends.failNextCreate = true;
+        campaigns.failNextWriteOf = 'failed';
+        await send.execute(campaignId).catch(() => undefined);
+        expect(await status()).toBe('sending');
+
+        await expect(resolve('sent')).rejects.toThrow(/nothing was submitted/);
+        expect(await status()).toBe('sending');
+      });
+    });
+
+    describe('as not-sent', () => {
+      it('returns the campaign to `failed`, from which it sends once', async () => {
+        gateway.dropNext();
+        await send.execute(campaignId).catch(() => undefined);
+        expect(await status()).toBe('sending');
+        waitItOut();
+
+        const resolved = await resolve('not-sent');
+
+        expect(resolved.status).toBe('failed');
+        expect((await send.execute(campaignId)).status).toBe('sent');
+        expect(gateway.sent).toHaveLength(1);
+      });
+
+      it('is refused while the original request may still be running', async () => {
+        gateway.dropNext();
+        await send.execute(campaignId).catch(() => undefined);
+
+        await expect(resolve('not-sent')).rejects.toThrow(/may still be in progress/);
+        clock.advance(NOT_SENT_WAIT_MS - 60_000);
+        await expect(resolve('not-sent')).rejects.toBeInstanceOf(CampaignStateError);
+        expect(await status()).toBe('sending');
+
+        clock.advance(60_001);
+        expect((await resolve('not-sent')).status).toBe('failed');
+      });
+
+      it('is refused when the provider acknowledgment is stored', async () => {
+        campaigns.failNextWriteOf = 'sent';
+        await send.execute(campaignId).catch(() => undefined);
+        expect(await status()).toBe('sending');
+        waitItOut();
+
+        await expect(resolve('not-sent')).rejects.toThrow(/acknowledged this send \(bulk request in-memory-1\)/);
+        expect(await status()).toBe('sending');
+      });
+
+      it('is refused once delivery events have arrived for the send', async () => {
+        gateway.loseNextAnswer();
+        await send.execute(campaignId).catch(() => undefined);
+        await container.get<RecordDeliveryEvents>(CAMPAIGN_TYPES.RecordDeliveryEvents).execute({
+          RecordType: 'Delivery',
+          Recipient: AUDIENCE[0],
+          MessageID: 'm-1',
+          DeliveredAt: '2026-07-20T10:00:00Z',
+          Tag: campaignId,
+        });
+        waitItOut();
+
+        await expect(resolve('not-sent')).rejects.toThrow(/delivery events have arrived for 1 recipient/);
+        expect(await status()).toBe('sending');
+        // The right answer is still open.
+        expect((await resolve('sent')).status).toBe('sent');
+      });
+
+      it('settles a campaign whose send record was never opened', async () => {
+        sends.failNextCreate = true;
+        campaigns.failNextWriteOf = 'failed';
+        await send.execute(campaignId).catch(() => undefined);
+        waitItOut();
+
+        expect((await resolve('not-sent')).status).toBe('failed');
+        expect((await send.execute(campaignId)).status).toBe('sent');
+        expect(gateway.sent).toHaveLength(1);
+      });
     });
   });
 });

@@ -28,6 +28,7 @@ import type { ListCampaigns } from '../application/list-campaigns.js';
 import type { UpdateCampaign } from '../application/update-campaign.js';
 import type { DeleteCampaign } from '../application/delete-campaign.js';
 import type { SendCampaign } from '../application/send-campaign.js';
+import type { ResolveSend } from '../application/resolve-send.js';
 import type { SendTestCampaign } from '../application/send-test-campaign.js';
 import type { GetSend } from '../application/get-send.js';
 import type { ListRecipientOutcomes } from '../application/list-recipient-outcomes.js';
@@ -38,6 +39,7 @@ import {
   CreateCampaignSchema,
   ListCampaignsQuerySchema,
   SendSchema,
+  ResolveSendSchema,
   SendTestCampaignSchema,
   TestSendSchema,
   RecipientOutcomeListSchema,
@@ -63,6 +65,18 @@ const unauthorizedResponse = errorResponse('Missing or invalid access token');
 // the security requirement above only *declares* the scheme, it doesn't
 // document the failure response).
 const authedResponses = { 401: unauthorizedResponse } as const;
+
+/**
+ * What to do about a send left in `sending` (ADR-035). Appended wherever that
+ * state is reported, so the response that says "stuck" also says how to get out.
+ */
+function howToResolve(campaignId: string): string {
+  return (
+    `Check the provider for messages tagged ${campaignId}, then record what happened: ` +
+    `POST /v1/campaigns/${campaignId}/send/resolve with {"outcome": "sent"} or ` +
+    `{"outcome": "not-sent"}.`
+  );
+}
 
 // Domain errors carry no HTTP status (ADR-001); translate them here, at the edge.
 function rethrowDomainError(err: unknown): never {
@@ -98,7 +112,8 @@ function rethrowDomainError(err: unknown): never {
   if (err instanceof CampaignSendOutcomeUnknownError) {
     // No — and not "later" either. The provider may have it.
     throw new AppError(
-      `${err.message}. The campaign is left in "sending" and will not be sent again.`,
+      `${err.message}. The campaign is left in "sending" and will not be sent again. ` +
+        howToResolve(err.campaignId),
       502,
       'send_outcome_unknown',
     );
@@ -106,7 +121,8 @@ function rethrowDomainError(err: unknown): never {
   if (err instanceof CampaignSendUnresolvedError) {
     // The same state, met by a later request: a conflict, with the same code.
     throw new AppError(
-      `${err.message}. It may still be in progress. Another send was not started.`,
+      `${err.message}. It may still be in progress. Another send was not started. ` +
+        howToResolve(err.campaignId),
       409,
       'send_outcome_unknown',
     );
@@ -230,6 +246,35 @@ const sendRoute = createRoute({
     404: notFoundResponse,
     409: conflictResponse,
     502: errorResponse('The provider refused the send, or gave no definite answer'),
+    ...authedResponses,
+  },
+});
+
+const resolveSendRoute = createRoute({
+  method: 'post',
+  path: '/{id}/send/resolve',
+  tags: ['campaigns'],
+  summary: 'Record what happened to a send whose outcome is unknown',
+  description:
+    'For a campaign left in `sending`: a send was started and never confirmed, and cablegram ' +
+    'will not start another. Look at the provider, then record the answer. `sent` completes the ' +
+    'campaign. `not-sent` returns it to `failed`, from which it can be sent again — so it is ' +
+    'refused (409) when cablegram holds evidence the send went out (a stored provider ' +
+    'acknowledgment, or delivery events for it) and for 15 minutes after the send started, ' +
+    'while its request may still be running.',
+  security,
+  request: {
+    params: CampaignIdParamSchema,
+    body: { content: { 'application/json': { schema: ResolveSendSchema } }, required: true },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: CampaignSchema } },
+      description: 'The campaign after the answer was recorded (status sent or failed)',
+    },
+    400: badRequestResponse,
+    404: notFoundResponse,
+    409: conflictResponse,
     ...authedResponses,
   },
 });
@@ -369,6 +414,19 @@ export function createCampaignRoutes(container: Container): OpenAPIHono<AppEnv> 
     const { id } = c.req.valid('param');
     try {
       const campaign = await container.get<SendCampaign>(CAMPAIGN_TYPES.SendCampaign).execute(id);
+      return c.json(toCampaignResponse(campaign), 200);
+    } catch (err) {
+      rethrowDomainError(err);
+    }
+  });
+
+  app.openapi(resolveSendRoute, async (c) => {
+    const { id } = c.req.valid('param');
+    const { outcome } = c.req.valid('json');
+    try {
+      const campaign = await container
+        .get<ResolveSend>(CAMPAIGN_TYPES.ResolveSend)
+        .execute({ campaignId: id, outcome });
       return c.json(toCampaignResponse(campaign), 200);
     } catch (err) {
       rethrowDomainError(err);

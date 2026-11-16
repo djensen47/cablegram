@@ -227,8 +227,63 @@ describe('campaigns routes', () => {
       const refused = (await repeat.json()) as { error: { code: string; message: string } };
       expect(refused.error.code).toBe('send_outcome_unknown');
       expect(refused.error.message).toContain('Another send was not started');
+      // Both responses say how to get out of the state they report.
+      expect(lost.error.message).toContain(`POST /v1/campaigns/${id}/send/resolve`);
+      expect(refused.error.message).toContain(`POST /v1/campaigns/${id}/send/resolve`);
       // The provider was asked exactly once.
       expect(gateway.calls).toBe(1);
+    });
+
+    describe('POST /send/resolve', () => {
+      const resolve = (id: string, body: unknown, headers = auth) =>
+        app.request(`/v1/campaigns/${id}/send/resolve`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        });
+
+      it('records `sent` for a campaign left in sending (200)', async () => {
+        const id = await readyCampaign();
+        gateway.loseNextAnswer();
+        await send(id);
+
+        const res = await resolve(id, { outcome: 'sent' });
+
+        expect(res.status).toBe(200);
+        const json = (await res.json()) as { status: string; recipientCount: number };
+        expect(json).toMatchObject({ status: 'sent', recipientCount: 1 });
+        expect(gateway.calls).toBe(1);
+      });
+
+      it('refuses `not-sent` for a send that only just started (409)', async () => {
+        const id = await readyCampaign();
+        gateway.dropNext();
+        await send(id);
+
+        const res = await resolve(id, { outcome: 'not-sent' });
+
+        expect(res.status).toBe(409);
+        const { error } = (await res.json()) as { error: { message: string } };
+        expect(error.message).toContain('may still be in progress');
+        expect(await statusOf(id)).toBe('sending');
+      });
+
+      it('answers 409 for a campaign that is not sending, 404 for an unknown one', async () => {
+        const id = await readyCampaign();
+
+        expect((await resolve(id, { outcome: 'sent' })).status).toBe(409);
+        expect((await resolve('missing', { outcome: 'sent' })).status).toBe(404);
+      });
+
+      it('rejects any other outcome (400) and requires a JWT (401)', async () => {
+        const id = await readyCampaign();
+
+        expect((await resolve(id, { outcome: 'maybe' })).status).toBe(400);
+        expect((await resolve(id, {})).status).toBe(400);
+        expect(
+          (await resolve(id, { outcome: 'sent' }, { 'content-type': 'application/json' })).status,
+        ).toBe(401);
+      });
     });
   });
 

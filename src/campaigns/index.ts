@@ -80,6 +80,13 @@ export { UpdateCampaign } from './application/update-campaign.js';
 export { DeleteCampaign } from './application/delete-campaign.js';
 export { SendCampaign } from './application/send-campaign.js';
 export {
+  ResolveSend,
+  SEND_RESOLUTIONS,
+  NOT_SENT_WAIT_MS,
+  type ResolveSendInput,
+  type SendResolution,
+} from './application/resolve-send.js';
+export {
   SendTestCampaign,
   MAX_TEST_RECIPIENTS,
   TEST_SEND_SUBJECT_PREFIX,
