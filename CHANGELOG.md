@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.0](https://github.com/djensen47/cablegram/compare/v3.5.0...v3.6.0) (2026-11-16)
+
+
+### Features
+
+* **campaigns:** never submit a campaign twice; resolve a send left in `sending` ([#88](https://github.com/djensen47/cablegram/issues/88)) ([2664f6b](https://github.com/djensen47/cablegram/commit/2664f6b4aaa8becab22648314e10d0422aa4281f))
+
 ## [3.5.0](https://github.com/djensen47/cablegram/compare/v3.4.0...v3.5.0) (2026-11-16)
 
 
