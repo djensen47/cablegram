@@ -168,7 +168,8 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   the `accounts` component owns `User` (roles `admin` | `manager`, first-user-is-admin via one-time
   `POST /v1/setup`). The open `/v1` routes are `setup`, `auth/login`, `auth/refresh`, `auth/logout`,
   **`auth/password-reset` + `auth/password-reset/confirm`**, **`auth/magic-link` +
-  `auth/magic-link/consume`**, and **`unsubscribe`** (the public token unsubscribe, ADR-015) — all
+  `auth/magic-link/consume`**, **`unsubscribe`** (the public token unsubscribe, ADR-015), and
+  **`subscribe`** (the public, captcha-protected signup, ADR-034) — all
   listed in `OPEN_V1_PATHS` (an **exact-match** set in `src/app.ts`; add every new open route there —
   which is why the public unsubscribe is the *fixed* path `/v1/unsubscribe`, not a parameterized one).
   Every other `/v1` route needs a JWT, and `/v1/users` also needs
@@ -227,6 +228,21 @@ publishing** — no npm token in the repo. Runbook: [`docs/releasing.md`](docs/r
   (give each its own stream — ADR-030 corrected ADR-029's "every newsletter shares one stream"); a
   re-subscribe may stay blocked at Postmark; `{{{ pm:unsubscribe }}}` passes through to Postmark
   (ADR-033), so a body can place the link, or Postmark appends its default footer link.
+- **Public signup is an open, captcha-protected route — `POST /v1/subscribe`**
+  ([ADR-034](docs/adrs/ADR-034-public-signup.md)). Called straight from a browser form, no JWT. Gates,
+  in this order: Turnstile configured (`TURNSTILE_SECRET_KEY`, else **503** — off, never unprotected);
+  token verified via `siteverify` **before** the newsletter lookup (no id probing); rejected token →
+  **400 `captcha_failed`**, Turnstile outage/bad secret → **503**; newsletter must have **`publicSignup`**
+  (default **off**) — closed and unknown are the same **404**. Always **`202 accepted`** (non-revealing).
+  **A public single opt-in signup never revives an unsubscribed/bounced/complained row** —
+  `Subscribe`'s `reviveLapsedWithoutConfirmation: false`, deliberately **not** on the operator schema;
+  don't remove it, a public form proves nothing about who typed the address. Opt-in follows the
+  newsletter; the caller can't choose. Evidence **is** read off the request here (second route after
+  `/v1/unsubscribe`, ADR-023) and the IP goes to Turnstile. Input is closed: email + ≤10 short string
+  custom fields, record-metadata names refused, no tags/status. `CORS_ALLOWED_ORIGINS` (bare origins,
+  validated) enables cross-origin calls incl. preflight. Verification is the `shared/captcha` leaf
+  (`CaptchaVerifier` / `TurnstileCaptchaVerifier`, tests rebind `FakeCaptchaVerifier`). No per-IP rate
+  limit — ADR-009 forbids in-process counters; the captcha is the protection.
 - **Every email names its channel; no stream ID is ever assumed**
   ([ADR-030](docs/adrs/ADR-030-sending-channels.md), [ADR-031](docs/adrs/ADR-031-confirmation-and-system-channels.md)).
   `BulkMessage.sendingChannel` is **required on every message**; `category` (`broadcast` |
