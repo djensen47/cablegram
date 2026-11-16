@@ -20,6 +20,18 @@ export interface ListCampaignsOptions {
 export interface CampaignRepository {
   create(campaign: Campaign): Promise<void>;
   update(campaign: Campaign): Promise<void>;
+  /**
+   * Store `campaign` only if the stored row is still in one of the `from`
+   * statuses. Returns `false`, having written nothing, when it is not (or the
+   * row is gone).
+   *
+   * Every caller read the campaign some time before it writes. The check is
+   * made by the store, in the same operation as the write, so two requests that
+   * both read `draft` cannot both move the campaign to `sending` — exactly one
+   * write matches (ADR-035). The domain decides which statuses a change is
+   * legal from; this only makes that decision hold against the stored row.
+   */
+  saveIfStatus(campaign: Campaign, from: readonly CampaignStatus[]): Promise<boolean>;
   findById(id: CampaignId): Promise<Campaign | null>;
   /** Campaigns ordered by id ascending, `id > cursor`, capped at `limit`. */
   list(options: ListCampaignsOptions): Promise<Campaign[]>;

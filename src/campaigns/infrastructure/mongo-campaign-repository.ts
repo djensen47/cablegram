@@ -54,6 +54,18 @@ export class MongoCampaignRepository implements CampaignRepository {
     await this.collection.replaceOne({ _id: campaign.id }, toDoc(campaign));
   }
 
+  async saveIfStatus(campaign: Campaign, from: readonly CampaignStatus[]): Promise<boolean> {
+    // The guard is in the filter, so the store evaluates it in the same
+    // operation as the write — the same shape as `applyEvent` (ADR-019). A
+    // plain conditional replace: `WHERE id = ? AND status IN (...)` is
+    // expressible in any store, which keeps ADR-012's portable subset.
+    const { matchedCount } = await this.collection.replaceOne(
+      { _id: campaign.id, status: { $in: [...from] } },
+      toDoc(campaign),
+    );
+    return matchedCount > 0;
+  }
+
   async findById(id: CampaignId): Promise<Campaign | null> {
     const doc = await this.collection.findOne({ _id: id });
     return doc === null ? null : toDomain(doc);

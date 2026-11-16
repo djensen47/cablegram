@@ -26,6 +26,15 @@ export function isCampaignStatus(value: string): value is CampaignStatus {
 }
 
 /**
+ * The statuses a campaign may be edited or sent from: nothing is in flight and
+ * nothing went out. Exported because the rule has to hold in the store as well
+ * as in memory — a write checks it again against the stored row
+ * (`CampaignRepository.saveIfStatus`), since the copy a request holds may be
+ * stale by the time it writes (ADR-035).
+ */
+export const SENDABLE_STATUSES: readonly CampaignStatus[] = ['draft', 'failed'];
+
+/**
  * Aggregate delivery stats for a send, **counted from the outcomes collection
  * on read** (ADR-019 §3) and never stored. `RecipientOutcomeRepository.stats()`
  * builds it per request, so it cannot go stale and needs no repair path.
@@ -226,7 +235,7 @@ export class Campaign {
 
   /** `true` while the campaign may still be edited or sent (not sent/sending). */
   private get isEditable(): boolean {
-    return this.props.status === 'draft' || this.props.status === 'failed';
+    return SENDABLE_STATUSES.includes(this.props.status);
   }
 
   /**
