@@ -87,6 +87,7 @@ describe('subscriptions routes', () => {
         campaignChannel: 'legacy-stream',
         confirmationChannel: null,
         doubleOptIn: false,
+        publicSignup: false,
         createdAt: now,
         updatedAt: now,
       }),

@@ -64,6 +64,12 @@ export class Subscribe {
       if (!LAPSED.includes(existing.status)) {
         return existing;
       }
+      // A public single opt-in signup cannot prove who typed the address, so
+      // it never re-subscribes someone who left (ADR-034). Returned unchanged,
+      // so the public route's answer is the same either way.
+      if (!doubleOptIn && input.reviveLapsedWithoutConfirmation === false) {
+        return existing;
+      }
       // Reviving under double opt-in sends a confirmation: check its channel
       // before the row changes (ADR-031).
       this.requireConfirmationChannel(newsletter, doubleOptIn);

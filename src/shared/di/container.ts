@@ -5,6 +5,7 @@ import { loadConfig, type AppConfig } from '../config/index.js';
 import { DefaultClock, type Clock } from '../clock/index.js';
 import { InMemoryIdempotencyStore, logLine, type IdempotencyStore } from '../http/index.js';
 import { emailModule } from '../email/index.js';
+import { captchaModule } from '../captcha/index.js';
 import { authModule } from '../auth/index.js';
 import { accountsModule } from '../../accounts/index.js';
 import { newsletterModule } from '../../newsletters/index.js';
@@ -62,6 +63,7 @@ export function buildContainer(env: NodeJS.ProcessEnv = process.env): Container 
   // double. `auth` binds the `jose` access-token service (ADR-013). Both stay
   // leaves — they import no domain component.
   container.load(emailModule);
+  container.load(captchaModule);
   container.load(authModule);
 
   // Domain component modules (ADR-011). Each names its own concrete repositories

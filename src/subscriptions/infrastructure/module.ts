@@ -9,6 +9,7 @@ import { ConfirmSubscription } from '../application/confirm-subscription.js';
 import { Unsubscribe } from '../application/unsubscribe.js';
 import { MarkSubscriptionOutcome } from '../application/mark-subscription-outcome.js';
 import { PublicUnsubscribe } from '../application/public-unsubscribe.js';
+import { PublicSubscribe } from '../application/public-subscribe.js';
 import { ListSubscriptions } from '../application/list-subscriptions.js';
 import { ResolveRecipients } from '../application/resolve-recipients.js';
 import { MongoSubscriptionRepository } from './mongo-subscription-repository.js';
@@ -38,6 +39,7 @@ export const subscriptionModule = new ContainerModule((bind) => {
     MarkSubscriptionOutcome,
   );
   bind<PublicUnsubscribe>(SUBSCRIPTION_TYPES.PublicUnsubscribe).to(PublicUnsubscribe);
+  bind<PublicSubscribe>(SUBSCRIPTION_TYPES.PublicSubscribe).to(PublicSubscribe);
   bind<ListSubscriptions>(SUBSCRIPTION_TYPES.ListSubscriptions).to(ListSubscriptions);
   bind<ResolveRecipients>(SUBSCRIPTION_TYPES.ResolveRecipients).to(ResolveRecipients);
 });

@@ -250,6 +250,7 @@ describe('campaigns — the send integrator', () => {
             campaignChannel: null,
             confirmationChannel: null,
             doubleOptIn: false,
+            publicSignup: false,
             createdAt: now,
             updatedAt: now,
           }),

@@ -33,6 +33,10 @@ const DOUBLE_OPT_IN_DESCRIPTION =
   'Whether signups to this newsletter must be confirmed by email (ADR-032). `false` \u2014 single ' +
   'opt-in, subscribed immediately \u2014 is the default. A signup request can override it.';
 
+const PUBLIC_SIGNUP_DESCRIPTION =
+  'Whether the public signup route (`POST /v1/subscribe`) accepts signups for this newsletter ' +
+  '(ADR-034). Off (`false`) by default.';
+
 const LEGACY_SENDING_CHANNEL_DESCRIPTION =
   'Deprecated alias for `campaignChannel` (its name in 3.1.0), still accepted. Pass one or the ' +
   'other; passing both with different values is a 400.';
@@ -59,6 +63,7 @@ export const NewsletterSchema = z
       example: 'weekly-dispatch-confirmations',
     }),
     doubleOptIn: z.boolean().openapi({ description: DOUBLE_OPT_IN_DESCRIPTION, example: false }),
+    publicSignup: z.boolean().openapi({ description: PUBLIC_SIGNUP_DESCRIPTION, example: false }),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -88,6 +93,7 @@ export const CreateNewsletterSchema = z
       example: 'weekly-dispatch-confirmations',
     }),
     doubleOptIn: z.boolean().optional().openapi({ description: DOUBLE_OPT_IN_DESCRIPTION, example: false }),
+    publicSignup: z.boolean().optional().openapi({ description: PUBLIC_SIGNUP_DESCRIPTION, example: false }),
   })
   .openapi('CreateNewsletter');
 
@@ -113,6 +119,7 @@ export const UpdateNewsletterSchema = z
       example: 'weekly-dispatch-confirmations',
     }),
     doubleOptIn: z.boolean().optional().openapi({ description: DOUBLE_OPT_IN_DESCRIPTION, example: false }),
+    publicSignup: z.boolean().optional().openapi({ description: PUBLIC_SIGNUP_DESCRIPTION, example: false }),
   })
   .openapi('UpdateNewsletter');
 
@@ -167,6 +174,7 @@ export function toNewsletterResponse(newsletter: Newsletter): NewsletterResponse
     campaignChannel: newsletter.campaignChannel,
     confirmationChannel: newsletter.confirmationChannel,
     doubleOptIn: newsletter.doubleOptIn,
+    publicSignup: newsletter.publicSignup,
     createdAt: newsletter.createdAt.toISOString(),
     updatedAt: newsletter.updatedAt.toISOString(),
   };

@@ -22,6 +22,8 @@ export const SUBSCRIPTION_TYPES = {
   MarkSubscriptionOutcome: Symbol.for('MarkSubscriptionOutcome'),
   /** Public, token-authenticated unsubscribe (ADR-015); no JWT. */
   PublicUnsubscribe: Symbol.for('PublicUnsubscribe'),
+  /** Public, captcha-protected signup from a browser form (ADR-034); no JWT. */
+  PublicSubscribe: Symbol.for('PublicSubscribe'),
   ListSubscriptions: Symbol.for('ListSubscriptions'),
   ResolveRecipients: Symbol.for('ResolveRecipients'),
 } as const;

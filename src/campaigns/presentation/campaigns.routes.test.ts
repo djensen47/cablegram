@@ -188,6 +188,7 @@ describe('campaigns routes', () => {
         campaignChannel: null,
         confirmationChannel: null,
         doubleOptIn: false,
+        publicSignup: false,
         createdAt: now,
         updatedAt: now,
       }),

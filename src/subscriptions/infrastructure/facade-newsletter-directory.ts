@@ -33,6 +33,7 @@ export class FacadeNewsletterDirectory implements NewsletterDirectory {
         replyTo: newsletter.replyTo?.value ?? null,
         confirmationChannel: newsletter.confirmationChannel,
         doubleOptIn: newsletter.doubleOptIn,
+        publicSignup: newsletter.publicSignup,
       };
     } catch (err) {
       if (err instanceof NewsletterNotFoundError) return null;

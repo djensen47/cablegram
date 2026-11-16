@@ -185,4 +185,31 @@ describe('loadConfig', () => {
     });
   });
 
+
+  describe('public signup (ADR-034)', () => {
+    it('is off by default: no Turnstile secret, no CORS origins', () => {
+      expect(loadConfig(base).publicSignup).toEqual({ turnstileSecretKey: null, corsAllowedOrigins: [] });
+    });
+
+    it('reads the Turnstile secret and a comma-separated origin list', () => {
+      const c = loadConfig({
+        ...base,
+        TURNSTILE_SECRET_KEY: 'sekret',
+        CORS_ALLOWED_ORIGINS: 'https://www.example.org, https://example.org',
+      } as NodeJS.ProcessEnv);
+      expect(c.publicSignup).toEqual({
+        turnstileSecretKey: 'sekret',
+        corsAllowedOrigins: ['https://www.example.org', 'https://example.org'],
+      });
+    });
+
+    it('refuses an origin with a path or trailing slash, which a browser would never send', () => {
+      expect(() =>
+        loadConfig({ ...base, CORS_ALLOWED_ORIGINS: 'https://www.example.org/' } as NodeJS.ProcessEnv),
+      ).toThrow(/is not an origin/);
+      expect(() =>
+        loadConfig({ ...base, CORS_ALLOWED_ORIGINS: 'www.example.org' } as NodeJS.ProcessEnv),
+      ).toThrow(/is not an origin/);
+    });
+  });
 });
