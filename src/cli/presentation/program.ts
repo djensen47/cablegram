@@ -36,9 +36,6 @@ export const EXIT = {
   cancelled: 130,
 } as const;
 
-/** The CLI version, surfaced by `--version`. Kept in step with package.json. */
-export const CLI_VERSION = '0.1.0';
-
 /**
  * Builds the commander program (ADR-016 §2). Takes its dependencies rather than
  * constructing them, so tests drive the real program with a stub API client and
@@ -58,7 +55,8 @@ export function buildProgram(deps: CliDeps): Command {
       'CLI for a cablegram deployment. An HTTP client for the /v1 API (ADR-016) — it talks to a ' +
         'running server and never to the database.',
     )
-    .version(CLI_VERSION, '-v, --version')
+    // The installed package's own version (#63), supplied by `main.ts`.
+    .version(deps.version, '-v, --version')
     .option('--json', 'emit the raw API response as JSON (machine-readable)')
     .option('--url <url>', 'override the configured base URL for this command')
     .option('-y, --yes', 'skip confirmation prompts (for scripts and CI)')

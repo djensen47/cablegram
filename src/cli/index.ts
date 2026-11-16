@@ -10,4 +10,4 @@ export type { CliDeps } from './application/deps.js';
 export { credentialsFromSession, decodeClaims, isAccessTokenExpired } from './application/session.js';
 export { FetchApiClient } from './infrastructure/fetch-api-client.js';
 export { FileCredentialStore, defaultConfigPath } from './infrastructure/file-credential-store.js';
-export { buildProgram, run, EXIT, CLI_VERSION } from './presentation/program.js';
+export { buildProgram, run, EXIT } from './presentation/program.js';
