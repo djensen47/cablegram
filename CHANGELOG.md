@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.1](https://github.com/djensen47/cablegram/compare/v3.6.0...v3.6.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **email:** treat a Postmark `Unsubscribe` bounce as an unsubscribe ([#90](https://github.com/djensen47/cablegram/issues/90)) ([d226dc1](https://github.com/djensen47/cablegram/commit/d226dc1b61009d433bc728bd3050d2ce69358362))
+
 ## [3.6.0](https://github.com/djensen47/cablegram/compare/v3.5.0...v3.6.0) (2026-11-16)
 
 
