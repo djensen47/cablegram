@@ -70,6 +70,20 @@ const optOutPayload = {
   Tag: 'campaign-42',
 };
 
+// The other shape an opt-out arrives in: Postmark bounce type 16, "Unsubscribe
+// or Remove request". A Bounce webhook, so the address is in `Email`.
+const unsubscribeBouncePayload = {
+  RecordType: 'Bounce',
+  Type: 'Unsubscribe',
+  TypeCode: 16,
+  MessageID: 'ggg',
+  MessageStream: 'broadcast',
+  Email: 'leaver@example.com',
+  BouncedAt: '2026-11-16T21:25:00.0000000Z',
+  Inactive: false,
+  Tag: 'campaign-42',
+};
+
 describe('parseProviderEvent', () => {
   it('normalizes a Delivery webhook', () => {
     const [event] = parseProviderEvent(deliveryPayload).events;
@@ -313,5 +327,45 @@ describe('SubscriptionChange classification (ADR-029)', () => {
     const { Recipient: _omit, ...noAddress } = optOutPayload;
     void _omit;
     expect(keys(noAddress)).toEqual(['SubscriptionChange:__no-address']);
+  });
+});
+
+// The first real send's finding: eight opt-outs arrived as a Bounce of type
+// `Unsubscribe`, were counted as unhandled, and the addresses stayed subscribed.
+describe('an Unsubscribe bounce is an opt-out, not a bounce (ADR-029)', () => {
+  it('normalizes to `unsubscribed`, carrying the address, tag and BouncedAt', () => {
+    const parsed = parseProviderEvent(unsubscribeBouncePayload);
+
+    expect(parsed.unhandled).toEqual([]);
+    expect(parsed.events).toEqual([
+      {
+        type: 'unsubscribed',
+        email: 'leaver@example.com',
+        messageId: 'ggg',
+        occurredAt: new Date('2026-11-16T21:25:00.0000000Z'),
+        tag: 'campaign-42',
+        firstEngagement: null,
+      },
+    ]);
+  });
+
+  it('is never read as a delivery failure', () => {
+    const [event] = parseProviderEvent(unsubscribeBouncePayload).events;
+    expect(event?.type).not.toBe('hard-bounce');
+    expect(event?.type).not.toBe('soft-bounce');
+  });
+
+  it('reports one that carried no address, rather than dropping it', () => {
+    const { Email: _omit, ...noAddress } = unsubscribeBouncePayload;
+    void _omit;
+    expect(parseProviderEvent(noAddress).unhandled.map((u) => u.key)).toEqual([
+      'Bounce:__no-address',
+    ]);
+  });
+
+  it('still reports a bounce type that is in no table', () => {
+    const parsed = parseProviderEvent({ ...unsubscribeBouncePayload, Type: 'SomethingNew' });
+    expect(parsed.events).toEqual([]);
+    expect(parsed.unhandled.map((u) => u.key)).toEqual(['Bounce:SomethingNew']);
   });
 });
